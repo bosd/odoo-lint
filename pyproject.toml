@@ -3,7 +3,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "odoo-lint"
+name = "odoo-linter"
 # Single source of truth for the version is Cargo.toml.
 dynamic = ["version"]
 description = "Blazing fast Rust-native linter for Odoo modules"

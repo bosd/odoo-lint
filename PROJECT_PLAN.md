@@ -286,9 +286,9 @@ Build an ultra-fast Rust-native static analysis linter for Odoo codebases (`.py`
 ## Architecture Overview
 
 * **Binary CLI Name:** `odl`
-* **Package Names:** `odoo-lint` on PyPI and Crates.io
+* **Package Names:** `odoo-linter` on PyPI (`odoo-lint` is blocked by the existing `odoolint`), `odoo-lint` on crates.io
 * **Core Engine:** Rust + `ruff_python_parser` + `rayon` + `quick-xml`
-* **Distribution:** Maturin binary wheels for Python (`uv tool install odoo-lint`)
+* **Distribution:** Maturin binary wheels for Python (`uv tool install odoo-linter`)
 
 ---
 

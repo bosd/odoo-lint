@@ -156,7 +156,7 @@ wheels = [
 ]
 
 [[package]]
-name = "odoo-lint"
+name = "odoo-linter"
 source = { editable = "." }
 
 [package.dev-dependencies]

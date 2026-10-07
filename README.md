@@ -5,7 +5,7 @@ Blazing fast Rust-native linter for Odoo modules. The CLI is called `odl`.
 ## Installation
 
 ```bash
-uv tool install odoo-lint   # or: pipx install odoo-lint
+uv tool install odoo-linter   # or: pipx install odoo-linter
 cargo install odoo-lint     # from crates.io
 ```
 
