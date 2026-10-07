@@ -1,0 +1,10 @@
+/target/
+/.venv/
+/.nox/
+/.pytest_cache/
+/.ruff_cache/
+/dist/
+/.python-version
+__pycache__/
+*.so
+*.pyd

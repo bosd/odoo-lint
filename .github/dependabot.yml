@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-updates:
+        applies-to: version-updates
+      github-actions-security-updates:
+        applies-to: security-updates
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      cargo-version-updates:
+        applies-to: version-updates
+      cargo-security-updates:
+        applies-to: security-updates
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      uv-version-updates:
+        applies-to: version-updates
+      uv-security-updates:
+        applies-to: security-updates

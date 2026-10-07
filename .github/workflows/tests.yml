@@ -1,0 +1,96 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ matrix.session }} ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Lint
+          - { python: "3.13", os: "ubuntu-latest", session: "pre-commit" }
+          - { python: "", os: "ubuntu-latest", session: "fmt" }
+          - { python: "", os: "ubuntu-latest", session: "clippy" }
+          # Rust unit and integration tests
+          - { python: "", os: "ubuntu-latest", session: "cargo-test" }
+          - { python: "", os: "windows-latest", session: "cargo-test" }
+          - { python: "", os: "macos-latest", session: "cargo-test" }
+          # CLI tests against the maturin-built `odl` binary
+          - { python: "3.14", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.13", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.12", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.11", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.10", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.13", os: "windows-latest", session: "tests" }
+          - { python: "3.13", os: "macos-latest", session: "tests" }
+
+    env:
+      NOXSESSION: ${{ matrix.session }}
+      NOX_PYTHON: ${{ matrix.python }}
+      FORCE_COLOR: "1"
+      PRE_COMMIT_COLOR: "always"
+      CARGO_TERM_COLOR: "always"
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python || '3.13' }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ matrix.python || '3.13' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustc --version
+
+      - name: Compute pre-commit cache key
+        if: matrix.session == 'pre-commit'
+        id: pre-commit-cache
+        shell: python
+        run: |
+          import hashlib
+          import sys
+
+          python = "py{}.{}".format(*sys.version_info[:2])
+          payload = sys.version.encode() + sys.executable.encode()
+          digest = hashlib.sha256(payload).hexdigest()
+          result = "${{ runner.os }}-{}-{}-pre-commit".format(python, digest[:8])
+
+          print(f"result={result}")
+
+      - name: Restore pre-commit cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        if: matrix.session == 'pre-commit'
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ steps.pre-commit-cache.outputs.result }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ steps.pre-commit-cache.outputs.result }}-
+
+      - name: Run Nox
+        shell: bash
+        # --only-group avoids compiling `odl` just to run nox itself.
+        run: |
+          if [ -n "$NOX_PYTHON" ]; then set -- --python="$NOX_PYTHON"; fi
+          uv run --locked --only-group dev nox "$@"

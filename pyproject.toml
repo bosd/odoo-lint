@@ -1,0 +1,77 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "odoo-lint"
+# Single source of truth for the version is Cargo.toml.
+dynamic = ["version"]
+description = "Blazing fast Rust-native linter for Odoo modules"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [{ name = "BosD Development" }]
+keywords = ["odoo", "linter", "static-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: Odoo",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Homepage = "https://github.com/bosd/odoo-lint"
+Repository = "https://github.com/bosd/odoo-lint"
+Changelog = "https://github.com/bosd/odoo-lint/releases"
+
+[dependency-groups]
+dev = [
+    "nox >= 2025.5.1",
+    "pytest >= 8.3",
+]
+lint = [
+    "pre-commit >= 4.0",
+    "pre-commit-hooks >= 5.0",
+    "ruff >= 0.8",
+    "zizmor >= 1.20",
+]
+
+[tool.uv]
+package = true
+# Rebuild the `odl` binary in the venv whenever the Rust sources change.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+]
+
+# The wheel only ships a binary and runs on any Python >= 3.8, but the dev
+# tooling needs a newer interpreter.
+[tool.uv.dependency-groups]
+dev = { requires-python = ">=3.10" }
+lint = { requires-python = ">=3.10" }
+
+[tool.maturin]
+# Ship the `odl` executable as a binary wheel (no Python extension module).
+bindings = "bin"
+strip = true
+include = [{ path = "LICENSE", format = "sdist" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["tests"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "PTH", "RUF", "S", "SIM", "UP", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "S603"]
+"noxfile.py" = ["S101"]
