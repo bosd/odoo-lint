@@ -10,7 +10,7 @@ description = "Blazing fast Rust-native linter for Odoo modules"
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
-authors = [{ name = "BosD Development" }]
+authors = [{ name = "bosd" }]
 keywords = ["odoo", "linter", "static-analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",

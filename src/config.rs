@@ -156,9 +156,9 @@ default = "Odoo Community Association (OCA)"
 
 [tool.odoo-lint.rules.manifest-author.mapping]
 "mijnbedrijf_*" = "MijnBedrijf B.V."
-"bosd_*" = "BosD Development"
-"bosd_hr_*" = "BosD HR"
-"bosd_special" = "Someone Else"
+"acme_*" = "Acme Corp"
+"acme_hr_*" = "Acme HR"
+"acme_special" = "Someone Else"
 "#;
 
     fn config() -> OdooLintConfig {
@@ -174,9 +174,9 @@ default = "Odoo Community Association (OCA)"
     fn author_resolution() {
         let c = config();
         assert_eq!(c.get_expected_author("mijnbedrijf_maatwerkmodule"), "MijnBedrijf B.V.");
-        assert_eq!(c.get_expected_author("bosd_sale"), "BosD Development");
-        assert_eq!(c.get_expected_author("bosd_hr_payroll"), "BosD HR");
-        assert_eq!(c.get_expected_author("bosd_special"), "Someone Else");
+        assert_eq!(c.get_expected_author("acme_sale"), "Acme Corp");
+        assert_eq!(c.get_expected_author("acme_hr_payroll"), "Acme HR");
+        assert_eq!(c.get_expected_author("acme_special"), "Someone Else");
         assert_eq!(c.get_expected_author("sale_stock"), DEFAULT_AUTHOR);
     }
 

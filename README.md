@@ -43,7 +43,7 @@ default = "Odoo Community Association (OCA)"
 # otherwise the longest matching `prefix*` pattern.
 [tool.odoo-lint.rules.manifest-author.mapping]
 "mijnbedrijf_*" = "MijnBedrijf B.V."
-"bosd_*" = "BosD Development"
+"acme_*" = "Acme Corp"
 ```
 
 In `odoo-lint.toml` the same keys live at the top level (`[rules.manifest-author]`).

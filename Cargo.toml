@@ -1,9 +1,9 @@
 [package]
 name = "odoo-lint"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2021"
 rust-version = "1.97"
-authors = ["BosD Development"]
+authors = ["bosd"]
 description = "Blazing fast Rust-native linter for Odoo modules"
 license = "MIT"
 readme = "README.md"

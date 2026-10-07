@@ -18,7 +18,7 @@ target-version = "16.0"
 default = "Odoo Community Association (OCA)"
 
 [tool.odoo-lint.rules.manifest-author.mapping]
-"bosd_*" = "BosD Development"
+"acme_*" = "Acme Corp"
 """
 
 
@@ -47,7 +47,7 @@ def test_version() -> None:
 def test_clean_project(tmp_path: Path) -> None:
     """A project without violations exits with 0."""
     (tmp_path / "pyproject.toml").write_text(CONFIG)
-    make_module(tmp_path, "bosd_sale", "BosD Development")
+    make_module(tmp_path, "acme_sale", "Acme Corp")
     make_module(tmp_path, "sale_extra", "Odoo Community Association (OCA)")
 
     result = run_odl("check", str(tmp_path / "addons"))
@@ -59,13 +59,13 @@ def test_clean_project(tmp_path: Path) -> None:
 def test_author_mapping_violation(tmp_path: Path) -> None:
     """A module matching a mapping pattern must use the mapped author."""
     (tmp_path / "pyproject.toml").write_text(CONFIG)
-    make_module(tmp_path, "bosd_sale", "Odoo Community Association (OCA)")
+    make_module(tmp_path, "acme_sale", "Odoo Community Association (OCA)")
 
     result = run_odl("check", str(tmp_path / "addons"), "--version", "18.0")
 
     assert result.returncode == 1
     assert "[ODOO010]" in result.stdout
-    assert "BosD Development" in result.stdout
+    assert "Acme Corp" in result.stdout
     assert "(v18.0)" in result.stdout
 
 
