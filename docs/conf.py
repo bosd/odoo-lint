@@ -14,7 +14,9 @@ html_title = "odoo-lint"
 html_static_path = ["_static"]
 html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.png"
+html_css_files = ["custom.css"]
 
+# Base scale; custom.css swaps in the exact brand colours.
 html_theme_options = {
     "accent_color": "orange",
     "github_url": "https://github.com/bosd/odoo-lint",
