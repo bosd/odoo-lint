@@ -319,8 +319,13 @@ Build an ultra-fast Rust-native static analysis linter for Odoo codebases (`.py`
 
 ### Milestone 5: CI/CD & Release Automation
 
-* [ ] GitHub Actions workflow using `maturin-action` to build wheels for macOS, Linux, and Windows.
+* [x] GitHub Actions workflow using `maturin-action` to build wheels for macOS, Linux, and Windows.
 * [ ] Publish `0.1.0` to PyPI and Crates.io.
+
+### Milestone 6: Benchmarks
+
+* [ ] Reproducible benchmark of `odl check` vs pylint-odoo on real OCA repositories (pinned versions, hyperfine, cold and warm runs).
+* [ ] Publish results and exact commands in the "Benchmarks" section of `docs/why.md`.
 """,
 "AGENT_INSTRUCTIONS.md": """# Instructions for CLI Agent (Claude Code / Cursor / Aider)
 
