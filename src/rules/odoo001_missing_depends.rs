@@ -1,11 +1,7 @@
 //! ODOO001: compute method without `@api.depends`.
-//!
-//! Flags methods referenced as `compute=` by a field in the same class that are
-//! not decorated with `@api.depends(...)` or `@api.depends_context(...)`.
-//! Without dependencies Odoo never invalidates the cached value of a stored
-//! computed field, and non-stored fields are recomputed on every access.
 
 use crate::diagnostics::Violation;
+use crate::rules::Rule;
 use ruff_python_ast::statement_visitor::{walk_stmt, StatementVisitor};
 use ruff_python_ast::{Decorator, Expr, Stmt, StmtClassDef};
 use ruff_python_parser::parse_module;
@@ -14,6 +10,60 @@ use ruff_text_size::Ranged;
 use std::collections::BTreeMap;
 
 pub const CODE: &str = "ODOO001";
+
+pub const RULE: Rule = Rule {
+    code: CODE,
+    name: "missing-depends",
+    summary: "Compute method referenced by `compute=` lacks `@api.depends`.",
+    doc: r#"
+## What it does
+
+Checks every model class for fields declared with `compute=` and reports the
+compute method when it has neither `@api.depends(...)` nor
+`@api.depends_context(...)`.
+
+Both `compute="_compute_total"` and `compute=_compute_total` are recognised.
+When several fields share one compute method, the method is reported once and
+the message lists all fields.
+
+## Why is this bad?
+
+Without declared dependencies the ORM does not know when to invalidate the
+value. A stored computed field is never recomputed after its inputs change, so
+the database silently keeps stale data. A non-stored field is recomputed on
+every access instead of being cached.
+
+## Example
+
+```python
+class SaleOrder(models.Model):
+    _inherit = "sale.order"
+
+    margin_total = fields.Float(compute="_compute_margin_total", store=True)
+
+    def _compute_margin_total(self):
+        for order in self:
+            order.margin_total = sum(order.order_line.mapped("margin"))
+```
+
+Use instead:
+
+```python
+    @api.depends("order_line.margin")
+    def _compute_margin_total(self):
+        for order in self:
+            order.margin_total = sum(order.order_line.mapped("margin"))
+```
+
+If the value only depends on the context (for example the current company or
+user), declare that with `@api.depends_context("company")`.
+
+## Limitations
+
+Only compute methods defined in the same class as the field are checked; a
+method inherited from another class is not reported.
+"#,
+};
 
 pub fn check_python_file(file_path: &str, content: &str) -> Vec<Violation> {
     let Ok(parsed) = parse_module(content) else {
@@ -75,7 +125,7 @@ fn check_class(class: &StmtClassDef, file_path: &str, line_index: &LineIndex, ou
         out.push(Violation {
             file_path: file_path.to_string(),
             line: line_index.line_index(func.name.start()).get(),
-            rule_code: CODE,
+            rule_code: RULE.code,
             message: format!(
                 "Compute method '{}' (field(s): {}) is missing @api.depends",
                 func.name.as_str(),

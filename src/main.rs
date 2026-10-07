@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use odoo_lint::config::OdooLintConfig;
 use odoo_lint::linter;
+use odoo_lint::rules;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -26,11 +27,32 @@ enum Commands {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    /// Explain a rule, or list all rules when no code is given
+    Rule {
+        /// Rule code, e.g. ODOO001
+        code: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Rule { code: None } => {
+            for rule in rules::ALL {
+                println!("{}  {:<18} {}", rule.code, rule.name, rule.summary);
+            }
+            ExitCode::SUCCESS
+        }
+        Commands::Rule { code: Some(code) } => match rules::find(&code) {
+            Some(rule) => {
+                print!("{}", rule.to_markdown());
+                ExitCode::SUCCESS
+            }
+            None => {
+                eprintln!("error: unknown rule '{code}' (run `odl rule` to list all rules)");
+                ExitCode::from(2)
+            }
+        },
         Commands::Check { path, version, config } => {
             let loaded = match config {
                 Some(file) => OdooLintConfig::from_file(&file).map(|c| (c, Some(file))),

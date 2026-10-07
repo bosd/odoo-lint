@@ -1,0 +1,38 @@
+# Development
+
+Rust builds the `odl` binary, [maturin](https://www.maturin.rs) packages it
+as a wheel and [uv](https://docs.astral.sh/uv/) manages the virtual
+environment. You need a Rust toolchain (see `rust-version` in `Cargo.toml`)
+and uv.
+
+```bash
+uv sync --all-groups   # builds odl into .venv via maturin
+uv run nox             # pre-commit, fmt, clippy, cargo tests, CLI tests
+uv run nox -s clippy   # a single session
+uv run nox -s docs     # live-reloading documentation
+```
+
+## Adding a rule
+
+1. Add `src/rules/odooNNN_<name>.rs` with a `pub const RULE: Rule` holding the
+   code, name, summary and Markdown documentation, and the check itself.
+2. Register it in `ALL` in `src/rules/mod.rs` (sorted by code) and call it
+   from `src/linter.rs`.
+3. Regenerate the documentation pages:
+
+   ```bash
+   UPDATE_DOCS=1 cargo test --test generated_docs
+   ```
+
+   CI fails when `docs/rules/` is out of date.
+
+## Releasing
+
+1. Bump `version` in `Cargo.toml` and run `uv lock`.
+2. Publish the GitHub release drafted by Release Drafter, with tag
+   `v<version>`.
+
+The release workflow checks that the tag matches `Cargo.toml`, builds wheels
+for Linux, macOS and Windows, signs them with Sigstore, attaches the
+signatures to the GitHub release, and publishes to PyPI (`odoo-linter`) and
+crates.io (`odoo-lint`) with trusted publishing.

@@ -27,3 +27,10 @@ updates:
         applies-to: version-updates
       uv-security-updates:
         applies-to: security-updates
+  - package-ecosystem: pip
+    directory: "/docs"
+    schedule:
+      interval: weekly
+    groups:
+      docs-updates:
+        applies-to: version-updates

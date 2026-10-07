@@ -1,12 +1,9 @@
-use crate::config::OdooLintConfig;
-use crate::diagnostics::Violation;
-use crate::rules::Rule;
+<!-- Generated from the rule sources; run `UPDATE_DOCS=1 cargo test --test generated_docs` -->
 
-pub const RULE: Rule = Rule {
-    code: "ODOO010",
-    name: "manifest-author",
-    summary: "`__manifest__.py` author does not match the configured author.",
-    doc: r#"
+# manifest-author (ODOO010)
+
+`__manifest__.py` author does not match the configured author.
+
 ## What it does
 
 Checks that the `author` key of every `__manifest__.py` matches the author
@@ -62,23 +59,3 @@ Use instead:
     "author": "Acme Corp",
 }
 ```
-"#,
-};
-
-pub fn check_manifest(file_path: &str, content: &str, module_name: &str, config: &OdooLintConfig) -> Vec<Violation> {
-    let expected = config.get_expected_author(module_name);
-    if !content.contains(&format!("'author': '{}'", expected))
-        && !content.contains(&format!("\"author\": \"{}\"", expected))
-    {
-        return vec![Violation {
-            file_path: file_path.to_string(),
-            line: 1,
-            rule_code: RULE.code,
-            message: format!(
-                "Manifest author does not match expected '{}' for module '{}'",
-                expected, module_name
-            ),
-        }];
-    }
-    vec![]
-}

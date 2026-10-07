@@ -2,6 +2,7 @@
 
 import os
 import shlex
+import shutil
 from pathlib import Path
 from textwrap import dedent
 
@@ -17,6 +18,7 @@ nox.options.sessions = (
     "clippy",
     "cargo-test",
     "tests",
+    "docs-build",
 )
 
 
@@ -177,3 +179,63 @@ def tests(session: nox.Session) -> None:
 def build(session: nox.Session) -> None:
     """Build the sdist and a wheel for the current platform into dist/."""
     session.run("uv", "build", "--out-dir", "dist", *session.posargs, external=True)
+
+
+def build_docs(session: nox.Session, builder_args: list[str]) -> None:
+    """Sync the docs group and run sphinx-build into a clean docs/_build.
+
+    Args:
+        session: The Session object.
+        builder_args: Arguments for sphinx-build.
+    """
+    session.run(
+        "uv",
+        "sync",
+        "--locked",
+        "--no-install-project",
+        "--group",
+        "docs",
+        external=True,
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+    build_dir = Path("docs", "_build")
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    session.run("sphinx-build", *builder_args)
+
+
+@nox.session(name="docs-build", python=python_versions[0])
+def docs_build(session: nox.Session) -> None:
+    """Build the documentation, treating warnings as errors."""
+    args = session.posargs or ["-W", "--keep-going", "docs", "docs/_build"]
+    if not session.posargs and "FORCE_COLOR" in os.environ:
+        args.insert(0, "--color")
+    build_docs(session, args)
+
+
+@nox.session(name="docs-linkcheck", python=python_versions[0])
+def docs_linkcheck(session: nox.Session) -> None:
+    """Check links in the documentation.
+
+    Not part of the default sessions; run on a weekly schedule via the
+    ``linkcheck`` workflow so flaky external links never block a merge.
+    """
+    args = session.posargs or ["-b", "linkcheck", "--keep-going", "docs", "docs/_build"]
+    build_docs(session, args)
+
+
+@nox.session(python=python_versions[0])
+def docs(session: nox.Session) -> None:
+    """Build and serve the documentation with live reloading on file changes."""
+    session.run(
+        "uv",
+        "sync",
+        "--locked",
+        "--no-install-project",
+        "--group",
+        "docs",
+        external=True,
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+    args = session.posargs or ["--open-browser", "docs", "docs/_build"]
+    session.run("sphinx-autobuild", *args)

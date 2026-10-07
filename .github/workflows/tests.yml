@@ -33,6 +33,8 @@ jobs:
           - { python: "3.10", os: "ubuntu-latest", session: "tests" }
           - { python: "3.13", os: "windows-latest", session: "tests" }
           - { python: "3.13", os: "macos-latest", session: "tests" }
+          # Documentation
+          - { python: "3.13", os: "ubuntu-latest", session: "docs-build" }
 
     env:
       NOXSESSION: ${{ matrix.session }}

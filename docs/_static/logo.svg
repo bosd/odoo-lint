@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">odoo-lint</title>
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6b77c"/>
+      <stop offset="0.45" stop-color="#c2611f"/>
+      <stop offset="0.75" stop-color="#e8904a"/>
+      <stop offset="1" stop-color="#8f4214"/>
+    </linearGradient>
+    <radialGradient id="disc" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#46505f"/>
+      <stop offset="0.7" stop-color="#262d38"/>
+      <stop offset="1" stop-color="#1a1f27"/>
+    </radialGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c49ad8"/>
+      <stop offset="0.5" stop-color="#8a5aa8"/>
+      <stop offset="1" stop-color="#5e3a7a"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0a160"/>
+      <stop offset="0.5" stop-color="#c8661f"/>
+      <stop offset="1" stop-color="#93451a"/>
+    </linearGradient>
+    <linearGradient id="check" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff8a1f"/>
+      <stop offset="1" stop-color="#ffc56b"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Badge: copper ring around a dark steel disc -->
+  <circle cx="256" cy="256" r="244" fill="url(#ring)"/>
+  <circle cx="256" cy="256" r="216" fill="url(#disc)"/>
+  <circle cx="256" cy="256" r="216" fill="none" stroke="#000" stroke-opacity="0.35" stroke-width="4"/>
+
+  <!-- Magnifier handle -->
+  <line x1="318" y1="318" x2="388" y2="388" stroke="url(#handle)" stroke-width="52" stroke-linecap="round"/>
+  <line x1="326" y1="312" x2="392" y2="378" stroke="#ffffff" stroke-opacity="0.25" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- Lens -->
+  <circle cx="230" cy="226" r="112" fill="url(#glass)"/>
+  <circle cx="230" cy="226" r="112" fill="none" stroke="url(#lens)" stroke-width="36"/>
+
+  <!-- Check mark -->
+  <polyline points="172,228 214,270 292,184" fill="none" stroke="url(#check)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
