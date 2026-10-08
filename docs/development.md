@@ -62,7 +62,8 @@ uv run nox -s parity -- --write
 The release workflow checks that the tag matches `Cargo.toml`, builds wheels
 for Linux, macOS and Windows, signs them with Sigstore, attaches the
 signatures to the GitHub release, and publishes to PyPI (`odoo-linter`) and
-crates.io (`odoo-lint`) with trusted publishing.
+crates.io (`odoo-lint`) with trusted publishing. It then publishes
+`server.json` to the MCP Registry, with the version from `Cargo.toml`.
 
 ### Python and polib compatibility
 

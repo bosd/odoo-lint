@@ -84,6 +84,8 @@ For AI coding agents there is an MCP server (`odl mcp`) and a post-edit hook,
 packaged as plugins for Claude Code (`/plugin marketplace add bosd/odoo-lint`),
 DeepSeek Harness and OpenCode.
 
+<!-- mcp-name: io.github.bosd/odoo-lint -->
+
 See the [documentation](https://odoo-lint.readthedocs.io/) for all commands,
 configuration options and rules.
 
