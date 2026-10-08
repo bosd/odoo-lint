@@ -15,3 +15,7 @@ __pycache__/
 /AGENT_INSTRUCTIONS.md
 /docs/_static/odoo-linter.jpg
 /.cache/
+
+# Built Zed extension
+/integrations/zed/target/
+/integrations/zed/extension.wasm

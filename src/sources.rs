@@ -33,18 +33,16 @@ impl Sources {
         self.overrides.write().expect("not poisoned").insert(path, contents);
     }
 
-    /// Files whose contents differ from disk, with their new contents.
-    pub fn changed(&self) -> Vec<(PathBuf, String)> {
-        let mut changed: Vec<(PathBuf, String)> = self
-            .overrides
-            .read()
-            .expect("not poisoned")
-            .iter()
-            .filter(|(path, text)| std::fs::read_to_string(path).ok().as_deref() != Some(text.as_str()))
-            .map(|(path, text)| (path.clone(), text.clone()))
-            .collect();
-        changed.sort();
-        changed
+    /// Back to the contents on disk.
+    pub fn remove(&self, path: &Path) {
+        self.overrides.write().expect("not poisoned").remove(path);
+    }
+
+    /// An independent copy, to fix without touching the original.
+    pub fn snapshot(&self) -> Sources {
+        Sources {
+            overrides: RwLock::new(self.overrides.read().expect("not poisoned").clone()),
+        }
     }
 }
 

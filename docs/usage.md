@@ -117,6 +117,10 @@ odl rule manifest-required-author   # or by name
 
 The output is the same as the pages under [rules](rules/index.md).
 
+## `odl server`
+
+A language server for editors. See [Editors](editors.md).
+
 ## `odl mcp` and `odl hook`
 
 For AI coding agents: a Model Context Protocol server, and a post-edit hook.

@@ -48,6 +48,8 @@ enum Commands {
     },
     /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
     Hook,
+    /// Run a language server on stdin/stdout, for editors
+    Server,
     /// Run a Model Context Protocol server on stdin/stdout, for AI coding agents
     Mcp,
     /// Explain a rule, or list all rules when no code is given
@@ -82,6 +84,13 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Commands::Server => match odoo_lint::server::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::from(2)
+            }
+        },
         Commands::Mcp => match odoo_lint::mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {

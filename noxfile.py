@@ -20,6 +20,7 @@ nox.options.sessions = (
     "tests",
     "parity",
     "docs-build",
+    "zed-extension",
 )
 
 
@@ -253,3 +254,16 @@ def docs(session: nox.Session) -> None:
     )
     args = session.posargs or ["--open-browser", "docs", "docs/_build"]
     session.run("sphinx-autobuild", *args)
+
+
+@nox.session(name="zed-extension", python=False)
+def zed_extension(session: nox.Session) -> None:
+    """Check and build the Zed extension (a separate WebAssembly crate)."""
+    manifest = ["--manifest-path", "integrations/zed/Cargo.toml"]
+    target = ["--target", "wasm32-wasip2"]
+    session.run("rustup", "target", "add", "wasm32-wasip2", external=True)
+    session.run("cargo", "fmt", *manifest, "--", "--check", external=True)
+    session.run(
+        "cargo", "clippy", *manifest, *target, "--", "-D", "warnings", external=True
+    )
+    session.run("cargo", "build", *manifest, *target, "--release", external=True)
