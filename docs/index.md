@@ -27,6 +27,7 @@ configuration
 integrations
 ai
 translations
+benchmarks
 rules/index
 parity
 development
