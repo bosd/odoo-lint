@@ -105,6 +105,12 @@ fn upgrade_rules(settings: &Settings, target: OdooVersion) -> Vec<&'static Rule>
         .collect()
 }
 
+/// Whether `rule` is an upgrade rule (`U1801`), as opposed to a rule of the
+/// other checkers that only applies from some version.
+fn is_upgrade_rule(rule: &Rule) -> bool {
+    rule.code.starts_with('U') && rule.code[1..].chars().all(|c| c.is_ascii_digit())
+}
+
 /// The module a file belongs to: the nearest folder in `modules`.
 pub fn module_of<'a, T>(modules: &'a HashMap<PathBuf, T>, file: &Path) -> Option<(&'a PathBuf, &'a T)> {
     file.ancestors().skip(1).find_map(|dir| modules.get_key_value(dir))
@@ -135,11 +141,17 @@ pub fn settings_for(
             .collect(),
     );
     settings.violation_filter = Some(ViolationFilter(Arc::new(move |violation: &Violation| {
-        let Some(since) = rules::find(&violation.code).and_then(|r| r.min_odoo) else {
+        let Some(rule) = rules::find(&violation.code) else {
             return false;
         };
+        let Some(since) = rule.min_odoo else { return false };
         // A module of unknown version gets every step up to the target.
         match module_of(&versions, Path::new(&violation.file_path)) {
+            // Upgrade rules (`U`) include the module's own version: a module
+            // whose manifest already says 19.0 is not ready for 19.0 while
+            // it has `<tree>` views or `_sql_constraints`. That is also where
+            // a migration starts, with the version bumped first.
+            Some((_, Some(current))) if is_upgrade_rule(rule) => since >= *current,
             Some((_, Some(current))) => since > *current,
             Some((_, None)) => true,
             None => false,
@@ -357,5 +369,29 @@ mod tests {
         );
         let codes: Vec<&str> = report.modules[0].rules.iter().map(|r| r.code.as_str()).collect();
         assert_eq!(codes, vec!["XML013", "XML101"]);
+    }
+
+    #[test]
+    fn a_module_already_on_the_target_still_gets_its_upgrade_rules() {
+        // The version is bumped first, the views are not migrated yet.
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "acme_bumped/__manifest__.py",
+            "{'name': 'Bumped', 'version': '19.0.1.0.0', 'license': 'AGPL-3', 'data': ['views/search.xml']}\n",
+        );
+        write(dir.path(), "acme_bumped/__init__.py", "");
+        write(
+            dir.path(),
+            "acme_bumped/views/search.xml",
+            "<odoo>\n    <record id=\"view_search\" model=\"ir.ui.view\">\n        <field name=\"model\">res.partner</field>\n        <field name=\"arch\" type=\"xml\">\n            <search>\n                <group expand=\"0\" string=\"Group By\"><filter name=\"g\" context=\"{'group_by': 'name'}\"/></group>\n            </search>\n        </field>\n    </record>\n</odoo>\n",
+        );
+        let report = check(
+            &Settings::default(),
+            &[dir.path().to_path_buf()],
+            OdooVersion::new(19, 0),
+        );
+        let codes: Vec<&str> = report.modules[0].rules.iter().map(|r| r.code.as_str()).collect();
+        assert_eq!(codes, vec!["U1917"]);
     }
 }
