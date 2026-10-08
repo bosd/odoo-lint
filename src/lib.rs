@@ -5,6 +5,7 @@ pub mod linter;
 pub mod manifest;
 pub mod odoo_version;
 pub mod output;
+pub mod po;
 pub mod pyliteral;
 pub mod rules;
 pub mod semantic;

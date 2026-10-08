@@ -8,7 +8,7 @@
   <a href="https://pypi.org/project/odoo-linter/"><img src="https://img.shields.io/pypi/v/odoo-linter?style=flat-square&logo=pypi&logoColor=white&label=PyPI&color=ef662f" alt="PyPI"></a>
   <a href="https://crates.io/crates/odoo-lint"><img src="https://img.shields.io/crates/v/odoo-lint?style=flat-square&logo=rust&logoColor=white&label=crates.io&color=ef662f" alt="crates.io"></a>
   <a href="https://github.com/bosd/odoo-lint/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/bosd/odoo-lint/tests.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=tests" alt="Tests"></a>
-  <a href="https://odoo-lint.readthedocs.io/en/latest/parity.html"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbosd%2Fodoo-lint%2Fmain%2Fdocs%2F_static%2Fparity.json&style=flat-square" alt="pylint-odoo parity"></a>
+  <a href="https://odoo-lint.readthedocs.io/en/latest/parity.html"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbosd%2Fodoo-lint%2Fmain%2Fdocs%2F_static%2Fparity.json&style=flat-square" alt="OCA parity"></a>
   <a href="https://odoo-lint.readthedocs.io/"><img src="https://img.shields.io/readthedocs/odoo-lint?style=flat-square&logo=readthedocs&logoColor=white&label=docs" alt="Documentation"></a>
   <a href="https://github.com/bosd/odoo-lint/blob/main/LICENSE"><img src="https://img.shields.io/github/license/bosd/odoo-lint?style=flat-square&color=7e5a8c" alt="License: MIT"></a>
 </p>
@@ -16,6 +16,10 @@
 <!-- start-docs -->
 
 Blazing fast Rust-native linter for Odoo modules. The command is called `odl`.
+
+It checks Python files, manifests and translation (`.po`) files, with the
+checks of OCA's pylint-odoo and `oca-checks-po`: same names, same messages,
+same results on their own test suites.
 
 ## Installation
 

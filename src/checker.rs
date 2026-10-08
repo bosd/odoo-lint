@@ -66,6 +66,18 @@ impl<'a> Reporter<'a> {
         self.line_index.line_index(offset).get()
     }
 
+    /// Reports at the start of a 1-based line, for files without an AST.
+    pub fn report_line(&mut self, rule: &Rule, line: usize, message: impl Into<String>) {
+        self.violations.push(Violation {
+            file_path: self.file_path.to_string(),
+            line,
+            column: 1,
+            code: rule.code.to_string(),
+            name: rule.name.to_string(),
+            message: message.into(),
+        });
+    }
+
     pub fn report(&mut self, rule: &Rule, offset: TextSize, message: impl Into<String>) {
         let location = self.line_index.line_column(offset, self.source);
         self.violations.push(Violation {

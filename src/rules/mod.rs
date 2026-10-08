@@ -7,10 +7,12 @@
 
 use crate::checker::{ManifestContext, PythonContext, Reporter};
 use crate::odoo_version::OdooVersion;
+use po::PoContext;
 
 pub mod e0001_syntax_error;
 pub mod manifest;
 pub mod odoo001_missing_depends;
+pub mod po;
 pub mod python;
 
 use manifest::{author, files, keys, values};
@@ -23,6 +25,8 @@ pub enum Check {
     Python(fn(&PythonContext, &mut Reporter)),
     /// Runs once per module, on its parsed manifest.
     Manifest(fn(&ManifestContext, &mut Reporter)),
+    /// Runs on every `.po` and `.pot` file.
+    Po(fn(&PoContext, &mut Reporter)),
     /// Emitted by the linter itself (e.g. syntax errors).
     Builtin,
 }
@@ -86,6 +90,13 @@ pub const ALL: &[Rule] = &[
     translations::TRANSLATION_TOO_FEW_ARGS,
     files::RESOURCE_NOT_EXIST,
     odoo001_missing_depends::RULE,
+    po::PO_SYNTAX_ERROR,
+    po::PO_REQUIRES_MODULE,
+    po::PO_PYTHON_PARSE_PRINTF,
+    po::PO_PYTHON_PARSE_FORMAT,
+    po::PO_DUPLICATE_MESSAGE_DEFINITION,
+    po::PO_DUPLICATE_MODEL_DEFINITION,
+    po::PO_PRETTY_FORMAT,
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,

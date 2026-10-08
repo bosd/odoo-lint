@@ -38,11 +38,12 @@ uv run nox -s docs     # live-reloading documentation
   and pylint-odoo's test fixtures are not copied into this repository.
 - Rules of odoo-lint's own use `ODOO###` codes.
 
-### Parity with pylint-odoo
+### Parity with OCA's linters
 
-`uv run nox -s parity` lints pylint-odoo's own test repository (fetched at a
-pinned commit into `.cache/`, not vendored) and compares the number of
-messages per check with what pylint-odoo's test suite expects. It fails when a
+`uv run nox -s parity` lints the test repositories of pylint-odoo and of
+`oca-checks-po` (odoo-pre-commit-hooks), fetched at pinned commits into
+`.cache/` and not vendored, and compares the number of messages per check
+with what their test suites expect. It fails when a
 check odoo-lint implements reports a different number, so a ported check is
 only done when it matches. After adding or changing a rule, update the
 [parity page](parity.md) and the README badge with:
@@ -61,3 +62,13 @@ The release workflow checks that the tag matches `Cargo.toml`, builds wheels
 for Linux, macOS and Windows, signs them with Sigstore, attaches the
 signatures to the GitHub release, and publishes to PyPI (`odoo-linter`) and
 crates.io (`odoo-lint`) with trusted publishing.
+
+### Python and polib compatibility
+
+The PO checks emulate Python's `%` and `str.format` errors and use a port of
+polib's PO writer. `tests/python_compat.rs` checks both against the real
+implementations, using cases generated with CPython and polib:
+
+```bash
+uv run --no-project --with polib==1.2.0 python scripts/gen_python_compat_cases.py
+```

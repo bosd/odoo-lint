@@ -3,6 +3,8 @@
 use crate::checker::{ManifestContext, ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
 use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
+use crate::po::{PoError, PoFile};
+use crate::rules::po::PoContext;
 use crate::rules::python::inherit::{self, InheritFact, CONSIDER_MERGING_CLASSES_INHERITED};
 use crate::rules::{e0001_syntax_error, Check, Rule};
 use crate::semantic::Semantic;
@@ -64,13 +66,21 @@ fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
         files.extend(
             walker
                 .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py"))
+                .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(is_linted_extension))
                 .map(|e| e.into_path()),
         );
     }
     files.sort();
     files.dedup();
     files
+}
+
+fn is_linted_extension(extension: &std::ffi::OsStr) -> bool {
+    extension == "py" || is_po_extension(extension)
+}
+
+fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
+    extension == "po" || extension == "pot"
 }
 
 /// Maps every file to the module (closest ancestor with a manifest) it is in.
@@ -126,6 +136,9 @@ fn lint_file(
     rules: &[&'static Rule],
     settings: &Settings,
 ) -> (Vec<Violation>, Vec<InheritFact>) {
+    if path.extension().is_some_and(is_po_extension) {
+        return (lint_po_file(path, rules, settings), Vec::new());
+    }
     let Ok(source) = std::fs::read_to_string(path) else {
         return (Vec::new(), Vec::new());
     };
@@ -213,4 +226,77 @@ fn lint_file(
         .filter(|v| !suppressions.is_suppressed(v.line, &v.code, &v.name))
         .collect();
     (violations, inherit_facts)
+}
+
+/// Lints a `.po`/`.pot` file. Files are read as UTF-8 with universal
+/// newlines, like OCA's `oca-checks-po` reads them.
+fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings) -> Vec<Violation> {
+    let rules: Vec<&Rule> = rules
+        .iter()
+        .copied()
+        .filter(|rule| !settings.is_ignored_in_file(path, rule))
+        .collect();
+    let file_path = path.to_string_lossy();
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    match String::from_utf8(bytes) {
+        Ok(source) => lint_po_source(&file_path, &source, &rules, settings),
+        Err(error) => {
+            let position = error.utf8_error().valid_up_to();
+            let byte = error.as_bytes()[position];
+            let decode_error = PoError {
+                line: 1,
+                message: format!(
+                    "'utf-8' codec can't decode byte {byte:#04x} in position {position}: invalid start byte"
+                ),
+            };
+            run_po_rules(&file_path, "", Err(&decode_error), path, &rules, settings)
+        }
+    }
+}
+
+/// Lints PO file contents; `file_path` decides the data section (`i18n`,
+/// `i18n_extra`).
+pub fn lint_po_source(file_path: &str, source: &str, rules: &[&Rule], settings: &Settings) -> Vec<Violation> {
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let parsed = PoFile::parse(&normalized);
+    run_po_rules(
+        file_path,
+        &normalized,
+        parsed.as_ref(),
+        Path::new(file_path),
+        rules,
+        settings,
+    )
+}
+
+fn run_po_rules(
+    file_path: &str,
+    source: &str,
+    po: Result<&PoFile, &PoError>,
+    path: &Path,
+    rules: &[&Rule],
+    settings: &Settings,
+) -> Vec<Violation> {
+    let data_section = path
+        .parent()
+        .and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let line_index = LineIndex::from_source_text(source);
+    let mut reporter = Reporter::new(file_path, source, &line_index);
+    let ctx = PoContext {
+        file_path,
+        source,
+        po,
+        data_section: &data_section,
+        settings,
+    };
+    for rule in rules {
+        if let Check::Po(check) = rule.check {
+            check(&ctx, &mut reporter);
+        }
+    }
+    reporter.violations
 }

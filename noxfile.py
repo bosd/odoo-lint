@@ -178,7 +178,7 @@ def tests(session: nox.Session) -> None:
 
 @nox.session(python=python_versions[0])
 def parity(session: nox.Session) -> None:
-    """Compare odl with pylint-odoo on pylint-odoo's test repository.
+    """Compare odl with OCA's linters on their own test repositories.
 
     Without arguments it fails when an implemented check reports a different
     number of messages than pylint-odoo, or when docs/parity.md is stale.
@@ -186,7 +186,7 @@ def parity(session: nox.Session) -> None:
     """
     sync(session, "dev")
     args = session.posargs or ["--check"]
-    session.run("python", "scripts/pylint_odoo_parity.py", *args)
+    session.run("python", "scripts/oca_parity.py", *args)
 
 
 @nox.session(python=python_versions[0])

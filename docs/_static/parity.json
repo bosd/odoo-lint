@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "label": "pylint-odoo parity",
-  "message": "64/64 checks",
+  "label": "OCA parity",
+  "message": "71/71 checks",
   "color": "3fa886"
 }

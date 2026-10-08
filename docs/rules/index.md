@@ -46,6 +46,13 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [E8306](E8306.md) | `translation-too-few-args` | `_()` gets fewer arguments than its format string needs. |
 | [F8101](F8101.md) | `resource-not-exist` | A data file listed in the manifest does not exist. |
 | [ODOO001](ODOO001.md) | `missing-depends` | Compute method referenced by `compute=` lacks `@api.depends`. |
+| [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
+| [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
+| [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
+| [PO004](PO004.md) | `po-python-parse-format` | A translation does not match the `{}` placeholders of its source. |
+| [PO005](PO005.md) | `po-duplicate-message-definition` | The same `msgid` is translated more than once. |
+| [PO006](PO006.md) | `po-duplicate-model-definition` | The same `model:` reference is translated more than once. |
+| [PO007](PO007.md) | `po-pretty-format` | A PO file is not formatted the way Odoo exports it. |
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
@@ -119,6 +126,13 @@ E8305
 E8306
 F8101
 ODOO001
+PO001
+PO002
+PO003
+PO004
+PO005
+PO006
+PO007
 R8101
 R8180
 R8181
