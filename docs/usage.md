@@ -28,7 +28,7 @@ from the configuration.
 : Comma-separated rules to skip; added to `ignore` from the configuration.
 
 `--output-format FORMAT`
-: `text` (default), `json` or `github`.
+: `text` (default), `json`, `github`, `sarif` or `gitlab`.
 
 ### Output formats
 
@@ -51,6 +51,16 @@ codes are errors, everything else is a warning.
 ```yaml
 - run: odl check --output-format github
 ```
+
+`sarif`
+: [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html),
+for GitHub code scanning, reviewdog (Forgejo, Gitea) and IDE viewers. Every
+rule links to its documentation page.
+
+`gitlab`
+: A GitLab Code Quality report, shown in merge requests.
+
+See [CI integration](integrations.md) for complete workflows.
 
 ### Exit codes
 
