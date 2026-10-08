@@ -3,6 +3,7 @@
 use crate::checker::{ManifestContext, ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
 use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
+use crate::rules::python::inherit::{self, InheritFact, CONSIDER_MERGING_CLASSES_INHERITED};
 use crate::rules::{e0001_syntax_error, Check, Rule};
 use crate::semantic::Semantic;
 use crate::settings::{Settings, DEFAULT_EXCLUDES};
@@ -22,13 +23,21 @@ pub fn lint_paths(paths: &[PathBuf], settings: &Settings) -> Vec<Violation> {
     let modules = resolve_modules(&files);
     let rules = settings.enabled_rules();
 
-    let mut violations: Vec<Violation> = files
+    let results: Vec<(Vec<Violation>, Vec<InheritFact>)> = files
         .par_iter()
-        .flat_map_iter(|file| {
+        .map(|file| {
             let module = modules.get(file).and_then(Option::as_deref);
             lint_file(file, module, &rules, settings)
         })
         .collect();
+    let mut violations = Vec::new();
+    let mut inherit_facts = Vec::new();
+    for (file_violations, facts) in results {
+        violations.extend(file_violations);
+        inherit_facts.extend(facts);
+    }
+    // Rules across the files of a module.
+    violations.extend(inherit::violations(inherit_facts));
     violations.sort();
     violations
 }
@@ -110,9 +119,15 @@ fn load_module(dir: &Path) -> Option<Arc<ModuleInfo>> {
     }))
 }
 
-fn lint_file(path: &Path, module: Option<&ModuleInfo>, rules: &[&'static Rule], settings: &Settings) -> Vec<Violation> {
+/// Violations of one file, and what it contributes to cross-file rules.
+fn lint_file(
+    path: &Path,
+    module: Option<&ModuleInfo>,
+    rules: &[&'static Rule],
+    settings: &Settings,
+) -> (Vec<Violation>, Vec<InheritFact>) {
     let Ok(source) = std::fs::read_to_string(path) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let file_path = path.to_string_lossy();
     let rules: Vec<&Rule> = rules
@@ -134,7 +149,7 @@ fn lint_file(path: &Path, module: Option<&ModuleInfo>, rules: &[&'static Rule], 
                     format!("Parsing failed: '{}'", error.error),
                 );
             }
-            return reporter.violations;
+            return (reporter.violations, Vec::new());
         }
     };
 
@@ -179,9 +194,23 @@ fn lint_file(path: &Path, module: Option<&ModuleInfo>, rules: &[&'static Rule], 
     }
 
     let suppressions = Suppressions::from_tokens(&source, parsed.tokens(), &line_index);
-    reporter
+    let inherit_facts = if rules.iter().any(|r| r.code == CONSIDER_MERGING_CLASSES_INHERITED.code) {
+        let rule = &CONSIDER_MERGING_CLASSES_INHERITED;
+        inherit::collect(
+            &python_ctx,
+            |offset| {
+                let location = line_index.line_column(offset, &source);
+                (location.line.get(), location.column.get() - 1)
+            },
+            |line| suppressions.is_suppressed(line, rule.code, rule.name),
+        )
+    } else {
+        Vec::new()
+    };
+    let violations = reporter
         .violations
         .into_iter()
         .filter(|v| !suppressions.is_suppressed(v.line, &v.code, &v.name))
-        .collect()
+        .collect();
+    (violations, inherit_facts)
 }

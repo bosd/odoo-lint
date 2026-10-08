@@ -245,12 +245,12 @@ mod tests {
     #[test]
     fn unknown_selectors_warn() {
         let config = OdooLintConfig {
-            ignore: Some(vec!["W8115".into()]),
+            ignore: Some(vec!["C0103".into()]),
             ..Default::default()
         };
         let (_, warnings) = Settings::new(config, None, CliOverrides::default()).unwrap();
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("W8115"));
+        assert!(warnings[0].contains("C0103"));
     }
 
     #[test]

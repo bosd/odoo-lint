@@ -7,10 +7,14 @@ use ruff_text_size::{Ranged, TextSize};
 
 pub mod calls;
 pub mod fields;
+pub mod format_strings;
 pub mod imports;
+pub mod inherit;
 pub mod methods;
 pub mod misc;
 pub mod models;
+pub mod sql;
+pub mod translations;
 
 /// Every class in the file, nested ones included.
 pub(crate) fn classes(suite: &[Stmt]) -> Vec<&StmtClassDef> {
