@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "odoo-lint"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "clap",
  "fancy-regex",

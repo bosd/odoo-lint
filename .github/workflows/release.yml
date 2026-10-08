@@ -116,7 +116,7 @@ jobs:
       url: https://pypi.org/p/odoo-linter
     permissions:
       id-token: write
-      contents: write
+      contents: read
       attestations: write
     steps:
       - name: Download all artifacts
@@ -134,14 +134,10 @@ jobs:
           inputs: >-
             ./dist/*.tar.gz
             ./dist/*.whl
-      - name: Upload artifact signatures to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.event.release.tag_name }}
-        run: >-
-          gh release upload
-          "$TAG_NAME" ./dist/*
-          --repo "$GITHUB_REPOSITORY"
+          # Releases are immutable once published, so nothing can be attached
+          # to them here: keep the signatures as a workflow artifact.
+          release-signing-artifacts: false
+          upload-signing-artifacts: true
       - name: Remove sigstore files before publishing to PyPI
         run: rm -f dist/*.sigstore dist/*.sigstore.json
       - name: Publish package to PyPI
