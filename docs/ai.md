@@ -9,8 +9,9 @@ Two building blocks work with any agent:
 
 `odl mcp`
 : A [Model Context Protocol](https://modelcontextprotocol.io) server on
-stdin/stdout with three tools: `check` (lint), `fix` (apply fixes, or show
-them as a diff with `dry_run`) and `rule` (explain a code).
+stdin/stdout with four tools: `check` (lint), `fix` (apply fixes, or show
+them as a diff with `dry_run`), `upgrade_check` (what modules need for a
+newer Odoo version) and `rule` (explain a code).
 
 `odl hook`
 : Lints the file the agent just edited, for a post-edit hook. It reads a
