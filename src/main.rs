@@ -49,6 +49,36 @@ enum Commands {
         #[arg(long)]
         diff: bool,
     },
+    /// Report what modules need to run on a newer Odoo version, per version step
+    UpgradeCheck {
+        /// Files or directories to check
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// The Odoo version to upgrade to, e.g. 19.0
+        #[arg(long)]
+        target: String,
+        /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Rules to leave out; added to `ignore` from the config
+        #[arg(long, value_delimiter = ',')]
+        ignore: Vec<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t)]
+        output_format: RuleFormat,
+        /// List every finding under its module
+        #[arg(long)]
+        show_findings: bool,
+        /// Apply the safe fixes of the upgrade
+        #[arg(long)]
+        fix: bool,
+        /// Also apply the unsafe fixes
+        #[arg(long)]
+        unsafe_fixes: bool,
+        /// Show the fixes as a diff instead of writing them
+        #[arg(long)]
+        diff: bool,
+    },
     /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
     Hook,
     /// Run a language server on stdin/stdout, for editors
@@ -77,6 +107,27 @@ enum RuleFormat {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Commands::UpgradeCheck {
+            paths,
+            target,
+            config,
+            ignore,
+            output_format,
+            show_findings,
+            fix,
+            unsafe_fixes,
+            diff,
+        } => upgrade_check(UpgradeArgs {
+            paths,
+            target,
+            config,
+            ignore,
+            json: output_format == RuleFormat::Json,
+            show_findings,
+            fix,
+            unsafe_fixes,
+            diff,
+        }),
         Commands::Hook => {
             let mut event = String::new();
             // A hook must never break the agent: problems mean "nothing to report".
@@ -239,5 +290,81 @@ fn fixable_hint(violations: &[Violation], fixing: bool) -> String {
         (s, 0, false) => format!(" {s} fixable with `--fix`."),
         (s, u, false) => format!(" {s} fixable with `--fix` ({u} more with `--unsafe-fixes`)."),
         (_, u, true) => format!(" {u} fixable with `--unsafe-fixes`."),
+    }
+}
+
+struct UpgradeArgs {
+    paths: Vec<PathBuf>,
+    target: String,
+    config: Option<PathBuf>,
+    ignore: Vec<String>,
+    json: bool,
+    show_findings: bool,
+    fix: bool,
+    unsafe_fixes: bool,
+    diff: bool,
+}
+
+fn upgrade_check(args: UpgradeArgs) -> ExitCode {
+    let target: odoo_lint::odoo_version::OdooVersion = match args.target.parse() {
+        Ok(version) => version,
+        Err(err) => {
+            eprintln!("error: --target: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    let overrides = CliOverrides {
+        ignore: args.ignore,
+        ..CliOverrides::default()
+    };
+    let settings = match Settings::load(&args.paths[0], args.config.as_deref(), overrides) {
+        Ok(loaded) => loaded.settings,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    if args.fix || args.diff {
+        let mode = if args.unsafe_fixes {
+            FixMode::Unsafe
+        } else {
+            FixMode::Safe
+        };
+        let sources = odoo_lint::sources::Sources::default();
+        let (upgrade_settings, _) = odoo_lint::upgrade::settings_for(&settings, &args.paths, target, &sources);
+        let result = fixer::fix_paths(&args.paths, &upgrade_settings, mode);
+        if args.diff {
+            for (path, old, new) in &result.changed {
+                print!("{}", fixer::unified_diff(path, old, new));
+            }
+            eprintln!(
+                "{} fix(es) would change {} file(s).",
+                result.fixed,
+                result.changed.len()
+            );
+            return if result.changed.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            };
+        }
+        for (path, _, new) in &result.changed {
+            if let Err(err) = std::fs::write(path, new) {
+                eprintln!("error: cannot write {}: {err}", path.display());
+                return ExitCode::from(2);
+            }
+        }
+        eprintln!("Fixed {} finding(s) in {} file(s).", result.fixed, result.changed.len());
+    }
+    let report = odoo_lint::upgrade::check(&settings, &args.paths, target);
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report).expect("report serializes"));
+    } else {
+        print!("{}", odoo_lint::upgrade::render_text(&report, args.show_findings));
+    }
+    if report.effort.changes == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }

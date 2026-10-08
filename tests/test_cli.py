@@ -245,3 +245,42 @@ def test_force_exclude(project: Path) -> None:
 
     skipped = run_odl("check", manifest, "--select", "C8101", "--force-exclude")
     assert skipped.returncode == 0, skipped.stdout
+
+
+def test_upgrade_check(project: Path) -> None:
+    """`upgrade-check` reports the steps after each module's version."""
+    module = make_module(project, "acme_sale", "Acme Corp")
+    manifest = module / "__manifest__.py"
+    manifest.write_text(
+        manifest.read_text().replace("}\n", "    'version': '17.0.1.0.0',\n}\n")
+    )
+    (module / "__init__.py").write_text("from . import models\n")
+    (module / "models").mkdir()
+    (module / "models" / "__init__.py").write_text("from . import partner\n")
+    (module / "models" / "partner.py").write_text(
+        "from odoo import models\n\n\nclass Partner(models.Model):\n"
+        "    _inherit = 'res.partner'\n\n    def run(self):\n"
+        "        self._cr.execute('SELECT 1')\n"
+    )
+    addons = str(project / "addons")
+
+    ready = run_odl("upgrade-check", addons, "--target", "18.0")
+    assert ready.returncode == 0, ready.stdout
+    assert "ready for Odoo 18.0" in ready.stdout
+
+    upgrade = run_odl("upgrade-check", addons, "--target", "19.0")
+    assert upgrade.returncode == 1
+    assert "acme_sale (17.0 → 19.0)" in upgrade.stdout
+    assert "W8165" in upgrade.stdout
+
+    report = json.loads(
+        run_odl(
+            "upgrade-check", addons, "--target", "19.0", "--output-format", "json"
+        ).stdout
+    )
+    assert report["target"] == "19.0"
+    assert report["changes"] == report["automatic"] == 1
+
+    fixed = run_odl("upgrade-check", addons, "--target", "19.0", "--fix")
+    assert fixed.returncode == 0, fixed.stdout
+    assert "self.env.cr" in (module / "models" / "partner.py").read_text()

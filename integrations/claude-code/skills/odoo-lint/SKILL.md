@@ -14,7 +14,7 @@ such as Bootstrap 4 classes in Odoo 15.0 and later.
 
 ## Tools
 
-The `odoo-lint` MCP server has three tools. Without it, use the CLI.
+The `odoo-lint` MCP server has four tools. Without it, use the CLI.
 
 | Task              | MCP tool                                    | CLI                                      |
 | ----------------- | ------------------------------------------- | ---------------------------------------- |
@@ -23,6 +23,7 @@ The `odoo-lint` MCP server has three tools. Without it, use the CLI.
 | Apply safe fixes  | `fix`                                       | `odl check --fix <paths>`                |
 | Also unsafe fixes | `fix` with `unsafe: true`                   | `odl check --fix --unsafe-fixes <paths>` |
 | Explain a code    | `rule` (`rule: "W8161"`)                    | `odl rule W8161`                         |
+| Plan an upgrade   | `upgrade_check` (`target: "19.0"`)          | `odl upgrade-check --target 19.0`        |
 
 The project's configuration (`[tool.odoo-lint]` in `pyproject.toml`, or
 `odoo-lint.toml`) sets the Odoo version and rules; pass `odoo_version` only
@@ -40,6 +41,14 @@ reports what it finds.
   understand.
 - Suppress only with a reason, as in pylint:
   `# pylint: disable=sql-injection` on the line, or in the configuration.
+
+## Upgrades
+
+To move modules to a newer Odoo version, run `upgrade_check` with the
+target version first. It lists per module what changes, from the module's
+own version up to the target, and how much `--fix` does automatically. Apply
+the automatic part with `odl upgrade-check --target <version> --fix`, review
+the unsafe fixes with `--diff --unsafe-fixes`, then do the rest by hand.
 
 ## Translations (.po/.pot)
 

@@ -122,6 +122,11 @@ odl rule manifest-required-author   # or by name
 
 The output is the same as the pages under [rules](rules/index.md).
 
+## `odl upgrade-check`
+
+What modules need to run on a newer Odoo version, per version step. See
+[Upgrades](upgrades.md).
+
 ## `odl server`
 
 A language server for editors. See [Editors](editors.md).

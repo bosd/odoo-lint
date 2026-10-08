@@ -61,7 +61,9 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
             Err(error) => XmlFile::parse(&entry.path, &entry.section, None, Some(error.clone())),
         })
         .collect();
-    let version = xml::module_version(module, settings.target_version);
+    let version = settings
+        .assume_module_version
+        .or_else(|| xml::module_version(module, settings.target_version));
     let ctx = XmlContext {
         module,
         files: &files,
