@@ -9,3 +9,8 @@ __pycache__/
 *.so
 *.pyd
 /docs/_build/
+
+# Local planning notes
+/PROJECT_PLAN.md
+/AGENT_INSTRUCTIONS.md
+/docs/_static/odoo-linter.jpg

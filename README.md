@@ -5,11 +5,11 @@
 <h1 align="center">odoo-lint</h1>
 
 <p align="center">
-  <a href="https://pypi.org/project/odoo-linter/"><img src="https://img.shields.io/pypi/v/odoo-linter.svg" alt="PyPI"></a>
-  <a href="https://crates.io/crates/odoo-lint"><img src="https://img.shields.io/crates/v/odoo-lint.svg" alt="crates.io"></a>
-  <a href="https://odoo-lint.readthedocs.io/"><img src="https://img.shields.io/readthedocs/odoo-lint/latest.svg" alt="Documentation"></a>
-  <a href="https://github.com/bosd/odoo-lint/actions/workflows/tests.yml"><img src="https://github.com/bosd/odoo-lint/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/bosd/odoo-lint/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://pypi.org/project/odoo-linter/"><img src="https://img.shields.io/pypi/v/odoo-linter?style=flat-square&logo=pypi&logoColor=white&label=PyPI&color=ef662f" alt="PyPI"></a>
+  <a href="https://crates.io/crates/odoo-lint"><img src="https://img.shields.io/crates/v/odoo-lint?style=flat-square&logo=rust&logoColor=white&label=crates.io&color=ef662f" alt="crates.io"></a>
+  <a href="https://github.com/bosd/odoo-lint/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/bosd/odoo-lint/tests.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=tests" alt="Tests"></a>
+  <a href="https://odoo-lint.readthedocs.io/"><img src="https://img.shields.io/readthedocs/odoo-lint?style=flat-square&logo=readthedocs&logoColor=white&label=docs" alt="Documentation"></a>
+  <a href="https://github.com/bosd/odoo-lint/blob/main/LICENSE"><img src="https://img.shields.io/github/license/bosd/odoo-lint?style=flat-square&color=7e5a8c" alt="License: MIT"></a>
 </p>
 
 <!-- start-docs -->
