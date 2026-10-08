@@ -7,7 +7,7 @@ Lint addons directories or single files.
 ```bash
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
-          [--fix] [--unsafe-fixes] [--diff]
+          [--fix] [--unsafe-fixes] [--diff] [--force-exclude]
 ```
 
 `PATHS`
@@ -40,6 +40,11 @@ from the configuration.
 `--diff`
 : Show the fixes as a unified diff instead of writing them. Exits with `1`
 when a file would change.
+
+`--force-exclude`
+: Apply `exclude` from the configuration to files given on the command line
+too. Git hooks pass the changed files one by one; without this flag, an
+excluded file is linted when it is named explicitly.
 
 ### Output formats
 
@@ -124,17 +129,20 @@ See [AI coding agents](ai.md).
 
 ## In pre-commit
 
+[odoo-lint-pre-commit](https://github.com/bosd/odoo-lint-pre-commit) installs
+the prebuilt wheel, with a tag for every release:
+
 ```yaml
 repos:
-  - repo: local
+  - repo: https://github.com/bosd/odoo-lint-pre-commit
+    rev: v0.1.0a2
     hooks:
       - id: odoo-lint
-        name: odoo-lint
-        entry: odl check
-        language: python
-        additional_dependencies: [odoo-linter]
-        pass_filenames: false
+        # args: [--fix]   # also apply the safe fixes
 ```
+
+It lints the staged `.py`, `.po` and `.pot` files, with `--force-exclude`.
+Checks across a module's files read the other files from disk.
 
 ## In hk
 
@@ -147,8 +155,8 @@ amends "package://github.com/jdx/hk/releases/download/v1.10.4/hk@1.10.4#/Config.
 
 local odoo_lint = new Step {
   glob = List("**/*.py", "**/*.po", "**/*.pot")
-  check = "odl check {{files}}"
-  fix = "odl check --fix {{files}}"
+  check = "odl check --force-exclude {{files}}"
+  fix = "odl check --fix --force-exclude {{files}}"
 }
 
 hooks {

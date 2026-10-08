@@ -39,6 +39,9 @@ enum Commands {
         /// Apply safe fixes
         #[arg(long)]
         fix: bool,
+        /// Apply `exclude` to files given on the command line as well (for pre-commit)
+        #[arg(long)]
+        force_exclude: bool,
         /// Also apply fixes that may change behaviour or lose information
         #[arg(long)]
         unsafe_fixes: bool,
@@ -133,11 +136,13 @@ fn main() -> ExitCode {
             fix,
             unsafe_fixes,
             diff,
+            force_exclude,
         } => {
             let overrides = CliOverrides {
                 target_version: version,
                 select,
                 ignore,
+                force_exclude,
             };
             let loaded = match Settings::load(&paths[0], config.as_deref(), overrides) {
                 Ok(loaded) => loaded,

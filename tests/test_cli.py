@@ -228,3 +228,20 @@ def test_diff_and_fix(project: Path) -> None:
     again = run_odl("check", str(project / "addons"), "--select", "C8116", "--diff")
     assert again.returncode == 0
     assert again.stdout == ""
+
+
+def test_force_exclude(project: Path) -> None:
+    """Explicit files are linted unless `--force-exclude` applies `exclude`."""
+    module = make_module(project, "legacy_sale", "Someone Else")
+    config = CONFIG.replace(
+        'target-version = "16.0"\n',
+        'target-version = "16.0"\nexclude = ["addons/legacy_*"]\n',
+    )
+    (project / "pyproject.toml").write_text(config)
+    manifest = str(module / "__manifest__.py")
+
+    linted = run_odl("check", manifest, "--select", "C8101")
+    assert linted.returncode == 1, linted.stdout
+
+    skipped = run_odl("check", manifest, "--select", "C8101", "--force-exclude")
+    assert skipped.returncode == 0, skipped.stdout

@@ -171,6 +171,7 @@ fn settings(arguments: &Value) -> Result<(Vec<PathBuf>, Settings), String> {
             .map(str::to_string),
         select: (!select.is_empty()).then_some(select),
         ignore: string_list(arguments, "ignore"),
+        ..CliOverrides::default()
     };
     let loaded = Settings::load(&paths[0], None, overrides)?;
     Ok((paths, loaded.settings))
