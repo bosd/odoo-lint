@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "odoo-lint": {
+      "command": "sh",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/odl", "mcp"]
+    }
+  }
+}

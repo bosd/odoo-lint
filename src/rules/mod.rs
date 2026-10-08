@@ -154,6 +154,18 @@ impl Rule {
         }
     }
 
+    /// The rule as `odl rule --output-format json` shows it.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "code": self.code,
+            "name": self.name,
+            "summary": self.summary,
+            "min_odoo_version": self.min_odoo.map(|v| v.to_string()),
+            "max_odoo_version": self.max_odoo.map(|v| v.to_string()),
+            "doc": self.doc.trim(),
+        })
+    }
+
     /// Full Markdown page for this rule.
     pub fn to_markdown(&self) -> String {
         let mut page = format!("# {} ({})\n\n{}\n", self.name, self.code, self.summary);

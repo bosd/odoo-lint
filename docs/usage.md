@@ -117,6 +117,11 @@ odl rule manifest-required-author   # or by name
 
 The output is the same as the pages under [rules](rules/index.md).
 
+## `odl mcp` and `odl hook`
+
+For AI coding agents: a Model Context Protocol server, and a post-edit hook.
+See [AI coding agents](ai.md).
+
 ## In pre-commit
 
 ```yaml
@@ -130,3 +135,35 @@ repos:
         additional_dependencies: [odoo-linter]
         pass_filenames: false
 ```
+
+## In hk
+
+[hk](https://hk.jdx.dev) runs the step on the staged files, and `hk fix` (or
+the pre-commit hook) applies the safe fixes. Use the version of your hk in
+the `amends` line.
+
+```text
+amends "package://github.com/jdx/hk/releases/download/v1.10.4/hk@1.10.4#/Config.pkl"
+
+local odoo_lint = new Step {
+  glob = List("**/*.py", "**/*.po", "**/*.pot")
+  check = "odl check {{files}}"
+  fix = "odl check --fix {{files}}"
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps { ["odoo-lint"] = odoo_lint }
+  }
+  ["check"] { steps { ["odoo-lint"] = odoo_lint } }
+  ["fix"] {
+    fix = true
+    steps { ["odoo-lint"] = odoo_lint }
+  }
+}
+```
+
+Only the staged files are linted; checks across files of a module (such as a
+`.po` against its `.pot`) see the other files as they are on disk.

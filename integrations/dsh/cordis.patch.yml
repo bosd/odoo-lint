@@ -1,0 +1,36 @@
+# dsh-odoo-lint: odoo-lint for DeepSeek Harness, one bundle, three rows.
+#
+#   odoo-lint-mcp     the `odl mcp` server; its tools reach the model as
+#                     mcp__odoo-lint__check, mcp__odoo-lint__fix and
+#                     mcp__odoo-lint__rule
+#   odoo-lint-hooks   lints every addon file after `write`/`edit`, through the
+#                     Claude Code hooks bridge (`odl hook` speaks that format)
+#   odoo-lint-skill   when and how to use them
+#
+# `bin/odl` runs the project's own odl (.venv), the one on PATH, or the latest
+# release through uvx. Paths are resolved from the installed package, anchored
+# at the profile (Loader baseUrl), not from the launch directory.
+- insert:
+    - id: odoo-lint-mcp
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: odoo-lint
+        transport: stdio
+        command: sh
+        args:
+          - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-odoo-lint/package.json')), 'bin', 'odl')
+          - mcp
+
+    - id: odoo-lint-hooks
+      name: "@deepseek-ai/dsh-hooks-claude-code"
+      config:
+        configPath: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-odoo-lint/package.json')), 'hooks.json')
+        pluginRoot: !!js process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-odoo-lint/package.json'))
+        defaultTimeoutMs: 60000
+
+    - id: odoo-lint-skill
+      name: "@deepseek-ai/dsh-skill-filesystem"
+      config:
+        providerName: odoo-lint
+        includeDefaultRoots: false
+        bundledSkillDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-odoo-lint/package.json')), 'skills')

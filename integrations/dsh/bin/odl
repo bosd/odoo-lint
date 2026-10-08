@@ -1,0 +1,25 @@
+#!/bin/sh
+# Runs odoo-lint's `odl`: the project's own (.venv), the one on PATH, or the
+# latest release from PyPI through uvx. This directory is on PATH itself while
+# the plugin is enabled, so it is skipped when searching.
+self_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+for candidate in "${CLAUDE_PROJECT_DIR:-.}/.venv/bin/odl" "${CLAUDE_PROJECT_DIR:-.}/.venv/Scripts/odl.exe"; do
+  [ -x "$candidate" ] && exec "$candidate" "$@"
+done
+old_ifs=$IFS
+IFS=:
+for dir in $PATH; do
+  [ -n "$dir" ] && [ "$dir" != "$self_dir" ] || continue
+  for name in odl odl.exe; do
+    if [ -x "$dir/$name" ] && [ ! -d "$dir/$name" ]; then
+      IFS=$old_ifs
+      exec "$dir/$name" "$@"
+    fi
+  done
+done
+IFS=$old_ifs
+if command -v uvx >/dev/null 2>&1; then
+  exec uvx --quiet --from odoo-linter odl "$@"
+fi
+echo "odoo-lint: 'odl' not found. Install it with 'uv tool install odoo-linter' or 'pip install odoo-linter'." >&2
+exit 127

@@ -37,6 +37,7 @@ to an existing PyPI project. On crates.io it is `odoo-lint`.
 odl check path/to/addons   # lint a directory
 odl rule                   # list all rules
 odl rule C8101             # explain a rule
+odl check --fix            # apply the safe fixes (--diff to preview)
 ```
 
 Rules ported from pylint-odoo keep its codes, names and messages, and
@@ -50,6 +51,10 @@ target-version = "17.0"
 [tool.odoo-lint.rules.manifest-required-author.mapping]
 "acme_*" = "Acme Corp"
 ```
+
+For AI coding agents there is an MCP server (`odl mcp`) and a post-edit hook,
+packaged as plugins for Claude Code (`/plugin marketplace add bosd/odoo-lint`),
+DeepSeek Harness and OpenCode.
 
 See the [documentation](https://odoo-lint.readthedocs.io/) for all commands,
 configuration options and rules.
