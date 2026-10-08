@@ -45,13 +45,16 @@ Or from a shell: `claude plugin marketplace add bosd/odoo-lint` and
 
 [`integrations/dsh`](https://github.com/bosd/odoo-lint/tree/main/integrations/dsh)
 is a dsh bundle with the same three parts: the MCP server, the hook (through
-dsh's Claude Code hooks bridge) and the skill. Install it into a profile from
-a checkout of this repository:
+dsh's Claude Code hooks bridge) and the skill, published on npm as
+`dsh-odoo-lint`. Install it into a profile:
 
 ```bash
-dsh plugin --profile tui add ./odoo-lint/integrations/dsh
+dsh plugin --profile tui add dsh-odoo-lint
 dsh --profile tui --dump-config   # shows the odoo-lint rows
 ```
+
+To try changes that are not published yet, add `./odoo-lint/integrations/dsh`
+from a checkout of this repository instead.
 
 ## OpenCode
 
