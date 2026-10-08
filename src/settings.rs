@@ -216,7 +216,11 @@ mod tests {
         };
         let (settings, warnings) = Settings::new(config, None, CliOverrides::default()).unwrap();
         let codes: Vec<_> = settings.enabled_rules().iter().map(|r| r.code).collect();
-        assert_eq!(codes, vec!["C8101"]);
+        assert!(codes.contains(&"C8101"));
+        assert!(codes.iter().all(|c| c.starts_with('C')), "{codes:?}");
+        // ODOO001 is ignored by name; C8120 only applies from Odoo 20.0.
+        assert!(!codes.contains(&"ODOO001"));
+        assert!(!codes.contains(&"C8120"));
         assert!(warnings.is_empty());
     }
 

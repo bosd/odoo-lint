@@ -155,12 +155,15 @@ fn lint_file(path: &Path, module: Option<&ModuleInfo>, rules: &[&'static Rule], 
         .and_then(|n| n.to_str())
         .is_some_and(is_manifest_file_name);
     if let (true, Some(module)) = (is_manifest, module) {
-        // Only the manifest Odoo actually loads, not e.g. a stale __openerp__.py.
-        if let (true, Some(manifest)) = (module.manifest_path == path, module.manifest.as_deref()) {
+        // Every manifest file in the module folder is checked, like pylint-odoo
+        // does, including e.g. a stale __openerp__.py next to __manifest__.py.
+        let in_module_folder = path.parent() == Some(module.path.as_path())
+            || (module.path.as_os_str().is_empty() && path.parent() == Some(Path::new("")));
+        if let (true, Some(manifest)) = (in_module_folder, Manifest::parse(&source)) {
             let manifest_ctx = ManifestContext {
                 file_path: &file_path,
                 source: &source,
-                manifest,
+                manifest: &manifest,
                 module,
                 settings,
             };

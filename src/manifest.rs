@@ -3,8 +3,9 @@
 use ruff_python_ast::{Expr, ExprDict, ModModule, Number, Operator, Stmt, UnaryOp};
 use ruff_python_parser::{parse_module, Parsed};
 
-/// File names Odoo accepts for a module manifest (`__openerp__.py` up to 9.0).
-pub const MANIFEST_FILE_NAMES: &[&str] = &["__manifest__.py", "__openerp__.py"];
+/// Manifest file names, in order of preference: `__openerp__.py` up to Odoo
+/// 9.0, `__terp__.py` and `__odoo__.py` in early versions.
+pub const MANIFEST_FILE_NAMES: &[&str] = &["__manifest__.py", "__openerp__.py", "__odoo__.py", "__terp__.py"];
 
 pub fn is_manifest_file_name(name: &str) -> bool {
     MANIFEST_FILE_NAMES.contains(&name)

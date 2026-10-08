@@ -59,6 +59,11 @@ impl<'a> Reporter<'a> {
         }
     }
 
+    /// 1-based line number of `offset`, for messages that mention lines.
+    pub fn line_of(&self, offset: TextSize) -> usize {
+        self.line_index.line_index(offset).get()
+    }
+
     pub fn report(&mut self, rule: &Rule, offset: TextSize, message: impl Into<String>) {
         let location = self.line_index.line_column(offset, self.source);
         self.violations.push(Violation {
@@ -88,6 +93,40 @@ pub fn run_python_rule(rule: &Rule, source: &str) -> Vec<Violation> {
             parsed: &parsed,
             module: None,
             settings: &settings,
+        };
+        check(&ctx, &mut reporter);
+    }
+    reporter.violations
+}
+
+/// Test helper: run a manifest rule on the `__manifest__.py` in `dir`.
+#[doc(hidden)]
+pub fn run_manifest_rule_in_dir(rule: &Rule, dir: &std::path::Path, settings: &Settings) -> Vec<Violation> {
+    let path = dir.join("__manifest__.py");
+    let source = std::fs::read_to_string(&path).expect("test module has a manifest");
+    let Some(manifest) = Manifest::parse(&source) else {
+        return Vec::new();
+    };
+    let manifest = Arc::new(manifest);
+    let module = ModuleInfo {
+        name: dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        path: dir.to_path_buf(),
+        manifest_path: path.clone(),
+        manifest: Some(manifest.clone()),
+    };
+    let file_path = path.to_string_lossy().into_owned();
+    let line_index = LineIndex::from_source_text(&source);
+    let mut reporter = Reporter::new(&file_path, &source, &line_index);
+    if let crate::rules::Check::Manifest(check) = rule.check {
+        let ctx = ManifestContext {
+            file_path: &file_path,
+            source: &source,
+            manifest: &manifest,
+            module: &module,
+            settings,
         };
         check(&ctx, &mut reporter);
     }
