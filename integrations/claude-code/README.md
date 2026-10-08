@@ -22,7 +22,8 @@ The plugin has three parts:
 ```
 
 The plugin runs `odl` from the project's `.venv`, then from PATH, and
-otherwise the latest release from PyPI through `uvx`. Install it with
+otherwise the odoo-lint release with the plugin's version, from PyPI through
+`uvx`. Install it with
 `uv tool install odoo-linter` or `pip install odoo-linter`.
 
 ## Configuration

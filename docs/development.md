@@ -55,7 +55,10 @@ uv run nox -s parity -- --write
 
 ## Releasing
 
-1. Bump `version` in `Cargo.toml` and run `uv lock`.
+1. Bump `version` in `Cargo.toml` and run `uv lock`. Use the same version in
+   the Claude Code plugin (`plugin.json`) and the dsh bundle (`package.json`),
+   and pin it in their `bin/odl` (`odoo-linter==0.1.0a5` for
+   `0.1.0-alpha.5`); `tests/integrations.rs` checks this.
 2. Publish the GitHub release drafted by Release Drafter, with tag
    `v<version>`.
 

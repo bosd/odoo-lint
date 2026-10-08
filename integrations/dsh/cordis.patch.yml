@@ -7,8 +7,8 @@
 #                     Claude Code hooks bridge (`odl hook` speaks that format)
 #   odoo-lint-skill   when and how to use them
 #
-# `bin/odl` runs the project's own odl (.venv), the one on PATH, or the latest
-# release through uvx. Paths are resolved from the installed package, anchored
+# `bin/odl` runs the project's own odl (.venv), the one on PATH, or the release
+# this bundle belongs to, through uvx. Paths are resolved from the installed package, anchored
 # at the profile (Loader baseUrl), not from the launch directory.
 - insert:
     - id: odoo-lint-mcp

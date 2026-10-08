@@ -20,7 +20,7 @@ model. Files outside an Odoo addon are ignored.
 
 Both need `odl`: `uv tool install odoo-linter` (or `pip install
 odoo-linter`). The plugins below also find it in the project's `.venv`, or
-run the latest release through `uvx`.
+run the odoo-lint release with their version through `uvx`.
 
 From 0.1.0-alpha.5 on, the MCP server is in the
 [MCP Registry](https://registry.modelcontextprotocol.io) as
