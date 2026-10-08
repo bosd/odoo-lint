@@ -1,6 +1,6 @@
 {
   "name": "dsh-odoo-lint",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "odoo-lint for DeepSeek Harness: lint and fix Odoo addons, and lint every addon file the agent edits",
   "keywords": [
     "dsh-plugin",
