@@ -100,17 +100,17 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
 
 /// Whether `node` is an element `name` without a namespace, as an XPath name
 /// test matches.
-fn is(node: Node, name: &str) -> bool {
+pub(crate) fn is(node: Node, name: &str) -> bool {
     node.is_element() && node.tag_name().namespace().is_none() && node.tag_name().name() == name
 }
 
 /// The root element when it is `<odoo>` or `<openerp>`.
-fn odoo_root<'a, 'input>(file: &'a XmlFile<'input>) -> Option<Node<'a, 'input>> {
+pub(crate) fn odoo_root<'a, 'input>(file: &'a XmlFile<'input>) -> Option<Node<'a, 'input>> {
     file.root().filter(|r| is(*r, "odoo") || is(*r, "openerp"))
 }
 
 /// Elements `name` below the `<odoo>`/`<openerp>` root, in document order.
-fn under_root<'a, 'input>(
+pub(crate) fn under_root<'a, 'input>(
     file: &'a XmlFile<'input>,
     names: &'a [&'a str],
 ) -> impl Iterator<Item = Node<'a, 'input>> + 'a {
@@ -121,17 +121,20 @@ fn under_root<'a, 'input>(
 }
 
 /// Direct child elements `name`.
-fn children<'a, 'input>(node: Node<'a, 'input>, name: &'a str) -> impl Iterator<Item = Node<'a, 'input>> + 'a {
+pub(crate) fn children<'a, 'input>(
+    node: Node<'a, 'input>,
+    name: &'a str,
+) -> impl Iterator<Item = Node<'a, 'input>> + 'a {
     node.children().filter(move |c| is(*c, name))
 }
 
 /// The first direct child `<field name="...">`.
-fn child_field<'a, 'input>(node: Node<'a, 'input>, name: &str) -> Option<Node<'a, 'input>> {
+pub(crate) fn child_field<'a, 'input>(node: Node<'a, 'input>, name: &str) -> Option<Node<'a, 'input>> {
     node.children()
         .find(|c| is(*c, "field") && c.attribute("name") == Some(name))
 }
 
-fn has_class(node: Node, class: &str) -> bool {
+pub(crate) fn has_class(node: Node, class: &str) -> bool {
     node.attribute("class")
         .is_some_and(|classes| classes.split_whitespace().any(|c| c == class))
 }
@@ -193,7 +196,7 @@ fn also_at(places: &[(&XmlFile, Node)]) -> String {
 }
 
 /// End of an element's start tag (after `>` or `/>`).
-fn start_tag_end(file: &XmlFile, node: Node) -> usize {
+pub(crate) fn start_tag_end(file: &XmlFile, node: Node) -> usize {
     let after = node
         .attributes()
         .map(|a| a.range().end)
@@ -206,7 +209,7 @@ fn start_tag_end(file: &XmlFile, node: Node) -> usize {
 
 /// Where to report an element: the line its start tag ends on, as lxml
 /// (libxml2) numbers elements, at the first character of that line.
-fn at(file: &XmlFile, node: Node) -> usize {
+pub(crate) fn at(file: &XmlFile, node: Node) -> usize {
     let tag_end = start_tag_end(file, node).saturating_sub(1);
     let line_start = file.source[..tag_end].rfind('\n').map_or(0, |i| i + 1);
     let indent = file.source[line_start..tag_end].len() - file.source[line_start..tag_end].trim_start().len();
@@ -218,7 +221,7 @@ fn at(file: &XmlFile, node: Node) -> usize {
 }
 
 /// Deletes an element together with its line when nothing else is on it.
-fn delete_element(file: &XmlFile, node: Node) -> Edit {
+pub(crate) fn delete_element(file: &XmlFile, node: Node) -> Edit {
     let range = node.range();
     let source = file.source;
     let line_start = source[..range.start].rfind('\n').map_or(0, |i| i + 1);
@@ -364,7 +367,7 @@ existing one to update it.
     max_odoo: None,
 };
 
-const RECORD_TAGS: &[&str] = &["record", "menuitem"];
+pub(crate) const RECORD_TAGS: &[&str] = &["record", "menuitem"];
 
 fn check_record_missing_id(ctx: &XmlContext, reporter: &mut XmlReporter) {
     for file in ctx.files {
