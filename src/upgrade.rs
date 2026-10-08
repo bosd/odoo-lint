@@ -106,7 +106,7 @@ fn upgrade_rules(settings: &Settings, target: OdooVersion) -> Vec<&'static Rule>
 }
 
 /// The module a file belongs to: the nearest folder in `modules`.
-fn module_of<'a, T>(modules: &'a HashMap<PathBuf, T>, file: &Path) -> Option<(&'a PathBuf, &'a T)> {
+pub fn module_of<'a, T>(modules: &'a HashMap<PathBuf, T>, file: &Path) -> Option<(&'a PathBuf, &'a T)> {
     file.ancestors().skip(1).find_map(|dir| modules.get_key_value(dir))
 }
 

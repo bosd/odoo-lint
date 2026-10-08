@@ -127,6 +127,11 @@ The output is the same as the pages under [rules](rules/index.md).
 What modules need to run on a newer Odoo version, per version step. See
 [Upgrades](upgrades.md).
 
+## `odl badge`
+
+README badges: the share of clean modules, or readiness for an Odoo version.
+See [README badges](integrations.md#readme-badges).
+
 ## `odl server`
 
 A language server for editors. See [Editors](editors.md).
