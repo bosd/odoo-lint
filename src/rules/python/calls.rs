@@ -207,6 +207,25 @@ partners = self.env["res.partner"].search([])
 ```
 
 Use instead: add a domain, or a `limit` when any record will do.
+
+## Configuration
+
+Models whose number of records is small by design can be allowed:
+
+```toml
+[tool.odoo-lint.rules.no-search-all]
+# res.company: one per company (13 in production). machine.machine is not
+# listed: 1,554 records and growing.
+bounded-models = ["res.company"]
+```
+
+A search on `self.env["res.company"]` (also after `.sudo()`,
+`.with_context(...)` and the like) is then not reported.
+
+Count the records in a production database before listing a model, and
+note the reason next to it: the name does not tell. Two models of the same
+module can differ by orders of magnitude, and a model that is small today
+may not stay small. There is no default list for that reason.
 "#,
     check: Check::Python(check_search_all),
     min_odoo: None,
@@ -422,6 +441,32 @@ fn is_empty_domain_variable(method: &StmtFunctionDef, name: &str, call: &ExprCal
     })
 }
 
+/// The model of `self.env["model"]....search`, through chained calls such as
+/// `.sudo()` and `.with_context(...)`.
+fn searched_model(func: &Expr) -> Option<&str> {
+    let Expr::Attribute(attribute) = func else { return None };
+    let mut receiver = &*attribute.value;
+    loop {
+        match receiver {
+            Expr::Call(call) => match &*call.func {
+                Expr::Attribute(method) => receiver = &method.value,
+                _ => return None,
+            },
+            Expr::Subscript(subscript) => {
+                let is_env = match &*subscript.value {
+                    Expr::Attribute(env) => env.attr.as_str() == "env",
+                    Expr::Name(name) => name.id.as_str() == "env",
+                    _ => false,
+                };
+                return is_env
+                    .then(|| subscript.slice.as_string_literal_expr().map(|s| s.value.to_str()))
+                    .flatten();
+            }
+            _ => return None,
+        }
+    }
+}
+
 fn check_search_all(ctx: &PythonContext, reporter: &mut Reporter) {
     walk(ctx.parsed.suite(), |node, scopes| {
         let Node::Expr(Expr::Call(call)) = node else { return };
@@ -453,7 +498,16 @@ fn check_search_all(ctx: &PythonContext, reporter: &mut Reporter) {
                 .is_some_and(|a| ["limit", "count"].contains(&a.as_str()))
         }) || args.len() >= 3
             || (method_name == "search" && args.len() >= 5);
-        if empty && !limited {
+        let bounded = ctx
+            .settings
+            .config
+            .rules()
+            .no_search_all
+            .as_ref()
+            .and_then(|c| c.bounded_models.as_ref())
+            .zip(searched_model(&call.func))
+            .is_some_and(|(models, model)| models.iter().any(|m| m == model));
+        if empty && !limited && !bounded {
             reporter.report(
                 &NO_SEARCH_ALL,
                 call.start(),
@@ -523,5 +577,19 @@ mod tests {
     fn search_all() {
         let src = "from odoo import models\nclass A(models.Model):\n    def m(self):\n        self.search([])\n        self.search([], limit=1)\n        self.search([('a', '=', 1)])\n        domain = []\n        self.search_read(domain)\n        other = []\n        other.append(('a', '=', 1))\n        self.search(other)\n        self.search(domain=[])\n        self.search([], 0, 1)\nclass B:\n    def m(self):\n        self.search([])\n";
         assert_eq!(count(&NO_SEARCH_ALL, src), 3);
+    }
+
+    #[test]
+    fn bounded_models_may_be_searched_without_a_domain() {
+        let src = "from odoo import models\nclass A(models.Model):\n    _name = 'a'\n    def m(self):\n        self.env['res.company'].sudo().search([]).partner_id\n        self.env['res.partner'].search([])\n";
+        assert_eq!(count(&NO_SEARCH_ALL, src), 2);
+        let config = crate::config::OdooLintConfig::from_odoo_lint_toml(
+            "[rules.no-search-all]\nbounded-models = [\"res.company\"]\n",
+        )
+        .unwrap();
+        let (settings, _) = crate::settings::Settings::new(config, None, Default::default()).unwrap();
+        let found = crate::checker::run_python_rule_with(&NO_SEARCH_ALL, src, "m/models/a.py", None, &settings);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 6);
     }
 }

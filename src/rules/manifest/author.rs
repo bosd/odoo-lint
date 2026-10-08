@@ -3,7 +3,6 @@
 
 use super::{add_default, add_value, key_or_dict};
 use crate::checker::{ManifestContext, Reporter};
-use crate::fix::{Edit, Fix};
 use crate::rules::{Check, Rule};
 use ruff_text_size::Ranged;
 
@@ -75,9 +74,9 @@ Use instead:
 
 When the manifest has no `author`: safe, with `author` from
 [`manifest-defaults`](../configuration.md#manifest-defaults), or else the
-first author of a configured `manifest-required-author`. When the author
-lacks the required one: unsafe, the required author is appended (it changes
-the attribution). Without a configuration there is no fix.
+first author of a configured `manifest-required-author`. An existing author
+is never changed, not even with `--unsafe-fixes`: attribution is a decision,
+not a cleanup. Without a configuration there is no fix.
 "#,
     check: Check::Manifest(check_required_author),
     min_odoo: None,
@@ -149,19 +148,9 @@ fn check_required_author(ctx: &ManifestContext, reporter: &mut Reporter) {
             if required.iter().any(|r| authors.contains(&r.as_str())) {
                 return;
             }
-            // `"Someone"` -> `"Someone, Acme Corp"`, before the closing quote
-            // of a plain (not triple-quoted) string.
-            let text = &ctx.source[value.range()];
-            let simple = (text.starts_with('"') || text.starts_with('\''))
-                && !text.starts_with("\"\"\"")
-                && !text.starts_with("\'\'\'");
-            let fix = (configured && simple && author.value.as_slice().len() == 1).then(|| {
-                Fix::unsafe_(
-                    format!("Add `{}` to the authors", required[0]),
-                    vec![Edit::insert(value.end().to_usize() - 1, format!(", {}", required[0]))],
-                )
-            });
-            (key.start(), fix)
+            // Attribution is a decision, not a cleanup: an existing author is
+            // never changed automatically.
+            (key.start(), None)
         }
         None => {
             let fix = add_default(ctx, "author").or_else(|| {

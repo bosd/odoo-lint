@@ -70,15 +70,11 @@ fn nothing_is_guessed() {
 }
 
 #[test]
-fn a_missing_required_author_is_appended_after_review() {
+fn an_existing_author_is_never_changed() {
     let dir = tempfile::tempdir().unwrap();
     let manifest = "{\n    \"name\": \"Sale\",\n    \"author\": \"Someone\",\n    \"license\": \"LGPL-3\",\n}\n";
     assert_eq!(
-        fixed(dir.path(), "acme_sale", manifest, CONFIG, FixMode::Safe),
-        manifest
-    );
-    assert_eq!(
         fixed(dir.path(), "acme_sale", manifest, CONFIG, FixMode::Unsafe),
-        manifest.replace("\"Someone\"", "\"Someone, Acme Corp\"")
+        manifest
     );
 }

@@ -53,6 +53,8 @@ pub struct RulesConfig {
     pub category_allowed: Option<AllowedConfig>,
     /// C8117: allowed categories for modules with a `price`.
     pub category_allowed_app: Option<AllowedConfig>,
+    /// W8163: models that may be searched without a domain.
+    pub no_search_all: Option<NoSearchAllConfig>,
     /// C8115: files every module must have.
     pub missing_odoo_file: Option<FilesConfig>,
     /// C8118: files every module with a `price` must have.
@@ -102,6 +104,7 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     invalid_commit: None,
     renamed_field_parameter: None,
     deprecated_odoo_model_method: None,
+    no_search_all: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -114,6 +117,14 @@ pub struct KeysConfig {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SuperfluousKeyConfig {
     pub keys_values_true: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct NoSearchAllConfig {
+    /// Models with few records, such as `res.company`, that may be searched
+    /// without a domain.
+    pub bounded_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
