@@ -42,6 +42,9 @@ enum Commands {
         /// Apply `exclude` to files given on the command line as well (for pre-commit)
         #[arg(long)]
         force_exclude: bool,
+        /// Folders with addons for checks across modules; replaces `addons-path` from the config
+        #[arg(long, value_delimiter = ',')]
+        addons_path: Option<Vec<String>>,
         /// Also apply fixes that may change behaviour or lose information
         #[arg(long)]
         unsafe_fixes: bool,
@@ -218,12 +221,14 @@ fn main() -> ExitCode {
             unsafe_fixes,
             diff,
             force_exclude,
+            addons_path,
         } => {
             let overrides = CliOverrides {
                 target_version: version,
                 select,
                 ignore,
                 force_exclude,
+                addons_path,
             };
             let loaded = match Settings::load(&paths[0], config.as_deref(), overrides) {
                 Ok(loaded) => loaded,

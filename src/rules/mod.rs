@@ -18,6 +18,7 @@ pub mod po_fixes;
 pub mod po_odoo;
 pub mod python;
 pub mod upgrade;
+pub mod views;
 pub mod xml;
 
 use manifest::{author, files, keys, values};
@@ -111,6 +112,7 @@ pub const ALL: &[Rule] = &[
     odoo001_missing_depends::RULE,
     module::UNWANTED_FILE,
     module::LARGE_FILE,
+    views::VIEW_FIELD_NOT_FOUND,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

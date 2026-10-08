@@ -401,6 +401,8 @@ fn capabilities(encoding: Encoding) -> ServerCapabilities {
 
 /// Serves one client over `connection` until it shuts down.
 pub fn serve(connection: Connection) -> Result<()> {
+    // Files change while the server runs; the index must follow.
+    crate::index::revalidate_cache();
     let (id, params) = connection.initialize_start()?;
     let params: InitializeParams = serde_json::from_value(params)?;
     let encoding = Encoding::negotiate(&params);
