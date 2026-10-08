@@ -8,6 +8,7 @@
 //! branches. Reimplemented from behaviour, not copied.
 
 pub mod v18;
+pub mod v19;
 
 use crate::fix::Edit;
 use crate::rules::xml::{child_field, is};

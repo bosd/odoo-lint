@@ -237,3 +237,170 @@ fn data_files_with_a_data_root() {
     module(dir.path(), "18.0.1.0.0", &[("views/list.xml", views)], "");
     assert_eq!(codes(dir.path(), "U1801", V18), vec![("U1801".into(), 5)]);
 }
+
+const V19: OdooVersion = OdooVersion::new(19, 0);
+
+const VIEWS_18: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="group_manager" model="res.groups">
+        <field name="name">Manager</field>
+        <field name="users" eval="[(4, ref('base.user_admin'))]"/>
+    </record>
+    <record id="menu_up" model="ir.ui.menu">
+        <field name="name">Up</field>
+        <field name="groups_id" eval="[(4, ref('group_manager'))]"/>
+    </record>
+    <record id="view_users_form" model="ir.ui.view">
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='groups_id']" position="after">
+                <field name="groups_id" groups="base.group_system"/>
+            </xpath>
+        </field>
+    </record>
+    <record id="view_partner_search" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <search>
+                <group expand="0" string="Group By">
+                    <filter name="by_city" context="{'group_by': 'city'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    <record id="view_partner_form" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="mobile"/>
+                <div t-call="acme_up.card"/>
+            </form>
+        </field>
+    </record>
+</odoo>
+"#;
+
+const PYTHON_18: &str = r#"from odoo import api, fields, http, models
+from odoo.http import request
+from odoo.models import NewId
+from odoo.osv import expression
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    _sql_constraints = [
+        ("ref_uniq", "unique(ref)", "The reference must be unique."),
+    ]
+
+    parent_id = fields.Many2one("res.partner", auto_join=True)
+
+    @api.model
+    def create(self, vals):
+        return super().create(vals)
+
+    @api.returns("self")
+    def copy(self, default=None):
+        return super().copy(default)
+
+    def read_group(self, domain, fields, groupby, **kwargs):
+        return super().read_group(domain, fields, groupby, **kwargs)
+
+    def action_reset(self):
+        uid = self._uid
+        self.clear_caches()
+        code = self.env["ir.sequence"].get("acme.up")
+        users = self.env["res.users"].search([("groups_id", "<>", False), ("name", "ILIKE", "a")])
+        self.env["res.partner"].name_search("a", args=[])
+        return uid, code, users
+
+
+class Controller(http.Controller):
+    @http.route("/up", type="json", auth="user")
+    def up(self):
+        return request.uid
+"#;
+
+#[test]
+fn findings_for_odoo_19() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "19.0.1.0.0", &[("views/views.xml", VIEWS_18)], PYTHON_18);
+    write(
+        dir.path(),
+        "acme_up/__manifest__.py",
+        "{'name': 'Up', 'version': '19.0.1.0.0', 'license': 'AGPL-3', \
+         'data': ['views/views.xml'], 'update_xml': []}\n",
+    );
+    let mut found = codes(dir.path(), "U19", V19);
+    found.sort();
+    let expected: Vec<(String, usize)> = [
+        ("U1901", 28),
+        ("U1901", 39),
+        ("U1902", 10),
+        ("U1903", 17),
+        ("U1904", 20),
+        ("U1905", 24),
+        ("U1906", 37),
+        ("U1907", 31),
+        ("U1908", 4),
+        ("U1909", 14),
+        ("U1910", 32),
+        ("U1911", 29),
+        ("U1913", 30),
+        ("U1914", 31),
+        ("U1914", 31),
+        ("U1915", 3),
+        ("U1916", 9),
+        ("U1916", 15),
+        ("U1916", 16),
+        ("U1917", 24),
+        ("U1918", 5),
+        ("U1919", 1),
+        ("U1920", 35),
+        ("U1921", 34),
+    ]
+    .into_iter()
+    .map(|(c, l)| (c.to_string(), l))
+    .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn fixes_for_odoo_19() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "19.0.1.0.0", &[("views/views.xml", VIEWS_18)], PYTHON_18);
+    let xml = fixed(dir.path(), "U19", V19, &module.join("views/views.xml"), FixMode::Safe);
+    let expected = VIEWS_18
+        .replace("name=\"users\"", "name=\"user_ids\"")
+        .replace("name=\"groups_id\"", "name=\"group_ids\"")
+        .replace("@name='groups_id'", "@name='group_ids'")
+        .replace("<group expand=\"0\" string=\"Group By\">", "<group>");
+    assert_eq!(xml, expected);
+
+    let python = fixed(dir.path(), "U19", V19, &module.join("models/partner.py"), FixMode::Safe);
+    let expected = PYTHON_18
+        .replace(
+            "    _sql_constraints = [\n        (\"ref_uniq\", \"unique(ref)\", \"The reference must be unique.\"),\n    ]",
+            "    _ref_uniq = models.Constraint(\"unique(ref)\", \"The reference must be unique.\")",
+        )
+        .replace("auto_join=", "bypass_search_access=")
+        .replace("    @api.returns(\"self\")\n", "")
+        .replace("self._uid", "self.env.uid")
+        .replace("self.clear_caches()", "self.env.registry.clear_cache()")
+        .replace(".get(\"acme.up\")", ".next_by_code(\"acme.up\")")
+        .replace("\"<>\"", "\"!=\"")
+        .replace("\"ILIKE\"", "\"ilike\"")
+        .replace("args=[]", "domain=[]")
+        .replace("type=\"json\"", "type=\"jsonrpc\"")
+        .replace("request.uid", "request.env.uid")
+        .replace("from odoo.models import NewId", "from odoo.api import NewId");
+    assert_eq!(python, expected);
+}
+
+#[test]
+fn modules_still_on_18_are_left_alone_by_u19() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "18.0.1.0.0", &[("views/views.xml", VIEWS_18)], PYTHON_18);
+    assert!(codes(dir.path(), "U19", V18).is_empty());
+}
