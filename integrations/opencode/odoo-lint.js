@@ -6,7 +6,7 @@
 // project's `.venv` or on PATH (`uv tool install odoo-linter`).
 
 const EDIT_TOOLS = new Set(["edit", "write", "multiedit"]);
-const LINTED = /\.(py|po|pot)$/;
+const LINTED = /\.(py|xml|po|pot)$/;
 
 export const OdooLint = async ({ $, directory }) => {
   const local = `${directory}/.venv/bin/odl`;

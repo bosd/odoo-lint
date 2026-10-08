@@ -7,7 +7,9 @@ same files and compares the counts, for:
 - pylint-odoo (AGPL-3.0): ``tests/test_main.py``,
   ``testing/resources/test_repo``;
 - oca-checks-po from odoo-pre-commit-hooks (LGPL-3.0):
-  ``tests/test_checks_po.py``, ``test_repo``.
+  ``tests/test_checks_po.py``, ``test_repo``;
+- oca-checks-odoo-module from the same repository, its XML checks:
+  ``tests/test_checks.py``, ``test_repo``.
 
 The sources are fetched at pinned commits into ``.cache/`` at run time and
 never copied into this repository.
@@ -56,6 +58,8 @@ class Source:
     test_repo: str
     #: Checks table in the README, for the codes of checks odl lacks.
     readme_codes: bool
+    #: Only the checks whose names start with this.
+    prefix: str = ""
 
     @property
     def cache(self) -> Path:
@@ -89,6 +93,15 @@ SOURCES = [
         test_file="tests/test_checks_po.py",
         test_repo="test_repo",
         readme_codes=False,
+    ),
+    Source(
+        title="oca-checks-odoo-module (XML)",
+        repo="https://github.com/OCA/odoo-pre-commit-hooks.git",
+        commit="82a2e95fa8bbea73a02bc377980ef8bd10e40dfd",
+        test_file="tests/test_checks.py",
+        test_repo="test_repo",
+        readme_codes=False,
+        prefix="xml-",
     ),
 ]
 
@@ -189,7 +202,11 @@ def odl_counts(odl: str, test_repo: Path, version: str) -> Counter[str]:
 def compare(odl: str, source: Source) -> list[Row]:
     """Compare odl with one OCA tool for every check its tests count."""
     path = fetch(source)
-    expected = expected_errors(path, source.test_file)
+    expected = {
+        name: count
+        for name, count in expected_errors(path, source.test_file).items()
+        if name.startswith(source.prefix)
+    }
     codes = readme_codes(path) if source.readme_codes else {}
     rules = odl_rules(odl)
     test_repo = path / source.test_repo

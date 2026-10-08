@@ -7,7 +7,7 @@ repositories. Each tool's test suite states for every check how many
 messages it expects there. A check matches when `odl` reports exactly
 as many.
 
-**71 of 71 checks match.**
+**95 of 95 checks match.**
 
 ## pylint-odoo
 
@@ -97,6 +97,39 @@ Compared on `test_repo` at commit [`82a2e95`](https://github.com/OCA/odoo-pre-co
 | `po-python-parse-printf` | [PO003](rules/PO003.md) | 2 | 2 | ✅ match |
 | `po-requires-module` | [PO002](rules/PO002.md) | 1 | 1 | ✅ match |
 | `po-syntax-error` | [PO001](rules/PO001.md) | 2 | 2 | ✅ match |
+
+## oca-checks-odoo-module (XML)
+
+Compared on `test_repo` at commit [`82a2e95`](https://github.com/OCA/odoo-pre-commit-hooks/tree/82a2e95fa8bbea73a02bc377980ef8bd10e40dfd/test_repo), with the counts from `tests/test_checks.py`.
+
+**24 of 24 checks match**; odoo-lint implements 24 of them.
+
+| Check | Code | Expected | odl | Status |
+| ----- | ---- | -------: | --: | ------ |
+| `xml-create-user-wo-reset-password` | [XML019](rules/XML019.md) | 1 | 1 | ✅ match |
+| `xml-dangerous-qweb-replace-low-priority` | [XML018](rules/XML018.md) | 9 | 9 | ✅ match |
+| `xml-deprecated-data-node` | [XML010](rules/XML010.md) | 8 | 8 | ✅ match |
+| `xml-deprecated-oe-chatter` | [XML015](rules/XML015.md) | 1 | 1 | ✅ match |
+| `xml-deprecated-openerp-node` | [XML011](rules/XML011.md) | 4 | 4 | ✅ match |
+| `xml-deprecated-qweb-directive` | [XML012](rules/XML012.md) | 2 | 2 | ✅ match |
+| `xml-deprecated-qweb-directive-15` | [XML013](rules/XML013.md) | 4 | 4 | ✅ match |
+| `xml-deprecated-res-groups-category-id` | [XML016](rules/XML016.md) | 4 | 4 | ✅ match |
+| `xml-deprecated-tree-attribute` | [XML014](rules/XML014.md) | 3 | 3 | ✅ match |
+| `xml-duplicate-fields` | [XML006](rules/XML006.md) | 3 | 3 | ✅ match |
+| `xml-duplicate-record-id` | [XML005](rules/XML005.md) | 2 | 2 | ✅ match |
+| `xml-duplicate-template-id` | [XML007](rules/XML007.md) | 9 | 9 | ✅ match |
+| `xml-field-bool-without-eval` | [XML023](rules/XML023.md) | 2 | 2 | ✅ match |
+| `xml-field-numeric-without-eval` | [XML024](rules/XML024.md) | 7 | 7 | ✅ match |
+| `xml-header-missing` | [XML002](rules/XML002.md) | 2 | 2 | ✅ match |
+| `xml-header-wrong` | [XML003](rules/XML003.md) | 18 | 18 | ✅ match |
+| `xml-not-valid-char-link` | [XML020](rules/XML020.md) | 2 | 2 | ✅ match |
+| `xml-oe-structure-missing-id` | [XML022](rules/XML022.md) | 6 | 6 | ✅ match |
+| `xml-record-missing-id` | [XML004](rules/XML004.md) | 2 | 2 | ✅ match |
+| `xml-redundant-module-name` | [XML008](rules/XML008.md) | 3 | 3 | ✅ match |
+| `xml-syntax-error` | [XML001](rules/XML001.md) | 2 | 2 | ✅ match |
+| `xml-tag-position` | [XML009](rules/XML009.md) | 612 | 612 | ✅ match |
+| `xml-view-dangerous-replace-low-priority` | [XML017](rules/XML017.md) | 7 | 7 | ✅ match |
+| `xml-xpath-translatable-item` | [XML021](rules/XML021.md) | 4 | 4 | ✅ match |
 
 Regenerate this page with `uv run nox -s parity -- --write`. CI runs the comparison on
 every change and fails when an implemented check stops matching.

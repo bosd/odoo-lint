@@ -18,3 +18,4 @@ pub mod settings;
 pub mod sources;
 pub mod suppression;
 pub mod visit;
+pub mod xml;

@@ -75,7 +75,7 @@ OpenCode feeds diagnostics back to the model. In `opencode.json`:
   "lsp": {
     "odoo-lint": {
       "command": ["odl", "server"],
-      "extensions": [".py", ".po", ".pot"]
+      "extensions": [".py", ".po", ".pot", ".xml"]
     }
   }
 }

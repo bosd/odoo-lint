@@ -145,7 +145,7 @@ repos:
         # args: [--fix]   # also apply the safe fixes
 ```
 
-It lints the staged `.py`, `.po` and `.pot` files, with `--force-exclude`.
+It lints the staged `.py`, `.xml`, `.po` and `.pot` files, with `--force-exclude`.
 Checks across a module's files read the other files from disk.
 
 ## In hk
@@ -158,7 +158,7 @@ the `amends` line.
 amends "package://github.com/jdx/hk/releases/download/v1.10.4/hk@1.10.4#/Config.pkl"
 
 local odoo_lint = new Step {
-  glob = List("**/*.py", "**/*.po", "**/*.pot")
+  glob = List("**/*.py", "**/*.xml", "**/*.po", "**/*.pot")
   check = "odl check --force-exclude {{files}}"
   fix = "odl check --fix --force-exclude {{files}}"
 }

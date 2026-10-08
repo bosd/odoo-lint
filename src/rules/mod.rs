@@ -16,6 +16,7 @@ pub mod po;
 pub mod po_fixes;
 pub mod po_odoo;
 pub mod python;
+pub mod xml;
 
 use manifest::{author, files, keys, values};
 use python::{calls, fields, imports, inherit, methods, misc, models, sql, translations};
@@ -29,6 +30,9 @@ pub enum Check {
     Manifest(fn(&ManifestContext, &mut Reporter)),
     /// Runs on every `.po` and `.pot` file.
     Po(fn(&PoContext, &mut Reporter)),
+    /// Runs once per module, on the XML files its manifest loads. Gated on
+    /// the module's own Odoo version.
+    Xml(fn(&xml::XmlContext, &mut xml::XmlReporter)),
     /// Emitted by the linter itself (e.g. syntax errors).
     Builtin,
 }
@@ -132,6 +136,32 @@ pub const ALL: &[Rule] = &[
     translations::TRANSLATION_NOT_LAZY,
     translations::TRANSLATION_FORMAT_INTERPOLATION,
     translations::TRANSLATION_FSTRING_INTERPOLATION,
+    xml::XML_SYNTAX_ERROR,
+    xml::XML_HEADER_MISSING,
+    xml::XML_HEADER_WRONG,
+    xml::XML_RECORD_MISSING_ID,
+    xml::XML_DUPLICATE_RECORD_ID,
+    xml::XML_DUPLICATE_FIELDS,
+    xml::XML_DUPLICATE_TEMPLATE_ID,
+    xml::XML_REDUNDANT_MODULE_NAME,
+    xml::XML_TAG_POSITION,
+    xml::XML_DEPRECATED_DATA_NODE,
+    xml::XML_DEPRECATED_OPENERP_NODE,
+    xml::XML_DEPRECATED_QWEB_DIRECTIVE,
+    xml::XML_DEPRECATED_QWEB_DIRECTIVE_15,
+    xml::XML_DEPRECATED_TREE_ATTRIBUTE,
+    xml::XML_DEPRECATED_OE_CHATTER,
+    xml::XML_DEPRECATED_RES_GROUPS_CATEGORY_ID,
+    xml::XML_VIEW_DANGEROUS_REPLACE_LOW_PRIORITY,
+    xml::XML_DANGEROUS_QWEB_REPLACE_LOW_PRIORITY,
+    xml::XML_CREATE_USER_WO_RESET_PASSWORD,
+    xml::XML_NOT_VALID_CHAR_LINK,
+    xml::XML_XPATH_TRANSLATABLE_ITEM,
+    xml::XML_OE_STRUCTURE_MISSING_ID,
+    xml::XML_FIELD_BOOL_WITHOUT_EVAL,
+    xml::XML_FIELD_NUMERIC_WITHOUT_EVAL,
+    xml::XML_BOOTSTRAP4_CLASS,
+    xml::XML_BOOTSTRAP4_REMOVED_CLASS,
 ];
 
 pub fn find(code_or_name: &str) -> Option<&'static Rule> {

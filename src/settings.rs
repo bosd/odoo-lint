@@ -2,7 +2,7 @@
 
 use crate::config::OdooLintConfig;
 use crate::odoo_version::{OdooVersion, DEFAULT_ODOO_VERSION};
-use crate::rules::{Rule, ALL};
+use crate::rules::{Check, Rule, ALL};
 use globset::{Glob, GlobMatcher};
 use std::path::{Path, PathBuf};
 
@@ -188,10 +188,15 @@ impl Settings {
     /// Rules that are selected, not ignored and apply to the target version.
     pub fn enabled_rules(&self) -> Vec<&'static Rule> {
         ALL.iter()
-            .filter(|rule| self.select.iter().any(|s| selector_matches(s, rule)))
-            .filter(|rule| !self.ignore.iter().any(|s| selector_matches(s, rule)))
-            .filter(|rule| rule.applies_to(self.target_version))
+            .filter(|rule| self.is_selected(rule))
+            // XML rules are gated per module, on its manifest's version.
+            .filter(|rule| matches!(rule.check, Check::Xml(_)) || rule.applies_to(self.target_version))
             .collect()
+    }
+
+    /// Whether `select` and `ignore` enable `rule`.
+    pub fn is_selected(&self, rule: &Rule) -> bool {
+        self.select.iter().any(|s| selector_matches(s, rule)) && !self.ignore.iter().any(|s| selector_matches(s, rule))
     }
 
     /// `path` relative to the project root. The root is found from a

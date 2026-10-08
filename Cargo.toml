@@ -36,6 +36,7 @@ fancy-regex = "0.14"
 similar = "2"
 lsp-server = "0.7"
 lsp-types = "0.95"
+roxmltree = "0.21.1"
 
 [profile.release]
 lto = "fat"

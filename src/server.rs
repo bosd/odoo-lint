@@ -154,7 +154,9 @@ impl Server {
 
     /// The violations in a file of an Odoo addon; `None` for other files.
     fn lint(&self, path: &Path) -> Option<(Settings, Vec<Violation>)> {
-        let linted = path.extension().is_some_and(|e| e == "py" || e == "po" || e == "pot");
+        let linted = path
+            .extension()
+            .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml");
         if !linted {
             return None;
         }
