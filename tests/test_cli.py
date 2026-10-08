@@ -28,7 +28,10 @@ authors = "Odoo Community Association (OCA)"
 def run_odl(*args: str) -> subprocess.CompletedProcess[str]:
     """Run `odl` and capture its output."""
     assert ODL is not None
-    return subprocess.run([ODL, *args], capture_output=True, text=True, check=False)
+    # odl writes UTF-8; Windows would otherwise decode with the ANSI code page.
+    return subprocess.run(
+        [ODL, *args], capture_output=True, encoding="utf-8", check=False
+    )
 
 
 def make_module(root: Path, name: str, author: str) -> Path:
