@@ -41,6 +41,29 @@ fn manifests_are_valid() {
 }
 
 #[test]
+fn plugins_belong_to_this_release() {
+    // Anthropic's directory needs an exact version for what `bin/odl` runs
+    // through uvx, so the plugins follow odoo-lint's versions.
+    let version = env!("CARGO_PKG_VERSION");
+    let pypi = version
+        .replace("-alpha.", "a")
+        .replace("-beta.", "b")
+        .replace("-rc.", "rc");
+    for path in [
+        "integrations/claude-code/.claude-plugin/plugin.json",
+        "integrations/dsh/package.json",
+    ] {
+        assert_eq!(json(path)["version"], version, "{path}: version");
+    }
+    for path in ["integrations/claude-code/bin/odl", "integrations/dsh/bin/odl"] {
+        assert!(
+            read(path).contains(&format!("uvx --quiet --from odoo-linter=={pypi} odl")),
+            "{path} does not run odoo-linter=={pypi} through uvx"
+        );
+    }
+}
+
+#[test]
 fn skill_names_the_mcp_tools() {
     let skill = read("integrations/claude-code/skills/odoo-lint/SKILL.md");
     let input = concat!(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, "\n");

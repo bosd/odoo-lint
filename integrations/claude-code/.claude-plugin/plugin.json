@@ -1,7 +1,7 @@
 {
   "name": "odoo-lint",
   "displayName": "odoo-lint",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.5",
   "description": "Lint and fix Odoo addons with odoo-lint (odl): pylint-odoo and OCA PO checks, translation loading problems, automatic fixes. Lints every addon file Claude edits.",
   "author": {
     "name": "bosd"
