@@ -21,6 +21,11 @@ Both need `odl`: `uv tool install odoo-linter` (or `pip install
 odoo-linter`). The plugins below also find it in the project's `.venv`, or
 run the latest release through `uvx`.
 
+From 0.1.0-alpha.5 on, the MCP server is in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.bosd/odoo-lint`, for clients that install servers from there.
+They run it as `uvx odoo-linter mcp`.
+
 ## Claude Code
 
 The plugin bundles the MCP server, the post-edit hook and a skill that tells

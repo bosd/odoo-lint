@@ -18,6 +18,11 @@ default-run = "odl"
 name = "odl"
 path = "src/main.rs"
 
+# Runs `odl`; for `uvx odoo-linter`, as MCP clients start the PyPI package.
+[[bin]]
+name = "odoo-linter"
+path = "src/bin/odoo-linter.rs"
+
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 ruff_python_parser = "0.0.16"

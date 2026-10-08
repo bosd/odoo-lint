@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bosd/odoo-lint",
+  "title": "odoo-lint",
+  "description": "Lint and fix Odoo addons: pylint-odoo and OCA checks, translation files and upgrades.",
+  "repository": {
+    "url": "https://github.com/bosd/odoo-lint",
+    "source": "github"
+  },
+  "websiteUrl": "https://odoo-lint.readthedocs.io/en/latest/ai.html",
+  "version": "0.1.0-alpha.4",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "odoo-linter",
+      "version": "0.1.0a4",
+      "runtimeHint": "uvx",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    }
+  ]
+}
