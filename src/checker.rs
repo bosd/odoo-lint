@@ -3,6 +3,7 @@
 use crate::diagnostics::Violation;
 use crate::manifest::Manifest;
 use crate::rules::Rule;
+use crate::semantic::Semantic;
 use crate::settings::Settings;
 use ruff_python_ast::ModModule;
 use ruff_python_parser::Parsed;
@@ -28,6 +29,7 @@ pub struct PythonContext<'a> {
     pub file_path: &'a str,
     pub source: &'a str,
     pub parsed: &'a Parsed<ModModule>,
+    pub semantic: &'a Semantic,
     pub module: Option<&'a ModuleInfo>,
     pub settings: &'a Settings,
 }
@@ -80,19 +82,33 @@ impl<'a> Reporter<'a> {
 /// Test helper: run a single Python rule on `source` with default settings.
 #[doc(hidden)]
 pub fn run_python_rule(rule: &Rule, source: &str) -> Vec<Violation> {
-    let settings = Settings::default();
+    run_python_rule_with(rule, source, "test.py", None, &Settings::default())
+}
+
+/// Test helper: run a single Python rule on `source` as file `file_path` of
+/// `module`, with `settings`.
+#[doc(hidden)]
+pub fn run_python_rule_with(
+    rule: &Rule,
+    source: &str,
+    file_path: &str,
+    module: Option<&ModuleInfo>,
+    settings: &Settings,
+) -> Vec<Violation> {
     let Ok(parsed) = ruff_python_parser::parse_module(source) else {
         return Vec::new();
     };
+    let semantic = Semantic::new(parsed.suite());
     let line_index = LineIndex::from_source_text(source);
-    let mut reporter = Reporter::new("test.py", source, &line_index);
+    let mut reporter = Reporter::new(file_path, source, &line_index);
     if let crate::rules::Check::Python(check) = rule.check {
         let ctx = PythonContext {
-            file_path: "test.py",
+            file_path,
             source,
             parsed: &parsed,
-            module: None,
-            settings: &settings,
+            semantic: &semantic,
+            module,
+            settings,
         };
         check(&ctx, &mut reporter);
     }

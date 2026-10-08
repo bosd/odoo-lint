@@ -55,10 +55,14 @@ linting fast enough to run on every save. odoo-lint applies that idea to Odoo:
 
 ## Status and trade-offs
 
-odoo-lint is young. It implements a handful of rules today, while
-pylint-odoo has many more. It is not a drop-in replacement yet: run it next to
-pylint-odoo, and switch off the overlapping pylint-odoo checks as equivalent
-rules land here.
+odoo-lint is young. It implements most of pylint-odoo's checks: the
+[parity page](parity.md) shows, check by check, which ones give exactly the
+same results as pylint-odoo on its own test repository. The SQL injection and
+translation checks are still missing, so until they land, run odoo-lint next
+to pylint-odoo and switch off the checks odoo-lint already covers.
+
+In OCA repositories ruff runs alongside both; it covers general Python style,
+not the Odoo checks, so odoo-lint replaces pylint-odoo, not ruff.
 
 Skipping type inference is a deliberate trade-off. A few checks need knowledge
 across modules, such as which model a field is inherited from. Those will be

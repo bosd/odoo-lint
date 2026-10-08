@@ -58,6 +58,22 @@ pub struct RulesConfig {
     pub manifest_version_format: Option<VersionFormatConfig>,
     /// C8112: README template linked from the message.
     pub missing_readme: Option<ReadmeConfig>,
+    /// W8106: methods that must call `super()`.
+    pub method_required_super: Option<MethodsConfig>,
+    /// W8107: methods that must not be overridden.
+    pub prohibited_method_override: Option<MethodsConfig>,
+    /// W8110: methods allowed to call `super()` without returning.
+    pub missing_return: Option<IgnoreMethodsConfig>,
+    /// E8106: functions that need a `timeout`.
+    pub external_request_timeout: Option<MethodsConfig>,
+    /// W8105: deprecated model attributes.
+    pub attribute_deprecated: Option<AttributesConfig>,
+    /// E8102: expressions that are database cursors.
+    pub invalid_commit: Option<CursorConfig>,
+    /// W8111: renamed field parameters, old name -> new name.
+    pub renamed_field_parameter: Option<ParametersConfig>,
+    /// W8160: Odoo version -> model methods deprecated from that version.
+    pub deprecated_odoo_model_method: Option<DeprecatedMethodsConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -75,6 +91,14 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     missing_odoo_file_app: None,
     manifest_version_format: None,
     missing_readme: None,
+    method_required_super: None,
+    prohibited_method_override: None,
+    missing_return: None,
+    external_request_timeout: None,
+    attribute_deprecated: None,
+    invalid_commit: None,
+    renamed_field_parameter: None,
+    deprecated_odoo_model_method: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -113,6 +137,42 @@ pub struct VersionFormatConfig {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ReadmeConfig {
     pub template_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct MethodsConfig {
+    pub methods: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct IgnoreMethodsConfig {
+    pub ignore_methods: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct AttributesConfig {
+    pub attributes: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct CursorConfig {
+    pub cursor_expr: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ParametersConfig {
+    pub parameters: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DeprecatedMethodsConfig {
+    pub methods: Option<HashMap<String, Vec<String>>>,
 }
 
 /// A configured list, or `default` when it is not configured.
