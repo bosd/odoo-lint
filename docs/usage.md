@@ -7,6 +7,7 @@ Lint addons directories or single files.
 ```bash
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
+          [--fix] [--unsafe-fixes] [--diff]
 ```
 
 `PATHS`
@@ -30,6 +31,16 @@ from the configuration.
 `--output-format FORMAT`
 : `text` (default), `json`, `github`, `sarif` or `gitlab`.
 
+`--fix`
+: Apply the safe fixes, then report what is left. See [Fixes](#fixes).
+
+`--unsafe-fixes`
+: With `--fix` or `--diff`, also apply the unsafe fixes.
+
+`--diff`
+: Show the fixes as a unified diff instead of writing them. Exits with `1`
+when a file would change.
+
 ### Output formats
 
 `text`
@@ -42,7 +53,8 @@ addons/acme_sale/__manifest__.py:3:4: C8101: One of the following authors must b
 
 `json`
 : An array of objects with `file_path`, `line`, `column` (both 1-based),
-`code`, `name` and `message`.
+`code`, `name` and `message`, and `fix` (`applicability` and `title`) when
+the violation can be fixed.
 
 `github`
 : GitHub Actions annotations, shown inline on pull requests. `E` and `F`
@@ -61,6 +73,31 @@ rule links to its documentation page.
 : A GitLab Code Quality report, shown in merge requests.
 
 See [CI integration](integrations.md) for complete workflows.
+
+### Fixes
+
+Some rules can fix what they report; their pages have a _Fix safety_
+section. As in Ruff, a fix is either:
+
+safe
+: It keeps the behaviour of the code, or only changes formatting, such as
+`self._cr` to `self.env.cr` or sorting a `.po` file. `--fix` applies these.
+
+unsafe
+: It is probably right but needs review, such as adding `return` before a
+trailing `super()` call or copying a translation into the `.pot` template.
+These need `--unsafe-fixes` as well.
+
+```bash
+odl check --diff                  # review the safe fixes
+odl check --fix                   # apply them
+odl check --fix --unsafe-fixes    # apply the unsafe ones too
+```
+
+Fixes are applied in passes until nothing is left to fix, so a fix that
+enables another one (a duplicate merged, then the file sorted) is completed in
+one run. Running `--fix` twice changes nothing the second time. Fixes to
+translation files are described in [Translations](translations.md).
 
 ### Exit codes
 

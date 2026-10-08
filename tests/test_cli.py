@@ -204,3 +204,27 @@ def test_gitlab_output(project: Path) -> None:
     assert issue["check_name"] == "C8101"
     assert issue["location"]["lines"]["begin"] == 3
     assert {"description", "fingerprint", "severity"} <= issue.keys()
+
+
+def test_diff_and_fix(project: Path) -> None:
+    """`--diff` shows the fixes, `--fix` writes them, and a second run is clean."""
+    module = make_module(project, "acme_sale", "Acme Corp")
+    manifest = module / "__manifest__.py"
+    original = manifest.read_text()
+    manifest.write_text(original.replace("}\n", "    'installable': True,\n}\n"))
+    changed = manifest.read_text()
+
+    diff = run_odl("check", str(project / "addons"), "--select", "C8116", "--diff")
+    assert diff.returncode == 1
+    assert "-    'installable': True," in diff.stdout
+    assert "1 fix(es) would change 1 file(s)." in diff.stderr
+    assert manifest.read_text() == changed
+
+    fixed = run_odl("check", str(project / "addons"), "--select", "C8116", "--fix")
+    assert fixed.returncode == 0, fixed.stdout
+    assert "Fixed 1 violation(s)." in fixed.stdout
+    assert manifest.read_text() == original
+
+    again = run_odl("check", str(project / "addons"), "--select", "C8116", "--diff")
+    assert again.returncode == 0
+    assert again.stdout == ""

@@ -2,7 +2,9 @@
 //! (odoo-pre-commit-hooks) with its check names and messages. The checks
 //! have no codes there; odoo-lint numbers them `PO###`.
 
+use super::po_fixes::{entry_span, first_field_line, line_offset, line_starts};
 use crate::checker::Reporter;
+use crate::fix::{Edit, Fix};
 use crate::po::pyformat::{percent_format, str_format, PercentArgs, PyError, Value};
 use crate::po::{PoEntry, PoError, PoFile};
 use crate::rules::{Check, Rule};
@@ -20,6 +22,8 @@ pub struct PoContext<'a> {
     /// Name of the folder the file is in, e.g. `i18n` or `i18n_extra`.
     pub data_section: &'a str,
     pub settings: &'a Settings,
+    /// Current contents of other files, e.g. the module's `.pot`.
+    pub sources: &'a crate::sources::Sources,
 }
 
 impl PoContext<'_> {
@@ -65,6 +69,10 @@ when it exports translations.
 
 Odoo uses the comment to know which module a translation belongs to; entries
 without it are not imported.
+
+## Fix safety
+
+Safe: adds `#. module: <module>` to the entry.
 "#,
     check: Check::Po(check_requires_module),
     min_odoo: None,
@@ -136,6 +144,12 @@ Reports `msgid`s that appear in more than one entry of a file. Files in an
 Odoo exports translations by `msgid` and keeps only one of them, so one of the
 translations is lost on the next export. Use the `i18n_extra` folder for
 translations that must differ.
+
+## Fix safety
+
+Safe when the duplicates are identical apart from their references: they
+are merged into the first one. Duplicates with different translations need a
+human decision.
 "#,
     check: Check::Po(check_duplicate_messages),
     min_odoo: None,
@@ -179,6 +193,10 @@ Checks that the file is formatted as Odoo (and polib) write it:
 
 Every export by Odoo or Weblate reformats the file, which turns small
 translation changes into large, hard to review diffs.
+
+## Fix safety
+
+Safe: the file is rewritten as OCA's `po-pretty-format` would write it.
 "#,
     check: Check::Po(check_pretty_format),
     min_odoo: None,
@@ -194,13 +212,29 @@ fn check_syntax(ctx: &PoContext, reporter: &mut Reporter) {
 static MODULE_COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(module[s]?): (\w+)").unwrap());
 
 fn check_requires_module(ctx: &PoContext, reporter: &mut Reporter) {
+    // The module is the folder above `i18n`.
+    let module = std::path::Path::new(ctx.file_path)
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned());
+    let starts = line_starts(ctx.source);
     for entry in ctx.entries() {
         if !MODULE_COMMENT.is_match(&entry.comment) {
-            reporter.report_line(
+            let violation = reporter.report_line(
                 &PO_REQUIRES_MODULE,
                 entry.linenum.max(1),
                 "Translation entry requires comment `#. module: MODULE`",
             );
+            if let (Some(module), true) = (&module, entry.linenum >= 1) {
+                violation.fix = Some(Fix::safe(
+                    format!("Add `#. module: {module}`"),
+                    vec![Edit::insert(
+                        line_offset(&starts, entry.linenum),
+                        format!("#. module: {module}\n"),
+                    )],
+                ));
+            }
         }
     }
 }
@@ -326,12 +360,18 @@ fn check_parse_format(ctx: &PoContext, reporter: &mut Reporter) {
 }
 
 /// Groups entries by `key`, in order of first appearance.
-fn group_by<'a, K: PartialEq>(entries: impl Iterator<Item = (K, &'a PoEntry)>) -> Vec<(K, Vec<&'a PoEntry>)> {
+fn group_by<'a, K: Eq + std::hash::Hash + Clone>(
+    entries: impl Iterator<Item = (K, &'a PoEntry)>,
+) -> Vec<(K, Vec<&'a PoEntry>)> {
     let mut groups: Vec<(K, Vec<&PoEntry>)> = Vec::new();
+    let mut index: std::collections::HashMap<K, usize> = std::collections::HashMap::new();
     for (key, entry) in entries {
-        match groups.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, group)) => group.push(entry),
-            None => groups.push((key, vec![entry])),
+        match index.get(&key) {
+            Some(&i) => groups[i].1.push(entry),
+            None => {
+                index.insert(key.clone(), groups.len());
+                groups.push((key, vec![entry]));
+            }
         }
     }
     groups
@@ -358,7 +398,7 @@ fn check_duplicate_messages(ctx: &PoContext, reporter: &mut Reporter) {
         if msgid.chars().count() > 40 {
             short.push_str("...");
         }
-        reporter.report_line(
+        let violation = reporter.report_line(
             &PO_DUPLICATE_MESSAGE_DEFINITION,
             entries[0].msgid_line(),
             format!(
@@ -366,7 +406,49 @@ fn check_duplicate_messages(ctx: &PoContext, reporter: &mut Reporter) {
                 other_lines(&entries)
             ),
         );
+        violation.fix = merge_duplicates(ctx, &entries);
     }
+}
+
+/// Merges duplicates that translate the same way: their references move to
+/// the first entry and the others are removed. Different translations need a
+/// person to choose, so there is no fix for them.
+fn merge_duplicates(ctx: &PoContext, entries: &[&PoEntry]) -> Option<Fix> {
+    let po = ctx.po.ok()?;
+    let first = entries[0];
+    let same = |e: &&&PoEntry| {
+        e.msgctxt == first.msgctxt
+            && e.msgstr == first.msgstr
+            && e.msgid_plural == first.msgid_plural
+            && e.msgstr_plural == first.msgstr_plural
+            && e.flags == first.flags
+    };
+    if !entries[1..].iter().all(|e| same(&e)) || first.linenum == 0 {
+        return None;
+    }
+    let starts = line_starts(ctx.source);
+    let mut edits = Vec::new();
+    let mut extra: Vec<String> = Vec::new();
+    for entry in &entries[1..] {
+        for (path, line) in &entry.occurrences {
+            let reference = if line.is_empty() {
+                path.clone()
+            } else {
+                format!("{path}:{line}")
+            };
+            let known = first.occurrences.iter().any(|(p, l)| p == path && l == line);
+            if !known && !extra.contains(&reference) {
+                extra.push(reference);
+            }
+        }
+        let (start, end) = entry_span(po, ctx.source, &starts, entry);
+        edits.push(Edit::delete(start, end));
+    }
+    if !extra.is_empty() {
+        let at = line_offset(&starts, first_field_line(ctx.source, &starts, first));
+        edits.push(Edit::insert(at, format!("#: {}\n", extra.join(" "))));
+    }
+    Some(Fix::safe("Merge the identical duplicates into one entry", edits))
 }
 
 fn check_duplicate_models(ctx: &PoContext, reporter: &mut Reporter) {
@@ -408,8 +490,13 @@ pub fn pretty_format(po: &PoFile, data_section: &str) -> String {
 
 fn check_pretty_format(ctx: &PoContext, reporter: &mut Reporter) {
     let Ok(po) = ctx.po else { return };
-    if pretty_format(po, ctx.data_section) != ctx.source {
-        reporter.report_line(&PO_PRETTY_FORMAT, 1, "Wrong formatting");
+    let pretty = pretty_format(po, ctx.data_section);
+    if pretty != ctx.source {
+        let length = ctx.source.len();
+        reporter.report_line(&PO_PRETTY_FORMAT, 1, "Wrong formatting").fix = Some(Fix::safe(
+            "Format the file as Odoo exports it",
+            vec![Edit::replace(0, length, pretty)],
+        ));
     }
 }
 

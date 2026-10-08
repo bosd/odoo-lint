@@ -4,6 +4,7 @@
 use super::{calls_in, class_assigns, classes, def_offset, methods};
 use crate::checker::{PythonContext, Reporter};
 use crate::config::list_or;
+use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
 use crate::rules::{Check, Rule};
 use crate::semantic::func_name;
@@ -180,6 +181,11 @@ def write(self, vals):
 [tool.odoo-lint.rules.missing-return]
 ignore-methods = ["__init__", "_register_hook", "setUp", "setUpClass", "tearDown", "tearDownClass"]
 ```
+
+## Fix safety
+
+Unsafe, when the method ends with a `super()` call: `return` is added
+before it, so callers get the parent's return value.
 "#,
     check: Check::Python(check_missing_return),
     min_odoo: None,
@@ -411,14 +417,37 @@ fn check_missing_return(ctx: &PythonContext, reporter: &mut Reporter) {
             let mut finder = ReturnFinder::default();
             finder.visit_body(&method.body);
             if !finder.has_return && !finder.is_generator {
-                reporter.report(
+                let violation = reporter.report(
                     &MISSING_RETURN,
                     def_offset(ctx.source, method),
                     format!("Missing `return` (`super` is used) in method {}.", method.name),
                 );
+                violation.fix = return_trailing_super(method);
             }
         }
     }
+}
+
+/// `super().write(vals)` as the last statement -> `return super().write(vals)`.
+/// Unsafe: callers now get the parent's return value.
+fn return_trailing_super(method: &StmtFunctionDef) -> Option<Fix> {
+    let Some(Stmt::Expr(statement)) = method.body.last() else {
+        return None;
+    };
+    let Expr::Call(call) = &*statement.value else {
+        return None;
+    };
+    let Expr::Attribute(attr) = &*call.func else {
+        return None;
+    };
+    let Expr::Call(inner) = &*attr.value else { return None };
+    if !matches!(&*inner.func, Expr::Name(n) if n.id.as_str() == "super") {
+        return None;
+    }
+    Some(Fix::unsafe_(
+        "Return the result of `super()`",
+        vec![Edit::insert(statement.start().to_usize(), "return ")],
+    ))
 }
 
 fn check_raise_unlink(ctx: &PythonContext, reporter: &mut Reporter) {

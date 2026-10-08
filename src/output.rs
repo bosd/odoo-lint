@@ -184,6 +184,7 @@ mod tests {
             code: "C8101".into(),
             name: "manifest-required-author".into(),
             message: "One of the following authors must be present in manifest: 'X'".into(),
+            fix: None,
         }
     }
 

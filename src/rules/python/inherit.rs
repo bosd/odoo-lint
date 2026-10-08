@@ -125,6 +125,7 @@ pub fn violations(mut facts: Vec<InheritFact>) -> Vec<crate::diagnostics::Violat
                 reported.model,
                 locations.join(", ")
             ),
+            fix: None,
         });
     }
     result

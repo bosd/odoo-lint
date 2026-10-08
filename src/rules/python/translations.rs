@@ -6,11 +6,12 @@ use super::format_strings::{
 };
 use super::{source_of, str_value};
 use crate::checker::{PythonContext, Reporter};
+use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
 use crate::pyliteral::repr_str;
 use crate::rules::{Check, Rule};
 use crate::semantic::func_name;
-use crate::visit::{walk, Node};
+use crate::visit::{walk, Node, Scope};
 use ruff_python_ast::{Expr, ExprCall, Operator, Stmt};
 use ruff_text_size::{Ranged, TextSize};
 use std::path::Path;
@@ -329,6 +330,13 @@ Reports calls to the global `_()` function from Odoo 18.0.
 `self.env._()` translates in the language of the environment directly. The
 global `_()` has to inspect the call stack to find it, which is slower and
 fails outside methods. See [odoo/odoo#174844](https://github.com/odoo/odoo/pull/174844).
+
+## Fix safety
+
+Safe: `_(...)` becomes `self.env._(...)` inside methods of Odoo models
+where `self` is the record. Elsewhere (static methods, functions, a lambda
+with its own `self`) there is no fix. Remove the unused `_` import afterwards
+(Ruff's `F401` does so).
 "#,
     check: Check::Python(check_prefer_env),
     min_odoo: Some(OdooVersion::new(18, 0)),
@@ -718,15 +726,57 @@ fn check_positional_used(ctx: &PythonContext, reporter: &mut Reporter) {
 }
 
 fn check_prefer_env(ctx: &PythonContext, reporter: &mut Reporter) {
-    for call in translation_calls(ctx) {
-        if matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "_") {
-            reporter.report(
-                &PREFER_ENV_TRANSLATION,
-                call.start(),
-                "Better using self.env._ More info at https://github.com/odoo/odoo/pull/174844",
-            );
+    walk(ctx.parsed.suite(), |node, scopes| {
+        let Node::Expr(Expr::Call(call)) = node else { return };
+        if call.arguments.args.is_empty() || !matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "_") {
+            return;
         }
-    }
+        let violation = reporter.report(
+            &PREFER_ENV_TRANSLATION,
+            call.start(),
+            "Better using self.env._ More info at https://github.com/odoo/odoo/pull/174844",
+        );
+        if self_is_a_record(ctx, scopes) {
+            violation.fix = Some(Fix::safe(
+                "Use `self.env._`",
+                vec![Edit::replace(
+                    call.func.start().to_usize(),
+                    call.func.end().to_usize(),
+                    "self.env._",
+                )],
+            ));
+        }
+    });
+}
+
+/// Whether `self` is a record where the scopes end: inside a method of an
+/// Odoo model whose first parameter is `self`, not rebound by an inner
+/// function or lambda.
+fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope]) -> bool {
+    let Some(method) = scopes.windows(2).rposition(|pair| {
+        matches!(pair, [Scope::Class(class), Scope::Function(_)] if ctx.semantic.odoo_model_kind(class).is_some())
+    }) else {
+        return false;
+    };
+    let Scope::Function(function) = scopes[method + 1] else {
+        return false;
+    };
+    let first = function
+        .parameters
+        .posonlyargs
+        .iter()
+        .chain(&function.parameters.args)
+        .next();
+    let is_static = function
+        .decorator_list
+        .iter()
+        .any(|d| matches!(&d.expression, Expr::Name(n) if n.id.as_str() == "staticmethod"));
+    let rebound = scopes[method + 2..].iter().any(|scope| match scope {
+        Scope::Function(f) => f.parameters.includes("self"),
+        Scope::Lambda(l) => l.parameters.as_ref().is_some_and(|p| p.includes("self")),
+        _ => false,
+    });
+    !is_static && !rebound && first.is_some_and(|p| p.parameter.name.as_str() == "self")
 }
 
 fn check_injection(ctx: &PythonContext, reporter: &mut Reporter) {

@@ -33,6 +33,7 @@ globset = "0.4"
 serde_json = "1"
 regex = "1"
 fancy-regex = "0.14"
+similar = "2"
 
 [profile.release]
 lto = "fat"
