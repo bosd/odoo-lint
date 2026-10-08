@@ -38,6 +38,19 @@ uv run nox -s docs     # live-reloading documentation
   and pylint-odoo's test fixtures are not copied into this repository.
 - Rules of odoo-lint's own use `ODOO###` codes.
 
+### Parity with pylint-odoo
+
+`uv run nox -s parity` lints pylint-odoo's own test repository (fetched at a
+pinned commit into `.cache/`, not vendored) and compares the number of
+messages per check with what pylint-odoo's test suite expects. It fails when a
+check odoo-lint implements reports a different number, so a ported check is
+only done when it matches. After adding or changing a rule, update the
+[parity page](parity.md) and the README badge with:
+
+```bash
+uv run nox -s parity -- --write
+```
+
 ## Releasing
 
 1. Bump `version` in `Cargo.toml` and run `uv lock`.

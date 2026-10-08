@@ -18,6 +18,7 @@ nox.options.sessions = (
     "clippy",
     "cargo-test",
     "tests",
+    "parity",
     "docs-build",
 )
 
@@ -173,6 +174,19 @@ def tests(session: nox.Session) -> None:
     """Run the CLI tests against the `odl` binary installed by maturin."""
     sync(session, "dev")
     session.run("pytest", *session.posargs)
+
+
+@nox.session(python=python_versions[0])
+def parity(session: nox.Session) -> None:
+    """Compare odl with pylint-odoo on pylint-odoo's test repository.
+
+    Without arguments it fails when an implemented check reports a different
+    number of messages than pylint-odoo, or when docs/parity.md is stale.
+    Pass ``-- --write`` to regenerate the page and the README badge.
+    """
+    sync(session, "dev")
+    args = session.posargs or ["--check"]
+    session.run("python", "scripts/pylint_odoo_parity.py", *args)
 
 
 @nox.session(python=python_versions[0])
