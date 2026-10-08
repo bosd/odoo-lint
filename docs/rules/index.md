@@ -123,6 +123,36 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1919](U1919.md) | `upgrade-manifest-old-data-keys` | The manifest lists files under `update_xml` or `demo_xml`, ignored since Odoo 19.0. |
 | [U1920](U1920.md) | `upgrade-t-call-element` | `t-call` on an element other than `<t>`, rejected in Odoo 19.0. |
 | [U1921](U1921.md) | `upgrade-partner-mobile-title` | A partner or company view uses `mobile` or `title`, removed in Odoo 19.0. |
+| [U2001](U2001.md) | `upgrade-ir-model-access-csv` | The manifest loads `ir.model.access.csv`, a model replaced by `ir.access` in Odoo 20.0. |
+| [U2002](U2002.md) | `upgrade-ir-access-records` | `ir.rule` or `ir.model.access` records, models replaced by `ir.access` in Odoo 20.0. |
+| [U2003](U2003.md) | `upgrade-t-esc-t-raw` | `t-esc` or `t-raw`, removed from QWeb in Odoo 20.0. |
+| [U2004](U2004.md) | `upgrade-t-call-body` | `t-set` inside a `t-call`, no longer passed to the template in Odoo 20.0. |
+| [U2005](U2005.md) | `upgrade-t-call-options` | `t-call-options`, removed in Odoo 20.0. |
+| [U2006](U2006.md) | `upgrade-base64-file-field` | `<field type="base64" file=...>`, deprecated for `type="bytes"` in Odoo 20.0. |
+| [U2007](U2007.md) | `upgrade-attachment-datas-xml` | An `ir.attachment` record sets `datas`, removed in Odoo 20.0. |
+| [U2008](U2008.md) | `upgrade-report-file` | A report sets `report_file`, removed in Odoo 20.0. |
+| [U2009](U2009.md) | `upgrade-font-awesome` | A Font Awesome icon, which Odoo 20.0 no longer loads. |
+| [U2010](U2010.md) | `upgrade-filter-date-range` | A search filter uses `start_month`/`end_month`/`start_year`/`end_year`, removed in Odoo 20.0. |
+| [U2011](U2011.md) | `upgrade-calendar-date-delay` | A calendar view uses `date_delay`, removed in Odoo 20.0. |
+| [U2012](U2012.md) | `upgrade-bank-account-fields` | A `res.partner.bank` view or record uses a field renamed in Odoo 20.0. |
+| [U2013](U2013.md) | `upgrade-partner-company-fields` | A partner or company view uses `company_type`, `company_name` or `company_registry`, removed in Odoo 20.0. |
+| [U2014](U2014.md) | `upgrade-widget-renames` | `widget="remaining_days"`, renamed `relative_date` in Odoo 20.0. |
+| [U2015](U2015.md) | `upgrade-jquery-bundle` | The manifest includes `web._assets_jquery`, removed in Odoo 20.0. |
+| [U2016](U2016.md) | `upgrade-manifest-init-xml` | The manifest lists files under `init_xml`, ignored since Odoo 20.0. |
+| [U2017](U2017.md) | `upgrade-config-parameter` | `ir.config_parameter` `get_param`/`set_param`, removed in Odoo 20.0. |
+| [U2018](U2018.md) | `upgrade-attachment-datas` | `ir.attachment` `datas`, removed in Odoo 20.0. |
+| [U2019](U2019.md) | `upgrade-ir-access-models` | Python code uses `ir.model.access` or `ir.rule`, replaced by `ir.access` in Odoo 20.0. |
+| [U2020](U2020.md) | `upgrade-removed-access-methods` | An access or recursion method removed in Odoo 20.0. |
+| [U2021](U2021.md) | `upgrade-read-group-signature` | `read_group` called with the 19.0 signature (`lazy`, `orderby`, `fields`). |
+| [U2022](U2022.md) | `upgrade-registry-clear-cache` | `registry.clear_cache()`, removed in Odoo 20.0. |
+| [U2023](U2023.md) | `upgrade-ormcache-import` | `ormcache` imported from `odoo.tools`, deprecated in Odoo 20.0. |
+| [U2024](U2024.md) | `upgrade-http-imports` | A name imported from `odoo.http` that moved to a submodule in Odoo 20.0. |
+| [U2025](U2025.md) | `upgrade-tools-imports` | A name imported from `odoo.tools` that moved or was removed in Odoo 20.0. |
+| [U2026](U2026.md) | `upgrade-bank-account-fields-python` | Python code uses a `res.partner.bank` field renamed in Odoo 20.0. |
+| [U2027](U2027.md) | `upgrade-partner-company-fields-python` | Python code uses `company_type`, `company_registry` or `create_company`, removed in Odoo 20.0. |
+| [U2028](U2028.md) | `upgrade-self-writeable-fields` | `SELF_READABLE_FIELDS`/`SELF_WRITEABLE_FIELDS`, replaced in Odoo 20.0. |
+| [U2029](U2029.md) | `upgrade-inherit-read` | Code reads `._inherit` at runtime, which raises in Odoo 20.0. |
+| [U2030](U2030.md) | `upgrade-test-classes` | `SingleTransactionCase` or `odoo.tests.common.Form`, removed in Odoo 20.0. |
 | [W8103](W8103.md) | `translation-field` | A field label is wrapped in `_()`. |
 | [W8105](W8105.md) | `attribute-deprecated` | A model uses a deprecated class attribute. |
 | [W8106](W8106.md) | `method-required-super` | An override of a core method does not call `super()`. |
@@ -296,6 +326,36 @@ U1918
 U1919
 U1920
 U1921
+U2001
+U2002
+U2003
+U2004
+U2005
+U2006
+U2007
+U2008
+U2009
+U2010
+U2011
+U2012
+U2013
+U2014
+U2015
+U2016
+U2017
+U2018
+U2019
+U2020
+U2021
+U2022
+U2023
+U2024
+U2025
+U2026
+U2027
+U2028
+U2029
+U2030
 W8103
 W8105
 W8106
