@@ -570,3 +570,121 @@ fn fixes_for_odoo_17() {
         .replace(".get(\"sale.order\", \"note\")", "._get(\"sale.order\", \"note\")");
     assert_eq!(python, expected);
 }
+
+const V16: OdooVersion = OdooVersion::new(16, 0);
+
+const VIEWS_15: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="view_partner_form" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        <field name="arch" type="xml">
+            <field name="vat" position="after"><field name="ref"/></field>
+        </field>
+    </record>
+    <record id="view_partner_admin" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="mode">primary</field>
+        <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        <field name="arch" type="xml">
+            <field name="vat" position="after"><field name="ref"/></field>
+        </field>
+    </record>
+    <template id="portal_layout" inherit_id="portal.portal_layout" groups="base.group_user">
+        <xpath expr="//div" position="inside"><span>Hi</span></xpath>
+    </template>
+    <record id="mail_template_order" model="mail.template">
+        <field name="name">Order</field>
+        <field name="body_html" type="xml"><div>Hello</div></field>
+    </record>
+</odoo>
+"#;
+
+const PYTHON_15: &str = r#"from odoo import http, models
+from odoo.http import request
+from odoo.osv.query import Query
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    def fields_view_get(self, view_id=None, view_type="form", toolbar=False, submenu=False):
+        return super().fields_view_get(view_id, view_type, toolbar, submenu)
+
+    def action_translate(self):
+        self.env["ir.translation"].search([])
+        return self.search(args=[("name", "=", "x")], limit=1), Query
+
+
+class Controller(http.Controller):
+    @http.route("/up", type="json", auth="user")
+    def up(self):
+        data = request.jsonrequest
+        request.context = dict(request.context, lang="nl_NL")
+        return self.env["ir.http"].binary_content(model="res.partner"), data
+"#;
+
+#[test]
+fn findings_for_odoo_16() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "16.0.1.0.0", &[("views/partner.xml", VIEWS_15)], PYTHON_15);
+    write(
+        dir.path(),
+        "acme_up/__manifest__.py",
+        "{'name': 'Up', 'version': '16.0.1.0.0', 'license': 'AGPL-3', \
+         'data': ['views/partner.xml'], 'qweb': ['static/src/xml/*.xml'], \
+         'assets': {'web.assets_qweb': ['acme_up/static/src/xml/*.xml'], \
+         'web.assets_frontend': [('include', 'web._assets_common_styles')]}}\n",
+    );
+    let mut found = codes(dir.path(), "U16", V16);
+    found.sort();
+    let expected: Vec<(String, usize)> = [
+        ("U1601", 6),
+        ("U1601", 20),
+        ("U1602", 25),
+        ("U1603", 1),
+        ("U1604", 1),
+        ("U1605", 1),
+        ("U1606", 13),
+        ("U1607", 20),
+        ("U1607", 21),
+        ("U1608", 22),
+        ("U1609", 14),
+        ("U1610", 3),
+        ("U1611", 9),
+    ]
+    .into_iter()
+    .map(|(c, l)| (c.to_string(), l))
+    .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn fixes_for_odoo_16() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "16.0.1.0.0", &[("views/partner.xml", VIEWS_15)], PYTHON_15);
+    write(
+        dir.path(),
+        "acme_up/__manifest__.py",
+        "{'name': 'Up', 'version': '16.0.1.0.0', 'license': 'AGPL-3', \
+         'data': ['views/partner.xml'], 'assets': {'web.assets_qweb': ['acme_up/static/src/xml/*.xml']}}\n",
+    );
+    let xml = fixed(dir.path(), "U16", V16, &module.join("views/partner.xml"), FixMode::Safe);
+    assert_eq!(
+        xml,
+        VIEWS_15.replace(r#"name="body_html" type="xml""#, r#"name="body_html" type="html""#)
+    );
+    let manifest = fixed(dir.path(), "U16", V16, &module.join("__manifest__.py"), FixMode::Safe);
+    assert!(
+        manifest.contains("'web.assets_backend': ['acme_up/static/src/xml/*.xml']"),
+        "{manifest}"
+    );
+    let python = fixed(dir.path(), "U16", V16, &module.join("models/partner.py"), FixMode::Safe);
+    let expected = PYTHON_15
+        .replace("odoo.osv.query", "odoo.tools.query")
+        .replace("search(args=", "search(domain=")
+        .replace("request.jsonrequest", "request.get_json_data()");
+    assert_eq!(python, expected);
+}

@@ -60,6 +60,17 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
+| [U1601](U1601.md) | `upgrade-extension-view-groups` | An extension view sets `groups_id`, rejected since Odoo 16.0. |
+| [U1602](U1602.md) | `upgrade-html-field-type` | `body_html` of a mail template loaded with `type="xml"`, deprecated in Odoo 16.0. |
+| [U1603](U1603.md) | `upgrade-assets-qweb` | The manifest adds templates to `web.assets_qweb`, removed in Odoo 16.0. |
+| [U1604](U1604.md) | `upgrade-removed-asset-bundles-16` | The manifest uses an asset bundle removed in Odoo 16.0. |
+| [U1605](U1605.md) | `upgrade-manifest-qweb` | The manifest lists templates under `qweb`, which Odoo ignores. |
+| [U1606](U1606.md) | `upgrade-ir-translation` | Python code uses `ir.translation`, removed in Odoo 16.0. |
+| [U1607](U1607.md) | `upgrade-request-api` | `request.jsonrequest`, or an assignment to `request.context`/`request.uid`, removed in Odoo 16.0. |
+| [U1608](U1608.md) | `upgrade-binary-content` | `ir.http.binary_content()`, removed in Odoo 16.0. |
+| [U1609](U1609.md) | `upgrade-search-args` | `search(args=...)`, renamed `domain=` in Odoo 16.0. |
+| [U1610](U1610.md) | `upgrade-osv-query` | `odoo.osv.query`, moved to `odoo.tools.query` in Odoo 16.0. |
+| [U1611](U1611.md) | `upgrade-fields-view-get` | A `fields_view_get` override, no longer called by the web client since Odoo 16.0. |
 | [U1701](U1701.md) | `upgrade-attrs-states` | A view uses `attrs` or `states`, rejected since Odoo 17.0. |
 | [U1702](U1702.md) | `upgrade-list-column-invisible` | A list column hidden with `invisible`, which only hides the cells since Odoo 17.0. |
 | [U1703](U1703.md) | `upgrade-report-act-window-tags` | `<report>` or `<act_window>`, removed in Odoo 17.0. |
@@ -222,6 +233,17 @@ PO104
 R8101
 R8180
 R8181
+U1601
+U1602
+U1603
+U1604
+U1605
+U1606
+U1607
+U1608
+U1609
+U1610
+U1611
 U1701
 U1702
 U1703
