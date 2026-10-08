@@ -16,6 +16,7 @@ pub mod po;
 pub mod po_fixes;
 pub mod po_odoo;
 pub mod python;
+pub mod upgrade;
 pub mod xml;
 
 use manifest::{author, files, keys, values};
@@ -110,6 +111,16 @@ pub const ALL: &[Rule] = &[
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,
+    upgrade::v18::XML_TREE_VIEW,
+    upgrade::v18::XML_VIEW_MODE_TREE,
+    upgrade::v18::XML_TREE_REFERENCE,
+    upgrade::v18::XML_CRON_NUMBERCALL,
+    upgrade::v18::XML_DEFAULT_PERIOD,
+    upgrade::v18::XML_KANBAN_BOX,
+    upgrade::v18::GROUP_OPERATOR,
+    upgrade::v18::USER_HAS_GROUPS,
+    upgrade::v18::PYTHON_TREE_VIEW,
+    upgrade::v18::NAME_SEARCH_OVERRIDE,
     fields::TRANSLATION_FIELD,
     fields::ATTRIBUTE_DEPRECATED,
     methods::METHOD_REQUIRED_SUPER,

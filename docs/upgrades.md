@@ -43,6 +43,22 @@ The breakdown is deliberately not a percentage: one renamed field can be
 more work than fifty `t-esc`. The counts say what can be automated and what
 needs a developer.
 
+## Upgrade rules
+
+Rules whose code starts with `U` describe what changed in one Odoo version:
+`U18xx` for 18.0, and so on. They use Odoo's own code-upgrade scripts and the
+differences between Odoo's branches as their source, and have a fix where the
+change is mechanical. `odl upgrade-check` uses them automatically; to check
+one step directly:
+
+```bash
+odl check --select U18 --version 18.0
+```
+
+They apply to modules on that version or newer: a 17.0 module with `<tree>`
+views is fine, an 18.0 module with them fails to install. See the
+[rules](rules/index.md) for the full list.
+
 ## Applying the changes
 
 ```bash

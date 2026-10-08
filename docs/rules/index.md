@@ -60,6 +60,16 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
+| [U1801](U1801.md) | `upgrade-tree-view` | A view uses `<tree>`, renamed `<list>` in Odoo 18.0. |
+| [U1802](U1802.md) | `upgrade-view-mode-tree` | An action's `view_mode` says `tree`, renamed `list` in Odoo 18.0. |
+| [U1803](U1803.md) | `upgrade-tree-reference` | An xpath, `mode` or `tree_view_ref` refers to `tree`, renamed `list` in Odoo 18.0. |
+| [U1804](U1804.md) | `upgrade-cron-numbercall` | A scheduled action sets `numbercall` or `doall`, removed in Odoo 18.0. |
+| [U1805](U1805.md) | `upgrade-default-period` | A date filter's `default_period` uses a name Odoo 18.0 replaced. |
+| [U1806](U1806.md) | `upgrade-kanban-box` | A kanban view uses the `kanban-box` template, replaced by `card` in Odoo 18.0. |
+| [U1807](U1807.md) | `upgrade-group-operator` | A field uses `group_operator=`, renamed `aggregator=` in Odoo 18.0. |
+| [U1808](U1808.md) | `upgrade-user-has-groups` | `user_has_groups()`, removed in Odoo 18.0, is called. |
+| [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
+| [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
 | [W8103](W8103.md) | `translation-field` | A field label is wrapped in `_()`. |
 | [W8105](W8105.md) | `attribute-deprecated` | A model uses a deprecated class attribute. |
 | [W8106](W8106.md) | `method-required-super` | An override of a core method does not call `super()`. |
@@ -170,6 +180,16 @@ PO104
 R8101
 R8180
 R8181
+U1801
+U1802
+U1803
+U1804
+U1805
+U1806
+U1807
+U1808
+U1809
+U1810
 W8103
 W8105
 W8106
