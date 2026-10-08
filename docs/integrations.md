@@ -121,3 +121,59 @@ tested by the odoo-lint project on a Forgejo instance; reports are welcome.
 The `sarif` format also works with the VS Code SARIF Viewer, Azure DevOps,
 SonarQube's external issue import and DefectDojo. The `json` format is a plain
 array for your own scripts.
+
+## README badges
+
+`odl badge` writes a [shields.io endpoint](https://shields.io/badges/endpoint-badge)
+JSON file:
+
+```bash
+odl badge -o odoo-lint.json                       # odoo-lint | 94% clean
+odl badge --upgrade 19.0 -o odoo-upgrade.json     # Odoo 19.0 | ready (or "12 changes")
+```
+
+The share of clean modules counts the modules without findings, with the
+rules your configuration selects, so align `select` and `ignore` with your
+policy first. The upgrade badge is green when
+[`odl upgrade-check`](upgrades.md) finds nothing.
+
+A workflow can publish both to a `badges` branch on every push:
+
+```yaml
+name: badges
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  badges:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push to the badges branch
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8
+      - run: |
+          mkdir -p /tmp/badges
+          uvx --prerelease allow --from odoo-linter odl badge -o /tmp/badges/odoo-lint.json
+          uvx --prerelease allow --from odoo-linter odl badge --upgrade 19.0 -o /tmp/badges/odoo-upgrade.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan badges
+          git rm -rfq --cached . && git clean -fdxq
+          cp /tmp/badges/*.json .
+          git add *.json && git commit -qm "Update badges"
+          git push -f origin badges
+```
+
+And in the README:
+
+```markdown
+![odoo-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/badges/odoo-lint.json)
+![Odoo upgrade](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/badges/odoo-upgrade.json)
+```
+
+Pin the actions to a full commit SHA in your own workflows.

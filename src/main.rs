@@ -79,6 +79,21 @@ enum Commands {
         #[arg(long)]
         diff: bool,
     },
+    /// Write a README badge (shields.io endpoint JSON): share of clean modules, or upgrade readiness
+    Badge {
+        /// Files or directories to check
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// Upgrade readiness for this Odoo version instead of the share of clean modules
+        #[arg(long)]
+        upgrade: Option<String>,
+        /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Write the JSON to this file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
     Hook,
     /// Run a language server on stdin/stdout, for editors
@@ -128,6 +143,12 @@ fn main() -> ExitCode {
             unsafe_fixes,
             diff,
         }),
+        Commands::Badge {
+            paths,
+            upgrade,
+            config,
+            output,
+        } => badge(&paths, upgrade, config, output),
         Commands::Hook => {
             let mut event = String::new();
             // A hook must never break the agent: problems mean "nothing to report".
@@ -367,4 +388,35 @@ fn upgrade_check(args: UpgradeArgs) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> ExitCode {
+    let settings = match Settings::load(&paths[0], config.as_deref(), CliOverrides::default()) {
+        Ok(loaded) => loaded.settings,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    let value = match upgrade {
+        Some(target) => match target.parse() {
+            Ok(target) => odoo_lint::badge::upgrade_ready(&settings, paths, target),
+            Err(err) => {
+                eprintln!("error: --upgrade: {err}");
+                return ExitCode::from(2);
+            }
+        },
+        None => odoo_lint::badge::clean(&settings, paths),
+    };
+    let text = serde_json::to_string_pretty(&value).expect("badge serializes") + "\n";
+    match output {
+        Some(path) => {
+            if let Err(err) = std::fs::write(&path, text) {
+                eprintln!("error: cannot write {}: {err}", path.display());
+                return ExitCode::from(2);
+            }
+        }
+        None => print!("{text}"),
+    }
+    ExitCode::SUCCESS
 }

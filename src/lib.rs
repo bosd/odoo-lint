@@ -1,3 +1,4 @@
+pub mod badge;
 pub mod checker;
 pub mod config;
 pub mod diagnostics;
