@@ -688,3 +688,151 @@ fn fixes_for_odoo_16() {
         .replace("request.jsonrequest", "request.get_json_data()");
     assert_eq!(python, expected);
 }
+
+const V20: OdooVersion = OdooVersion::new(20, 0);
+
+const VIEWS_19: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <template id="report_order">
+        <t t-call="web.external_layout">
+            <t t-set="o" t-value="o.with_context(lang=o.partner_id.lang)"/>
+            <t t-set="forced_vat" t-value="o.fiscal_position_id.foreign_vat"/>
+            <div class="page"><span t-esc="o.name"/><span t-raw="o.note"/></div>
+        </t>
+        <t t-call="acme_up.header">
+            <t t-set="title" t-value="o.name"/>
+        </t>
+        <i class="fa fa-check" title="Done"/>
+    </template>
+    <record id="view_bank_form" model="ir.ui.view">
+        <field name="model">res.partner.bank</field>
+        <field name="arch" type="xml">
+            <form>
+                <field name="acc_number"/>
+                <field name="date" widget="remaining_days"/>
+            </form>
+        </field>
+    </record>
+    <record id="view_order_search" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="arch" type="xml">
+            <search>
+                <filter name="this_year" date="date_order" start_year="-1" end_year="0"/>
+            </search>
+        </field>
+    </record>
+    <record id="report_order_action" model="ir.actions.report">
+        <field name="name">Order</field>
+        <field name="report_file">acme_up.report_order</field>
+    </record>
+    <record id="partner_logo" model="res.partner">
+        <field name="image_1920" type="base64" file="acme_up/static/img/logo.png"/>
+    </record>
+    <record id="rule_own" model="ir.rule">
+        <field name="name">Own orders</field>
+    </record>
+</odoo>
+"#;
+
+const PYTHON_19: &str = r#"import base64
+
+from odoo import models
+from odoo.http import content_disposition, request
+from odoo.tools import ormcache
+
+
+class Order(models.Model):
+    _inherit = "sale.order"
+
+    def action_export(self, content):
+        params = self.env["ir.config_parameter"].sudo()
+        limit = int(params.get_param("acme.limit", "10"))
+        params.set_param("acme.last", self.name)
+        self.env["ir.attachment"].create({"name": "x", "datas": base64.b64encode(content)})
+        self.env.registry.clear_cache("default")
+        if not self._check_recursion():
+            return False
+        return limit, self.partner_id.bank_ids.acc_number, content_disposition("x"), request
+"#;
+
+#[test]
+fn findings_for_odoo_20() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "20.0.1.0.0", &[("views/views.xml", VIEWS_19)], PYTHON_19);
+    let mut found = codes(dir.path(), "U20", V20);
+    found.sort();
+    let expected: Vec<(String, usize)> = [
+        ("U2002", 38),
+        ("U2003", 7),
+        ("U2003", 7),
+        ("U2004", 4),
+        ("U2004", 9),
+        ("U2006", 36),
+        ("U2008", 33),
+        ("U2009", 12),
+        ("U2010", 27),
+        ("U2012", 18),
+        ("U2014", 19),
+        ("U2017", 13),
+        ("U2017", 14),
+        ("U2018", 15),
+        ("U2020", 17),
+        ("U2022", 16),
+        ("U2023", 5),
+        ("U2024", 4),
+        ("U2026", 19),
+    ]
+    .into_iter()
+    .map(|(c, l)| (c.to_string(), l))
+    .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn fixes_for_odoo_20() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "20.0.1.0.0", &[("views/views.xml", VIEWS_19)], PYTHON_19);
+    let xml = fixed(dir.path(), "U20", V20, &module.join("views/views.xml"), FixMode::Unsafe);
+    let expected = VIEWS_19
+        .replace(
+            r#"<span t-esc="o.name"/><span t-raw="o.note"/>"#,
+            r#"<span t-out="o.name"/><span t-out="o.note"/>"#,
+        )
+        .replace(
+            "<t t-call=\"acme_up.header\">\n            <t t-set=\"title\" t-value=\"o.name\"/>\n        </t>",
+            "<t t-call=\"acme_up.header\" title=\"o.name\"/>",
+        )
+        .replace(r#"name="acc_number""#, r#"name="account_number""#)
+        .replace(r#"widget="remaining_days""#, r#"widget="relative_date""#)
+        .replace(r#" start_year="-1" end_year="0""#, "")
+        .replace("        <field name=\"report_file\">acme_up.report_order</field>\n", "")
+        .replace(r#"type="base64""#, r#"type="bytes""#);
+    assert_eq!(xml, expected);
+
+    let python = fixed(
+        dir.path(),
+        "U20",
+        V20,
+        &module.join("models/partner.py"),
+        FixMode::Unsafe,
+    );
+    let expected = PYTHON_19
+        .replace(
+            "from odoo.http import content_disposition, request",
+            "from odoo.http import request\nfrom odoo.http.stream import content_disposition",
+        )
+        .replace("from odoo.tools import ormcache", "from odoo.api import ormcache")
+        .replace(
+            "int(params.get_param(\"acme.limit\", \"10\"))",
+            "params.get_int(\"acme.limit\", 10)",
+        )
+        .replace("params.set_param(", "params.set_str(")
+        .replace("\"datas\": base64.b64encode(content)", "\"raw\": content")
+        .replace(
+            "self.env.registry.clear_cache(",
+            "self.env.transaction.invalidate_ormcache(",
+        )
+        .replace("not self._check_recursion()", "self._has_cycle()")
+        .replace(".acc_number", ".account_number");
+    assert_eq!(python, expected);
+}
