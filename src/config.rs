@@ -26,6 +26,9 @@ pub struct OdooLintConfig {
     /// Glob pattern -> rules to ignore in matching files.
     pub per_file_ignores: Option<HashMap<String, Vec<String>>>,
     pub rules: Option<RulesConfig>,
+    /// Module pattern (`*`, `prefix*` or an exact name) -> manifest values
+    /// that fixes fill in when a required key is missing.
+    pub manifest_defaults: Option<HashMap<String, HashMap<String, toml::Value>>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -297,6 +300,29 @@ impl OdooLintConfig {
     /// Per-rule settings, empty when none are configured.
     pub fn rules(&self) -> &RulesConfig {
         self.rules.as_ref().unwrap_or(&NO_RULES_CONFIG)
+    }
+
+    /// The configured default of manifest `key` for `module_name`: an exact
+    /// module name wins over the longest matching `prefix*` pattern, which
+    /// wins over `*`.
+    pub fn manifest_default(&self, module_name: &str, key: &str) -> Option<&toml::Value> {
+        let defaults = self.manifest_defaults.as_ref()?;
+        if let Some(value) = defaults
+            .get(module_name)
+            .filter(|_| !module_name.ends_with('*'))
+            .and_then(|values| values.get(key))
+        {
+            return Some(value);
+        }
+        defaults
+            .iter()
+            .filter_map(|(pattern, values)| {
+                let prefix = pattern.strip_suffix('*')?;
+                let value = values.get(key)?;
+                module_name.starts_with(prefix).then_some((prefix.len(), value))
+            })
+            .max_by_key(|(len, _)| *len)
+            .map(|(_, value)| value)
     }
 
     /// Authors of which one must be in the manifest of `module_name` (C8101).

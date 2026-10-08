@@ -1,7 +1,7 @@
 //! Manifest keys: required (C8102, C8119 for apps), deprecated (C8103) and
 //! superfluous (C8116).
 
-use super::key_or_dict;
+use super::{add_default, key_or_dict};
 use crate::checker::{ManifestContext, Reporter};
 use crate::config::list_or;
 use crate::fix::{Edit, Fix};
@@ -36,6 +36,11 @@ intended, and the Odoo Apps store rejects the module.
 [tool.odoo-lint.rules.manifest-required-key]
 keys = ["license", "website"]
 ```
+
+## Fix safety
+
+Safe, when [`manifest-defaults`](../configuration.md#manifest-defaults) has a
+value for the key: it is added as the last entry. Otherwise there is no fix.
 "#,
     check: Check::Manifest(check_required_keys),
     min_odoo: None,
@@ -135,6 +140,11 @@ The Odoo Apps store rejects or misrepresents paid modules without them.
 [tool.odoo-lint.rules.manifest-required-key-app]
 keys = ["currency", "images", "license", "support"]
 ```
+
+## Fix safety
+
+Safe, when [`manifest-defaults`](../configuration.md#manifest-defaults) has a
+value for the key: it is added as the last entry. Otherwise there is no fix.
 "#,
     check: Check::Manifest(check_required_keys_app),
     min_odoo: None,
@@ -152,11 +162,13 @@ fn required_keys(ctx: &ManifestContext) -> Vec<String> {
 fn check_required_keys(ctx: &ManifestContext, reporter: &mut Reporter) {
     for key in required_keys(ctx) {
         if ctx.manifest.get(&key).is_none() {
-            reporter.report(
-                &MANIFEST_REQUIRED_KEY,
-                ctx.manifest.dict().start(),
-                format!("Missing required key \"{key}\" in manifest file"),
-            );
+            reporter
+                .report(
+                    &MANIFEST_REQUIRED_KEY,
+                    ctx.manifest.dict().start(),
+                    format!("Missing required key \"{key}\" in manifest file"),
+                )
+                .fix = add_default(ctx, &key);
         }
     }
 }
@@ -238,11 +250,13 @@ fn check_required_keys_app(ctx: &ManifestContext, reporter: &mut Reporter) {
     );
     for key in app_keys {
         if !already_required.contains(&key) && ctx.manifest.get(&key).is_none() {
-            reporter.report(
-                &MANIFEST_REQUIRED_KEY_APP,
-                ctx.manifest.dict().start(),
-                format!("Missing required key \"{key}\" in manifest file for modules with price."),
-            );
+            reporter
+                .report(
+                    &MANIFEST_REQUIRED_KEY_APP,
+                    ctx.manifest.dict().start(),
+                    format!("Missing required key \"{key}\" in manifest file for modules with price."),
+                )
+                .fix = add_default(ctx, &key);
         }
     }
 }
