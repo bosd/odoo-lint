@@ -13,6 +13,7 @@ pub mod e0001_syntax_error;
 pub mod manifest;
 pub mod odoo001_missing_depends;
 pub mod po;
+pub mod po_odoo;
 pub mod python;
 
 use manifest::{author, files, keys, values};
@@ -97,6 +98,10 @@ pub const ALL: &[Rule] = &[
     po::PO_DUPLICATE_MESSAGE_DEFINITION,
     po::PO_DUPLICATE_MODEL_DEFINITION,
     po::PO_PRETTY_FORMAT,
+    po_odoo::PO_NOT_IN_POT,
+    po_odoo::PO_UNKNOWN_OCCURRENCE,
+    po_odoo::PO_FILE_NAME,
+    po_odoo::PO_FUZZY,
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,

@@ -25,6 +25,7 @@ why
 usage
 configuration
 integrations
+translations
 rules/index
 parity
 development
