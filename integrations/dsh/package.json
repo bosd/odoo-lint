@@ -1,0 +1,31 @@
+{
+  "name": "dsh-odoo-lint",
+  "version": "0.1.0",
+  "description": "odoo-lint for DeepSeek Harness: lint and fix Odoo addons, and lint every addon file the agent edits",
+  "keywords": [
+    "dsh-plugin",
+    "odoo",
+    "lint",
+    "pylint-odoo",
+    "translations"
+  ],
+  "homepage": "https://odoo-lint.readthedocs.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bosd/odoo-lint.git",
+    "directory": "integrations/dsh"
+  },
+  "license": "MIT",
+  "author": "bosd",
+  "files": [
+    "cordis.patch.yml",
+    "hooks.json",
+    "bin",
+    "skills"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

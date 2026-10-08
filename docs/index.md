@@ -25,6 +25,7 @@ why
 usage
 configuration
 integrations
+ai
 translations
 rules/index
 parity

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "write|edit|str_replace_editor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/odl\" hook",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

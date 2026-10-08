@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use odoo_lint::config::OdooLintConfig;
 use odoo_lint::diagnostics::Violation;
 use odoo_lint::fix::{Applicability, FixMode};
 use odoo_lint::output::{self, OutputFormat};
@@ -47,6 +46,10 @@ enum Commands {
         #[arg(long)]
         diff: bool,
     },
+    /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
+    Hook,
+    /// Run a Model Context Protocol server on stdin/stdout, for AI coding agents
+    Mcp,
     /// Explain a rule, or list all rules when no code is given
     Rule {
         /// Rule code or name, e.g. C8101 or manifest-required-author
@@ -66,26 +69,32 @@ enum RuleFormat {
     Json,
 }
 
-fn rule_json(rule: &rules::Rule) -> serde_json::Value {
-    serde_json::json!({
-        "code": rule.code,
-        "name": rule.name,
-        "summary": rule.summary,
-        "min_odoo_version": rule.min_odoo.map(|v| v.to_string()),
-        "max_odoo_version": rule.max_odoo.map(|v| v.to_string()),
-        "doc": rule.doc.trim(),
-    })
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Hook => {
+            let mut event = String::new();
+            // A hook must never break the agent: problems mean "nothing to report".
+            if std::io::Read::read_to_string(&mut std::io::stdin(), &mut event).is_ok() {
+                if let Some(output) = odoo_lint::hook::run(&event) {
+                    println!("{output}");
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Commands::Mcp => match odoo_lint::mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::from(2)
+            }
+        },
         Commands::Rule {
             code: None,
             output_format,
         } => {
             if output_format == RuleFormat::Json {
-                let all: Vec<_> = rules::ALL.iter().map(rule_json).collect();
+                let all: Vec<_> = rules::ALL.iter().map(rules::Rule::to_json).collect();
                 println!("{}", serde_json::to_string_pretty(&all).expect("rules serialize"));
             } else {
                 for rule in rules::ALL {
@@ -102,7 +111,7 @@ fn main() -> ExitCode {
                 if output_format == RuleFormat::Json {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(&rule_json(rule)).expect("rule serializes")
+                        serde_json::to_string_pretty(&rule.to_json()).expect("rule serializes")
                     );
                 } else {
                     print!("{}", rule.to_markdown());
@@ -125,29 +134,19 @@ fn main() -> ExitCode {
             unsafe_fixes,
             diff,
         } => {
-            let loaded = match config {
-                Some(file) => OdooLintConfig::from_file(&file).map(|c| (c, Some(file))),
-                None => OdooLintConfig::discover(&paths[0]),
+            let overrides = CliOverrides {
+                target_version: version,
+                select,
+                ignore,
             };
-            let (config, config_path) = match loaded {
+            let loaded = match Settings::load(&paths[0], config.as_deref(), overrides) {
                 Ok(loaded) => loaded,
                 Err(err) => {
                     eprintln!("error: {err}");
                     return ExitCode::from(2);
                 }
             };
-            let overrides = CliOverrides {
-                target_version: version,
-                select,
-                ignore,
-            };
-            let (settings, warnings) = match Settings::new(config, config_path.as_deref(), overrides) {
-                Ok(result) => result,
-                Err(err) => {
-                    eprintln!("error: {err}");
-                    return ExitCode::from(2);
-                }
-            };
+            let (settings, config_path, warnings) = (loaded.settings, loaded.config_path, loaded.warnings);
             for warning in &warnings {
                 eprintln!("warning: {warning}");
             }

@@ -15,6 +15,8 @@ repos:
         entry: check-yaml
         language: system
         types: [yaml]
+        # dsh evaluates `!!js` tags when it loads the patch.
+        exclude: ^integrations/dsh/cordis\.patch\.yml$
       - id: end-of-file-fixer
         name: Fix End of Files
         entry: end-of-file-fixer

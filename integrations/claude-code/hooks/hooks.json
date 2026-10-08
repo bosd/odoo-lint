@@ -1,0 +1,17 @@
+{
+  "description": "Lint Odoo addon files after Claude edits them",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/odl\" hook",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

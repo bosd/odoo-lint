@@ -1,0 +1,14 @@
+{
+  "name": "odoo-lint",
+  "description": "odoo-lint, a fast Odoo linter, for Claude Code",
+  "owner": { "name": "bosd" },
+  "plugins": [
+    {
+      "name": "odoo-lint",
+      "source": "./integrations/claude-code",
+      "description": "Lint and fix Odoo addons with odoo-lint (odl)",
+      "category": "development",
+      "tags": ["odoo", "linter", "python", "translations"]
+    }
+  ]
+}

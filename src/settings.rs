@@ -99,7 +99,30 @@ pub fn selector_matches(selector: &str, rule: &Rule) -> bool {
             && rule.code[..selector.len()].eq_ignore_ascii_case(selector))
 }
 
+/// Settings as `odl check` builds them: the config file given, or the one
+/// found from `start`, with the CLI options on top.
+pub struct Loaded {
+    pub settings: Settings,
+    pub config_path: Option<PathBuf>,
+    /// Selectors that match no rule.
+    pub warnings: Vec<String>,
+}
+
 impl Settings {
+    pub fn load(start: &Path, config: Option<&Path>, cli: CliOverrides) -> Result<Loaded, String> {
+        let (config, config_path) = match config {
+            Some(file) => OdooLintConfig::from_file(file).map(|c| (c, Some(file.to_path_buf()))),
+            None => OdooLintConfig::discover(start),
+        }
+        .map_err(|e| e.to_string())?;
+        let (settings, warnings) = Self::new(config, config_path.as_deref(), cli)?;
+        Ok(Loaded {
+            settings,
+            config_path,
+            warnings,
+        })
+    }
+
     /// Builds settings from a config (found at `config_path`, if any) and CLI
     /// options. Returns warnings for selectors that match no rule; those are
     /// usually pylint-odoo checks odoo-lint does not implement yet.
