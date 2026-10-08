@@ -70,6 +70,27 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1808](U1808.md) | `upgrade-user-has-groups` | `user_has_groups()`, removed in Odoo 18.0, is called. |
 | [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
 | [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
+| [U1901](U1901.md) | `upgrade-env-shortcuts` | `._uid`, `._context` or `request.cr/uid/context`, deprecated in Odoo 19.0. |
+| [U1902](U1902.md) | `upgrade-sql-constraints` | `_sql_constraints`, silently ignored since Odoo 19.0. |
+| [U1903](U1903.md) | `upgrade-api-model-create` | `create` is decorated with `@api.model`, which makes it a batch create in Odoo 19.0. |
+| [U1904](U1904.md) | `upgrade-api-returns` | `@api.returns`, removed in Odoo 19.0. |
+| [U1905](U1905.md) | `upgrade-read-group-override` | A model overrides `read_group`, which the web client no longer calls in Odoo 19.0. |
+| [U1906](U1906.md) | `upgrade-route-json` | A route uses `type='json'`, renamed `'jsonrpc'` in Odoo 19.0. |
+| [U1907](U1907.md) | `upgrade-python-groups-id` | Python code uses `groups_id`, renamed `group_ids` in Odoo 19.0. |
+| [U1908](U1908.md) | `upgrade-osv-expression` | `odoo.osv.expression` is imported, deprecated in Odoo 19.0 and removed in 20.0. |
+| [U1909](U1909.md) | `upgrade-auto-join` | A field uses `auto_join=`, renamed `bypass_search_access=` in Odoo 19.0. |
+| [U1910](U1910.md) | `upgrade-name-search-args` | `name_search(args=...)`, renamed `domain=` in Odoo 19.0. |
+| [U1911](U1911.md) | `upgrade-clear-caches` | `clear_caches()`, removed in Odoo 19.0. |
+| [U1912](U1912.md) | `upgrade-removed-helpers` | `get_module_resource`, `get_resource_path` or `odoo.registry()`, removed in Odoo 19.0. |
+| [U1913](U1913.md) | `upgrade-sequence-get` | `ir.sequence` `get()`/`get_id()`, removed in Odoo 19.0. |
+| [U1914](U1914.md) | `upgrade-domain-operators` | A domain uses `<>`, `==` or an upper-case operator, deprecated in Odoo 19.0. |
+| [U1915](U1915.md) | `upgrade-models-newid` | `from odoo.models import NewId`, which fails in Odoo 19.0. |
+| [U1916](U1916.md) | `upgrade-groups-id` | A record or view uses `groups_id`, renamed `group_ids` in Odoo 19.0. |
+| [U1917](U1917.md) | `upgrade-search-group-attributes` | A search view's `<group>` has `expand` or `string`, rejected in Odoo 19.0. |
+| [U1918](U1918.md) | `upgrade-groups-users` | A `res.groups` record sets `users`, renamed `user_ids` in Odoo 19.0. |
+| [U1919](U1919.md) | `upgrade-manifest-old-data-keys` | The manifest lists files under `update_xml` or `demo_xml`, ignored since Odoo 19.0. |
+| [U1920](U1920.md) | `upgrade-t-call-element` | `t-call` on an element other than `<t>`, rejected in Odoo 19.0. |
+| [U1921](U1921.md) | `upgrade-partner-mobile-title` | A partner or company view uses `mobile` or `title`, removed in Odoo 19.0. |
 | [W8103](W8103.md) | `translation-field` | A field label is wrapped in `_()`. |
 | [W8105](W8105.md) | `attribute-deprecated` | A model uses a deprecated class attribute. |
 | [W8106](W8106.md) | `method-required-super` | An override of a core method does not call `super()`. |
@@ -190,6 +211,27 @@ U1807
 U1808
 U1809
 U1810
+U1901
+U1902
+U1903
+U1904
+U1905
+U1906
+U1907
+U1908
+U1909
+U1910
+U1911
+U1912
+U1913
+U1914
+U1915
+U1916
+U1917
+U1918
+U1919
+U1920
+U1921
 W8103
 W8105
 W8106

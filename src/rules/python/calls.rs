@@ -443,7 +443,7 @@ fn is_empty_domain_variable(method: &StmtFunctionDef, name: &str, call: &ExprCal
 
 /// The model of `self.env["model"]....search`, through chained calls such as
 /// `.sudo()` and `.with_context(...)`.
-fn searched_model(func: &Expr) -> Option<&str> {
+pub(crate) fn searched_model(func: &Expr) -> Option<&str> {
     let Expr::Attribute(attribute) = func else { return None };
     let mut receiver = &*attribute.value;
     loop {
