@@ -26,7 +26,8 @@ pub fn edited_file(event: &Value) -> Option<PathBuf> {
 }
 
 fn is_linted(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e == "py" || e == "po" || e == "pot")
+    path.extension()
+        .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml")
 }
 
 /// The violations in `path`, if it is a file of an Odoo module.

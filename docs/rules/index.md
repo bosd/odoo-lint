@@ -86,6 +86,32 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [W8301](W8301.md) | `translation-not-lazy` | A string is formatted with `%` or `+` before it is translated. |
 | [W8302](W8302.md) | `translation-format-interpolation` | A string is formatted with `.format()` before it is translated. |
 | [W8303](W8303.md) | `translation-fstring-interpolation` | An f-string is translated. |
+| [XML001](XML001.md) | `xml-syntax-error` | An XML file the manifest loads cannot be read or parsed. |
+| [XML002](XML002.md) | `xml-header-missing` | An XML file has no `<?xml ... ?>` declaration. |
+| [XML003](XML003.md) | `xml-header-wrong` | The XML declaration is not `<?xml version="1.0" encoding="UTF-8" ?>`. |
+| [XML004](XML004.md) | `xml-record-missing-id` | A `<record>` or `<menuitem>` has no `id`. |
+| [XML005](XML005.md) | `xml-duplicate-record-id` | Two records of a module have the same XML id. |
+| [XML006](XML006.md) | `xml-duplicate-fields` | A record sets the same field twice. |
+| [XML007](XML007.md) | `xml-duplicate-template-id` | Two templates of a module have the same id. |
+| [XML008](XML008.md) | `xml-redundant-module-name` | A record id repeats the name of its own module. |
+| [XML009](XML009.md) | `xml-tag-position` | `t-if`, `id` or `class` attributes are not first in a tag. |
+| [XML010](XML010.md) | `xml-deprecated-data-node` | A `<data>` element is the only child of `<odoo>`. |
+| [XML011](XML011.md) | `xml-deprecated-openerp-node` | The root element is `<openerp>`. |
+| [XML012](XML012.md) | `xml-deprecated-qweb-directive` | A template uses `t-esc-options`, `t-field-options` or `t-raw-options`. |
+| [XML013](XML013.md) | `xml-deprecated-qweb-directive-15` | A template uses `t-esc` or `t-raw`, deprecated in Odoo 15.0. |
+| [XML014](XML014.md) | `xml-deprecated-tree-attribute` | A `<tree>` view uses `string`, `colors` or `fonts`. |
+| [XML015](XML015.md) | `xml-deprecated-oe-chatter` | A form uses `<div class="oe_chatter">` instead of `<chatter/>`. |
+| [XML016](XML016.md) | `xml-deprecated-res-groups-category-id` | A `res.groups` record sets `category_id`, removed in Odoo 19.0. |
+| [XML017](XML017.md) | `xml-view-dangerous-replace-low-priority` | A view replaces part of another with a priority below 99. |
+| [XML018](XML018.md) | `xml-dangerous-qweb-replace-low-priority` | A template replaces part of another with a priority below 99. |
+| [XML019](XML019.md) | `xml-create-user-wo-reset-password` | A `res.users` record is created without `no_reset_password`. |
+| [XML020](XML020.md) | `xml-not-valid-char-link` | A local `href`/`src` has no plain file extension. |
+| [XML021](XML021.md) | `xml-xpath-translatable-item` | An `<xpath>` selects an element by its translatable text. |
+| [XML022](XML022.md) | `xml-oe-structure-missing-id` | An `oe_structure` element has no id containing `oe_structure`. |
+| [XML023](XML023.md) | `xml-field-bool-without-eval` | A boolean field is set as text instead of with `eval`. |
+| [XML024](XML024.md) | `xml-field-numeric-without-eval` | A numeric field is set as text instead of with `eval`. |
+| [XML101](XML101.md) | `xml-bootstrap4-class` | A Bootstrap 4 class that Bootstrap 5 renamed, in Odoo 15.0 or later. |
+| [XML102](XML102.md) | `xml-bootstrap4-removed-class` | A Bootstrap 4 class that Bootstrap 5 removed, in Odoo 15.0 or later. |
 
 ```{toctree}
 :hidden:
@@ -170,4 +196,30 @@ W8202
 W8301
 W8302
 W8303
+XML001
+XML002
+XML003
+XML004
+XML005
+XML006
+XML007
+XML008
+XML009
+XML010
+XML011
+XML012
+XML013
+XML014
+XML015
+XML016
+XML017
+XML018
+XML019
+XML020
+XML021
+XML022
+XML023
+XML024
+XML101
+XML102
 ```

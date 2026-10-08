@@ -6,7 +6,7 @@ use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
 use crate::po::{PoError, PoFile};
 use crate::rules::po::PoContext;
 use crate::rules::python::inherit::{self, InheritFact, CONSIDER_MERGING_CLASSES_INHERITED};
-use crate::rules::{e0001_syntax_error, Check, Rule};
+use crate::rules::{self, e0001_syntax_error, xml, Check, Rule};
 use crate::semantic::Semantic;
 use crate::settings::{Settings, DEFAULT_EXCLUDES};
 use crate::sources::{normalize_newlines, Sources};
@@ -15,7 +15,7 @@ use rayon::prelude::*;
 use ruff_python_parser::parse_module;
 use ruff_source_file::LineIndex;
 use ruff_text_size::TextSize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::WalkDir;
@@ -50,8 +50,45 @@ pub fn lint_files_with(files: &[PathBuf], settings: &Settings, sources: &Sources
     }
     // Rules across the files of a module.
     violations.extend(inherit::violations(inherit_facts));
+    violations.extend(lint_xml(files, &modules, &rules, settings, sources));
     violations.sort();
     violations
+}
+
+/// The XML rules, per module with a file among `files`. They read every XML
+/// file the manifest loads (duplicate ids span files), but report only on
+/// `files`, and on loaded files that are missing.
+fn lint_xml(
+    files: &[PathBuf],
+    modules: &HashMap<PathBuf, Option<Arc<ModuleInfo>>>,
+    rules: &[&'static Rule],
+    settings: &Settings,
+    sources: &Sources,
+) -> Vec<Violation> {
+    let xml_rules: Vec<&Rule> = rules
+        .iter()
+        .copied()
+        .filter(|r| matches!(r.check, Check::Xml(_)))
+        .collect();
+    if xml_rules.is_empty() {
+        return Vec::new();
+    }
+    let mut seen = HashSet::new();
+    let module_list: Vec<&Arc<ModuleInfo>> = modules
+        .values()
+        .flatten()
+        .filter(|m| seen.insert(m.path.clone()))
+        .collect();
+    let requested: HashSet<&Path> = files.iter().map(PathBuf::as_path).collect();
+    module_list
+        .par_iter()
+        .flat_map_iter(|module| xml::lint_module(module, &xml_rules, settings, sources))
+        .filter(|v| {
+            let path = Path::new(&v.file_path);
+            (requested.contains(path) || !path.exists())
+                && rules::find(&v.code).is_none_or(|rule| !settings.is_ignored_in_file(path, rule))
+        })
+        .collect()
 }
 
 /// The files to lint under `paths`, without excluded ones.
@@ -91,7 +128,7 @@ pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
 }
 
 fn is_linted_extension(extension: &std::ffi::OsStr) -> bool {
-    extension == "py" || is_po_extension(extension)
+    extension == "py" || extension == "xml" || is_po_extension(extension)
 }
 
 fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
@@ -166,6 +203,10 @@ fn lint_file(
 ) -> (Vec<Violation>, Vec<InheritFact>) {
     if path.extension().is_some_and(is_po_extension) {
         return (lint_po_file(path, rules, settings, sources), Vec::new());
+    }
+    if path.extension().is_some_and(|e| e == "xml") {
+        // Linted per module, in `lint_xml`.
+        return (Vec::new(), Vec::new());
     }
     let Ok(source) = sources.read_to_string(path) else {
         return (Vec::new(), Vec::new());

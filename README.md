@@ -17,9 +17,10 @@
 
 Blazing fast Rust-native linter for Odoo modules. The command is called `odl`.
 
-It checks Python files, manifests and translation (`.po`) files, with the
-checks of OCA's pylint-odoo and `oca-checks-po`: same names, same messages,
-same results on their own test suites.
+It checks Python files, manifests, XML data files and translation (`.po`)
+files, with the checks of OCA's pylint-odoo, `oca-checks-odoo-module` and
+`oca-checks-po`: same names, same messages, same results on their own test
+suites.
 
 <p align="center">
   <img alt="Bar chart: linting OCA/sale-workflow takes 0.10s with odoo-lint and 25.8s with pylint-odoo" src="https://raw.githubusercontent.com/bosd/odoo-lint/main/docs/_static/benchmark.svg" width="640">
@@ -29,11 +30,13 @@ same results on their own test suites.
 
 - ⚡ **250x faster** than pylint with pylint-odoo, and still 30x faster on a
   single core
-- ⚖️ **Drop-in for pylint-odoo and `oca-checks-po`**: same codes, names and
-  messages, 71/71 checks matching on their own test suites, and
-  `# pylint: disable=` comments keep working
-- 🔧 **Automatic fixes**, safe and unsafe as in Ruff, for Python, manifests
-  and `.po` files (`odl check --fix`, `--diff` to preview)
+- ⚖️ **Drop-in for pylint-odoo and OCA's pre-commit checks**: same codes,
+  names and messages, 95/95 checks matching on their own test suites (Python,
+  manifests, XML, `.po`), and `# pylint: disable=` comments keep working
+- 🔧 **Automatic fixes**, safe and unsafe as in Ruff, for Python, manifests,
+  XML and `.po` files (`odl check --fix`, `--diff` to preview)
+- ⬆️ **Upgrade checks**: leftovers of older Odoo versions, such as Bootstrap 4
+  classes that do nothing since Odoo 15.0, with fixes
 - 🌍 **Translation checks that predict Odoo's loader**: why Odoo logs
   "malformed po file", and why a translation does not show up
 - 📦 **Installable with pip, uv or pipx**: one binary in prebuilt wheels for

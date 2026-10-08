@@ -1,14 +1,16 @@
 ---
 name: odoo-lint
-description: Lint and fix Odoo addons with odoo-lint (`odl`). Use when writing or reviewing Odoo module code, manifests or .po/.pot translation files; when pylint-odoo, oca-checks-po or pre-commit report codes like C8101, W8161, E8103 or PO001; or when Odoo logs "malformed po file" or translations do not show up.
+description: Lint and fix Odoo addons with odoo-lint (`odl`). Use when writing or reviewing Odoo module code, manifests, XML views and data, or .po/.pot translation files; when pylint-odoo, oca-checks-po, oca-checks-odoo-module or pre-commit report codes like C8101, W8161, E8103, PO001 or xml-duplicate-record-id; or when Odoo logs "malformed po file" or translations do not show up.
 ---
 
 # odoo-lint
 
-odoo-lint (`odl`) checks Odoo addons: Python code, `__manifest__.py` and
-translation files. Codes, names and messages are pylint-odoo's (`C8xxx`,
-`W8xxx`, `E8xxx`, `R8xxx`) and oca-checks-po's (`PO001`-`PO007`); `PO1xx`
-rules predict what Odoo's translation loader does.
+odoo-lint (`odl`) checks Odoo addons: Python code, `__manifest__.py`, XML
+data files and translation files. Codes, names and messages are pylint-odoo's
+(`C8xxx`, `W8xxx`, `E8xxx`, `R8xxx`); OCA's PO and XML checks keep their names
+(`PO001`-`PO007`, `XML001`-`XML024`). `PO1xx` rules predict what Odoo's
+translation loader does; `XML1xx` rules find leftovers of version upgrades,
+such as Bootstrap 4 classes in Odoo 15.0 and later.
 
 ## Tools
 
