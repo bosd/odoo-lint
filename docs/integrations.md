@@ -9,6 +9,23 @@ install the alpha versions from PyPI.
 
 ## GitHub
 
+### The odoo-lint action
+
+[odoo-lint action](https://github.com/marketplace/actions/odoo-lint) on the
+GitHub Marketplace installs the wheel and runs `odl check`. It shows the
+findings as annotations, or with `sarif: true` sends them to code scanning:
+
+```yaml
+- uses: actions/checkout@v6
+  with:
+    persist-credentials: false
+- uses: bosd/odoo-lint-action@v1
+  with:
+    version: 0.1.0a5 # optional, the latest release otherwise
+```
+
+The steps below do the same without the action.
+
 ### Annotations on pull requests
 
 The `github` format prints workflow commands that GitHub shows as annotations
