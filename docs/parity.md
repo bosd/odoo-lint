@@ -7,26 +7,26 @@ odoo-lint is compared with pylint-odoo on pylint-odoo's own test repository,
 pylint-odoo's test suite states for every check how many messages it expects
 there. A check matches when `odl` reports exactly as many.
 
-**20 of 64 checks match**; odoo-lint implements 20 of them.
+**50 of 64 checks match**; odoo-lint implements 50 of them.
 
 | Check | Code | pylint-odoo | odl | Status |
 | ----- | ---- | ----------: | --: | ------ |
-| `attribute-deprecated` | W8105 | 3 |  | not implemented yet |
-| `attribute-string-redundant` | W8113 | 33 |  | not implemented yet |
-| `bad-builtin-groupby` | W8155 | 2 |  | not implemented yet |
+| `attribute-deprecated` | [W8105](rules/W8105.md) | 3 | 3 | ✅ match |
+| `attribute-string-redundant` | [W8113](rules/W8113.md) | 33 | 33 | ✅ match |
+| `bad-builtin-groupby` | [W8155](rules/W8155.md) | 2 | 2 | ✅ match |
 | `category-allowed-app` | [C8117](rules/C8117.md) | 1 | 1 | ✅ match |
 | `consider-merging-classes-inherited` | R8180 | 3 |  | not implemented yet |
-| `context-overridden` | W8121 | 3 |  | not implemented yet |
-| `deprecated-inselect-operator` | E8149 | 5 |  | not implemented yet |
-| `deprecated-name-get` | E8146 | 1 |  | not implemented yet |
-| `deprecated-odoo-model-method` | W8160 | 2 |  | not implemented yet |
-| `deprecated-self-cr` | W8165 | 27 |  | not implemented yet |
+| `context-overridden` | [W8121](rules/W8121.md) | 3 | 3 | ✅ match |
+| `deprecated-inselect-operator` | [E8149](rules/E8149.md) | 5 | 5 | ✅ match |
+| `deprecated-name-get` | [E8146](rules/E8146.md) | 1 | 1 | ✅ match |
+| `deprecated-odoo-model-method` | [W8160](rules/W8160.md) | 2 | 2 | ✅ match |
+| `deprecated-self-cr` | [W8165](rules/W8165.md) | 27 | 27 | ✅ match |
 | `development-status-allowed` | [C8111](rules/C8111.md) | 1 | 1 | ✅ match |
-| `except-pass` | W8138 | 3 |  | not implemented yet |
-| `external-request-timeout` | E8106 | 51 |  | not implemented yet |
-| `inheritable-method-lambda` | E8148 | 2 |  | not implemented yet |
-| `inheritable-method-string` | E8147 | 4 |  | not implemented yet |
-| `invalid-commit` | E8102 | 4 |  | not implemented yet |
+| `except-pass` | [W8138](rules/W8138.md) | 3 | 3 | ✅ match |
+| `external-request-timeout` | [E8106](rules/E8106.md) | 51 | 51 | ✅ match |
+| `inheritable-method-lambda` | [E8148](rules/E8148.md) | 2 | 2 | ✅ match |
+| `inheritable-method-string` | [E8147](rules/E8147.md) | 4 | 4 | ✅ match |
+| `invalid-commit` | [E8102](rules/E8102.md) | 4 | 4 | ✅ match |
 | `invalid-email` | [R8181](rules/R8181.md) | 1 | 1 | ✅ match |
 | `license-allowed` | [C8105](rules/C8105.md) | 1 | 1 | ✅ match |
 | `manifest-author-string` | [E8101](rules/E8101.md) | 1 | 1 | ✅ match |
@@ -41,28 +41,28 @@ there. A check matches when `odl` reports exactly as many.
 | `manifest-summary-multiline` | [C8120](rules/C8120.md) | 2 | 2 | ✅ match |
 | `manifest-superfluous-key` | [C8116](rules/C8116.md) | 7 | 7 | ✅ match |
 | `manifest-version-format` | [C8106](rules/C8106.md) | 3 | 3 | ✅ match |
-| `method-compute` | C8108 | 2 |  | not implemented yet |
-| `method-inverse` | C8110 | 2 |  | not implemented yet |
-| `method-required-super` | W8106 | 8 |  | not implemented yet |
-| `method-search` | C8109 | 2 |  | not implemented yet |
+| `method-compute` | [C8108](rules/C8108.md) | 2 | 2 | ✅ match |
+| `method-inverse` | [C8110](rules/C8110.md) | 2 | 2 | ✅ match |
+| `method-required-super` | [W8106](rules/W8106.md) | 8 | 8 | ✅ match |
+| `method-search` | [C8109](rules/C8109.md) | 2 | 2 | ✅ match |
 | `missing-odoo-file-app` | [C8118](rules/C8118.md) | 1 | 1 | ✅ match |
 | `missing-readme` | [C8112](rules/C8112.md) | 1 | 1 | ✅ match |
-| `missing-return` | W8110 | 1 |  | not implemented yet |
-| `no-raise-unlink` | E8140 | 2 |  | not implemented yet |
-| `no-search-all` | W8163 | 12 |  | not implemented yet |
-| `no-wizard-in-models` | C8113 | 1 |  | not implemented yet |
-| `no-write-in-compute` | E8135 | 16 |  | not implemented yet |
-| `odoo-addons-relative-import` | W8150 | 4 |  | not implemented yet |
-| `odoo-exception-warning` | R8101 | 4 |  | not implemented yet |
+| `missing-return` | [W8110](rules/W8110.md) | 1 | 1 | ✅ match |
+| `no-raise-unlink` | [E8140](rules/E8140.md) | 2 | 2 | ✅ match |
+| `no-search-all` | [W8163](rules/W8163.md) | 12 | 12 | ✅ match |
+| `no-wizard-in-models` | [C8113](rules/C8113.md) | 1 | 1 | ✅ match |
+| `no-write-in-compute` | [E8135](rules/E8135.md) | 16 | 16 | ✅ match |
+| `odoo-addons-relative-import` | [W8150](rules/W8150.md) | 4 | 4 | ✅ match |
+| `odoo-exception-warning` | [R8101](rules/R8101.md) | 4 | 4 | ✅ match |
 | `prefer-env-translation` | W8161 | 58 |  | not implemented yet |
-| `print-used` | W8116 | 1 |  | not implemented yet |
-| `renamed-field-parameter` | W8111 | 2 |  | not implemented yet |
+| `print-used` | [W8116](rules/W8116.md) | 1 | 1 | ✅ match |
+| `renamed-field-parameter` | [W8111](rules/W8111.md) | 2 | 2 | ✅ match |
 | `resource-not-exist` | [F8101](rules/F8101.md) | 4 | 4 | ✅ match |
 | `sql-injection` | E8103 | 21 |  | not implemented yet |
-| `super-method-mismatch` | W8164 | 7 |  | not implemented yet |
-| `test-folder-imported` | E8130 | 3 |  | not implemented yet |
+| `super-method-mismatch` | [W8164](rules/W8164.md) | 7 | 7 | ✅ match |
+| `test-folder-imported` | [E8130](rules/E8130.md) | 3 | 3 | ✅ match |
 | `translation-contains-variable` | W8115 | 33 |  | not implemented yet |
-| `translation-field` | W8103 | 3 |  | not implemented yet |
+| `translation-field` | [W8103](rules/W8103.md) | 3 | 3 | ✅ match |
 | `translation-format-interpolation` | W8302 | 22 |  | not implemented yet |
 | `translation-format-truncated` | E8301 | 2 |  | not implemented yet |
 | `translation-fstring-interpolation` | W8303 | 3 |  | not implemented yet |
@@ -73,7 +73,7 @@ there. A check matches when `odl` reports exactly as many.
 | `translation-too-few-args` | E8306 | 2 |  | not implemented yet |
 | `translation-too-many-args` | E8305 | 2 |  | not implemented yet |
 | `translation-unsupported-format` | E8300 | 2 |  | not implemented yet |
-| `use-vim-comment` | W8202 | 1 |  | not implemented yet |
+| `use-vim-comment` | [W8202](rules/W8202.md) | 1 | 1 | ✅ match |
 | `website-manifest-key-not-valid-uri` | [W8114](rules/W8114.md) | 2 | 2 | ✅ match |
 
 Regenerate this page with `uv run nox -s parity -- --write`. CI runs the

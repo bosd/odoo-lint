@@ -4,6 +4,7 @@ use crate::checker::{ManifestContext, ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
 use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
 use crate::rules::{e0001_syntax_error, Check, Rule};
+use crate::semantic::Semantic;
 use crate::settings::{Settings, DEFAULT_EXCLUDES};
 use crate::suppression::Suppressions;
 use rayon::prelude::*;
@@ -137,10 +138,12 @@ fn lint_file(path: &Path, module: Option<&ModuleInfo>, rules: &[&'static Rule], 
         }
     };
 
+    let semantic = Semantic::new(parsed.suite());
     let python_ctx = PythonContext {
         file_path: &file_path,
         source: &source,
         parsed: &parsed,
+        semantic: &semantic,
         module,
         settings,
     };

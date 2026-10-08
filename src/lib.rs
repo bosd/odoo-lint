@@ -7,5 +7,7 @@ pub mod odoo_version;
 pub mod output;
 pub mod pyliteral;
 pub mod rules;
+pub mod semantic;
 pub mod settings;
 pub mod suppression;
+pub mod visit;
