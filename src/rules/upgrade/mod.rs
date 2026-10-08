@@ -7,6 +7,8 @@
 //! differences in Odoo's view schemas, validators and models between
 //! branches. Reimplemented from behaviour, not copied.
 
+mod attrs;
+pub mod v17;
 pub mod v18;
 pub mod v19;
 

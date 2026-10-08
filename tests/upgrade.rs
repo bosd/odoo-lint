@@ -404,3 +404,169 @@ fn modules_still_on_18_are_left_alone_by_u19() {
     module(dir.path(), "18.0.1.0.0", &[("views/views.xml", VIEWS_18)], PYTHON_18);
     assert!(codes(dir.path(), "U19", V18).is_empty());
 }
+
+const V17: OdooVersion = OdooVersion::new(17, 0);
+
+const VIEWS_16: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="view_order_form" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_confirm" states="draft,sent"/>
+                    <button name="action_done" states="sale" attrs="{'invisible': ['|', ('locked', '=', True)]}"/>
+                </header>
+                <field name="partner_id" attrs="{'readonly': [('state', '!=', 'draft')], 'required': [('type', '=', 'b2b')]}"/>
+                <field name="note" invisible="0" attrs="{'invisible': [('line_ids', '=', [])]}"/>
+                <field name="line_ids">
+                    <tree>
+                        <field name="sequence" invisible="1"/>
+                        <field name="discount" invisible="1" attrs="{'readonly': [('parent.state', 'in', ('sale', 'done'))], 'invisible': [('display_type', '!=', False)]}"/>
+                    </tree>
+                </field>
+                <field name="origin" attrs="{'invisible': [('origin', 'ilike', 'x')]}"/>
+                <field name="user_id" context="{'default_partner_id': active_id}"/>
+            </form>
+        </field>
+    </record>
+    <record id="view_order_form_inherit" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='origin']" position="attributes">
+                <attribute name="attrs">{'invisible': [('state', '=', 'cancel')], 'readonly': True}</attribute>
+            </xpath>
+        </field>
+    </record>
+    <record id="view_order_calendar" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="field_parent">child_ids</field>
+        <field name="arch" type="xml">
+            <calendar date_start="date_order" quick_add="False"/>
+        </field>
+    </record>
+    <report id="report_order" model="sale.order" string="Order" name="acme_up.report_order"/>
+</odoo>
+"#;
+
+const PYTHON_16: &str = r#"from odoo import api, fields, models
+from odoo.exceptions import Warning
+from odoo.tests.common import SavepointCase
+
+
+class Order(models.Model):
+    _inherit = "sale.order"
+
+    note = fields.Text(states={"draft": [("readonly", False)]})
+
+    def name_get(self):
+        return [(r.id, r.name) for r in self]
+
+    def _name_search(self, name, args=None, operator="ilike", limit=100, name_get_uid=None):
+        return super()._name_search(name, args, operator, limit, name_get_uid)
+
+    @api.onchange("partner_id")
+    def _onchange_partner(self):
+        return {"domain": {"user_id": [("share", "=", False)]}}
+
+    def action_count(self):
+        self.flush()
+        label = self.partner_id.name_get()[0][1]
+        count = self.env["sale.order"].search([("state", "=", "sale")], count=True)
+        value = self.env["ir.default"].get("sale.order", "note")
+        return label, count, value, self.env.norecompute()
+
+
+class TestOrder(SavepointCase):
+    pass
+"#;
+
+#[test]
+fn findings_for_odoo_17() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "17.0.1.0.0", &[("views/order.xml", VIEWS_16)], PYTHON_16);
+    let mut found = codes(dir.path(), "U17", V17);
+    found.sort();
+    let expected: Vec<(String, usize)> = [
+        ("U1701", 8),
+        ("U1701", 9),
+        ("U1701", 11),
+        ("U1701", 12),
+        ("U1701", 16),
+        ("U1701", 19),
+        ("U1701", 29),
+        ("U1702", 15),
+        ("U1702", 16),
+        ("U1703", 40),
+        ("U1704", 37),
+        ("U1705", 20),
+        ("U1707", 35),
+        ("U1709", 11),
+        ("U1709", 23),
+        ("U1710", 14),
+        ("U1711", 24),
+        ("U1712", 22),
+        ("U1713", 9),
+        ("U1714", 3),
+        ("U1714", 29),
+        ("U1715", 2),
+        ("U1716", 19),
+        ("U1717", 26),
+        ("U1718", 25),
+    ]
+    .into_iter()
+    .map(|(c, l)| (c.to_string(), l))
+    .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn fixes_for_odoo_17() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "17.0.1.0.0", &[("views/order.xml", VIEWS_16)], PYTHON_16);
+    let views = module.join("views/order.xml");
+    let xml = fixed(dir.path(), "U17", V17, &views, FixMode::Unsafe);
+    let expected = VIEWS_16
+        .replace(r#"states="draft,sent""#, r#"invisible="state not in ('draft', 'sent')""#)
+        .replace(
+            r#"states="sale" attrs="{'invisible': ['|', ('locked', '=', True)]}""#,
+            r#"invisible="locked or state != 'sale'""#,
+        )
+        .replace(
+            r#"attrs="{'readonly': [('state', '!=', 'draft')], 'required': [('type', '=', 'b2b')]}""#,
+            r#"readonly="state != 'draft'" required="type == 'b2b'""#,
+        )
+        .replace(
+            r#"invisible="0" attrs="{'invisible': [('line_ids', '=', [])]}""#,
+            r#"invisible="not line_ids""#,
+        )
+        .replace(
+            r#"<field name="sequence" invisible="1"/>"#,
+            r#"<field name="sequence" column_invisible="1"/>"#,
+        )
+        .replace(
+            r#"invisible="1" attrs="{'readonly': [('parent.state', 'in', ('sale', 'done'))], 'invisible': [('display_type', '!=', False)]}""#,
+            r#"column_invisible="1" readonly="parent.state in ('sale', 'done')" invisible="display_type""#,
+        )
+        .replace("{'default_partner_id': active_id}", "{'default_partner_id': context.get('active_id')}")
+        .replace(
+            r#"<attribute name="attrs">{'invisible': [('state', '=', 'cancel')], 'readonly': True}</attribute>"#,
+            "<attribute name=\"invisible\">state == 'cancel'</attribute>\n                <attribute name=\"readonly\">True</attribute>",
+        )
+        .replace("        <field name=\"field_parent\">child_ids</field>\n", "")
+        .replace(r#"quick_add="False""#, r#"quick_create="False""#);
+    assert_eq!(xml, expected);
+
+    let python = fixed(dir.path(), "U17", V17, &module.join("models/partner.py"), FixMode::Safe);
+    let expected = PYTHON_16
+        .replace("SavepointCase", "TransactionCase")
+        .replace("self.flush()", "self.env.flush_all()")
+        .replace("self.partner_id.name_get()[0][1]", "self.partner_id.display_name")
+        .replace(
+            ".search([(\"state\", \"=\", \"sale\")], count=True)",
+            ".search_count([(\"state\", \"=\", \"sale\")])",
+        )
+        .replace(".get(\"sale.order\", \"note\")", "._get(\"sale.order\", \"note\")");
+    assert_eq!(python, expected);
+}
