@@ -84,3 +84,5 @@ select = ["B", "E", "F", "I", "PTH", "RUF", "S", "SIM", "UP", "W"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101", "S603"]
 "noxfile.py" = ["S101"]
+# Dev tooling that deliberately runs git and odl.
+"scripts/*.py" = ["S603", "S607"]

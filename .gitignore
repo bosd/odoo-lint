@@ -14,3 +14,4 @@ __pycache__/
 /PROJECT_PLAN.md
 /AGENT_INSTRUCTIONS.md
 /docs/_static/odoo-linter.jpg
+/.cache/

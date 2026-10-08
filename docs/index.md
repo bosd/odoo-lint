@@ -25,6 +25,7 @@ why
 usage
 configuration
 rules/index
+parity
 development
 License <license>
 Changelog <https://github.com/bosd/odoo-lint/releases>

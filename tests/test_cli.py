@@ -169,3 +169,11 @@ def test_rule_command() -> None:
     by_name = run_odl("rule", "manifest-required-author")
     assert by_name.returncode == 0
     assert by_name.stdout.startswith("# manifest-required-author (C8101)")
+
+
+def test_rule_json() -> None:
+    """`odl rule --output-format json` lists rules for tooling."""
+    rules = json.loads(run_odl("rule", "--output-format", "json").stdout)
+    c8101 = next(r for r in rules if r["code"] == "C8101")
+    assert c8101["name"] == "manifest-required-author"
+    assert c8101["min_odoo_version"] is None

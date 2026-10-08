@@ -40,21 +40,62 @@ enum Commands {
     Rule {
         /// Rule code or name, e.g. C8101 or manifest-required-author
         code: Option<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t)]
+        output_format: RuleFormat,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+enum RuleFormat {
+    /// Table of rules, or the Markdown documentation of one rule
+    #[default]
+    Text,
+    /// JSON with code, name, summary, Odoo version range and documentation
+    Json,
+}
+
+fn rule_json(rule: &rules::Rule) -> serde_json::Value {
+    serde_json::json!({
+        "code": rule.code,
+        "name": rule.name,
+        "summary": rule.summary,
+        "min_odoo_version": rule.min_odoo.map(|v| v.to_string()),
+        "max_odoo_version": rule.max_odoo.map(|v| v.to_string()),
+        "doc": rule.doc.trim(),
+    })
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Rule { code: None } => {
-            for rule in rules::ALL {
-                println!("{:<8} {:<26} {}", rule.code, rule.name, rule.summary);
+        Commands::Rule {
+            code: None,
+            output_format,
+        } => {
+            if output_format == RuleFormat::Json {
+                let all: Vec<_> = rules::ALL.iter().map(rule_json).collect();
+                println!("{}", serde_json::to_string_pretty(&all).expect("rules serialize"));
+            } else {
+                for rule in rules::ALL {
+                    println!("{:<8} {:<26} {}", rule.code, rule.name, rule.summary);
+                }
             }
             ExitCode::SUCCESS
         }
-        Commands::Rule { code: Some(code) } => match rules::find(&code) {
+        Commands::Rule {
+            code: Some(code),
+            output_format,
+        } => match rules::find(&code) {
             Some(rule) => {
-                print!("{}", rule.to_markdown());
+                if output_format == RuleFormat::Json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&rule_json(rule)).expect("rule serializes")
+                    );
+                } else {
+                    print!("{}", rule.to_markdown());
+                }
                 ExitCode::SUCCESS
             }
             None => {
