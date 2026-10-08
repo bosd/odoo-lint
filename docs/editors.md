@@ -22,7 +22,9 @@ repository: run _zed: install dev extension_ from the command palette and
 pick the `integrations/zed` folder (this needs Rust installed through
 rustup).
 
-To use another binary:
+To use another binary, give its arguments too: with a `path`, Zed uses the
+`arguments` from the settings, and without `server` the server does not
+start:
 
 ```json
 {
