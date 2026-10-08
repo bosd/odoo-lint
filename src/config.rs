@@ -34,6 +34,96 @@ pub struct RulesConfig {
     /// Settings for C8101; `manifest-author` is the pre-0.1 name.
     #[serde(alias = "manifest-author")]
     pub manifest_required_author: Option<ManifestAuthorConfig>,
+    /// C8102: keys every manifest must have.
+    pub manifest_required_key: Option<KeysConfig>,
+    /// C8119: keys every manifest with a `price` must have.
+    pub manifest_required_key_app: Option<KeysConfig>,
+    /// C8103: keys a manifest must not have.
+    pub manifest_deprecated_key: Option<KeysConfig>,
+    /// C8116: keys whose default value is `True`.
+    pub manifest_superfluous_key: Option<SuperfluousKeyConfig>,
+    /// C8105: allowed licenses.
+    pub license_allowed: Option<AllowedConfig>,
+    /// C8111: allowed `development_status` values.
+    pub development_status_allowed: Option<AllowedConfig>,
+    /// C8114: allowed categories; empty (the default) allows any.
+    pub category_allowed: Option<AllowedConfig>,
+    /// C8117: allowed categories for modules with a `price`.
+    pub category_allowed_app: Option<AllowedConfig>,
+    /// C8115: files every module must have.
+    pub missing_odoo_file: Option<FilesConfig>,
+    /// C8118: files every module with a `price` must have.
+    pub missing_odoo_file_app: Option<FilesConfig>,
+    /// C8106: valid Odoo versions and the version regex.
+    pub manifest_version_format: Option<VersionFormatConfig>,
+    /// C8112: README template linked from the message.
+    pub missing_readme: Option<ReadmeConfig>,
+}
+
+/// `RulesConfig` with nothing configured, for rules to fall back on.
+pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
+    manifest_required_author: None,
+    manifest_required_key: None,
+    manifest_required_key_app: None,
+    manifest_deprecated_key: None,
+    manifest_superfluous_key: None,
+    license_allowed: None,
+    development_status_allowed: None,
+    category_allowed: None,
+    category_allowed_app: None,
+    missing_odoo_file: None,
+    missing_odoo_file_app: None,
+    manifest_version_format: None,
+    missing_readme: None,
+};
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct KeysConfig {
+    pub keys: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SuperfluousKeyConfig {
+    pub keys_values_true: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct AllowedConfig {
+    pub allowed: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct FilesConfig {
+    pub files: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct VersionFormatConfig {
+    pub valid_odoo_versions: Option<Vec<String>>,
+    /// Regex; `{valid_odoo_versions}` is replaced by the versions joined with `|`.
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ReadmeConfig {
+    pub template_url: Option<String>,
+}
+
+/// A configured list, or `default` when it is not configured.
+pub fn list_or<T, F>(config: Option<&T>, get: F, default: &[&str]) -> Vec<String>
+where
+    F: Fn(&T) -> Option<&Vec<String>>,
+{
+    config
+        .and_then(get)
+        .cloned()
+        .unwrap_or_else(|| default.iter().map(|s| s.to_string()).collect())
 }
 
 /// A single string or a list of strings.
@@ -144,6 +234,11 @@ impl OdooLintConfig {
         Ok((Self::default(), None))
     }
 
+    /// Per-rule settings, empty when none are configured.
+    pub fn rules(&self) -> &RulesConfig {
+        self.rules.as_ref().unwrap_or(&NO_RULES_CONFIG)
+    }
+
     /// Authors of which one must be in the manifest of `module_name` (C8101).
     ///
     /// An exact module name wins; otherwise the longest matching `prefix*`
@@ -244,6 +339,28 @@ authors = "Odoo Community Association (OCA)"
         assert!(OdooLintConfig::from_pyproject_toml("[project]\nname = 'x'\n")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn rule_options() {
+        let c = OdooLintConfig::from_odoo_lint_toml(
+            r#"
+[rules.license-allowed]
+allowed = ["LGPL-3"]
+[rules.manifest-version-format]
+valid-odoo-versions = ["17.0"]
+"#,
+        )
+        .unwrap();
+        let licenses = list_or(c.rules().license_allowed.as_ref(), |c| c.allowed.as_ref(), &["AGPL-3"]);
+        assert_eq!(licenses, vec!["LGPL-3"]);
+        let keys = list_or(
+            c.rules().manifest_required_key.as_ref(),
+            |c| c.keys.as_ref(),
+            &["license"],
+        );
+        assert_eq!(keys, vec!["license"]);
+        assert!(OdooLintConfig::default().rules().license_allowed.is_none());
     }
 
     #[test]

@@ -35,12 +35,14 @@ def run_odl(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def make_module(root: Path, name: str, author: str) -> Path:
-    """Create a minimal addon with the given manifest author."""
+    """Create an addon that is clean apart from the given manifest author."""
     module = root / "addons" / name
     module.mkdir(parents=True)
     (module / "__manifest__.py").write_text(
-        f"{{\n    'name': '{name}',\n    'author': '{author}',\n}}\n"
+        f"{{\n    'name': '{name}',\n    'author': '{author}',\n"
+        "    'license': 'AGPL-3',\n}\n"
     )
+    (module / "README.rst").write_text(f"{name}\n")
     return module
 
 
@@ -86,10 +88,10 @@ def test_author_mapping_violation(project: Path) -> None:
 
 def test_pylint_disable_comment(project: Path) -> None:
     """`# pylint: disable=<name>` suppresses a violation on that line."""
-    module = project / "addons" / "acme_sale"
-    module.mkdir(parents=True)
+    module = make_module(project, "acme_sale", "Other")
     (module / "__manifest__.py").write_text(
-        "{\n    'author': 'Other',  # pylint: disable=manifest-required-author\n}\n"
+        "{\n    'author': 'Other',  # pylint: disable=manifest-required-author\n"
+        "    'license': 'AGPL-3',\n}\n"
     )
 
     assert run_odl("check", str(project / "addons")).returncode == 0

@@ -96,6 +96,25 @@ Default: `"Odoo Community Association (OCA)"`.
 : Table of module folder name or `prefix*` pattern to required author(s). An
 exact name wins over a pattern; among patterns the longest prefix wins.
 
+### Other rule options
+
+Rules ported from pylint-odoo take the same options, under
+`[tool.odoo-lint.rules.<rule name>]`, with the same defaults. For example:
+
+```toml
+[tool.odoo-lint.rules.license-allowed]
+allowed = ["AGPL-3", "LGPL-3"]
+
+[tool.odoo-lint.rules.manifest-version-format]
+valid-odoo-versions = ["17.0"]
+```
+
+Each rule's page under [rules](rules/index.md) lists its options:
+[C8102](rules/C8102.md), [C8103](rules/C8103.md), [C8105](rules/C8105.md),
+[C8106](rules/C8106.md), [C8111](rules/C8111.md), [C8112](rules/C8112.md),
+[C8114](rules/C8114.md), [C8115](rules/C8115.md), [C8116](rules/C8116.md),
+[C8117](rules/C8117.md), [C8118](rules/C8118.md) and [C8119](rules/C8119.md).
+
 ## Suppressing a violation in the code
 
 Both Ruff and pylint comments work, so existing pylint-odoo suppressions keep

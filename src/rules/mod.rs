@@ -8,9 +8,11 @@
 use crate::checker::{ManifestContext, PythonContext, Reporter};
 use crate::odoo_version::OdooVersion;
 
-pub mod c8101_manifest_required_author;
 pub mod e0001_syntax_error;
+pub mod manifest;
 pub mod odoo001_missing_depends;
+
+use manifest::{author, files, keys, values};
 
 /// How a rule is run.
 #[derive(Debug, Clone, Copy)]
@@ -42,9 +44,30 @@ pub struct Rule {
 
 /// All rules, ordered by code.
 pub const ALL: &[Rule] = &[
-    c8101_manifest_required_author::RULE,
+    author::MANIFEST_REQUIRED_AUTHOR,
+    keys::MANIFEST_REQUIRED_KEY,
+    keys::MANIFEST_DEPRECATED_KEY,
+    values::LICENSE_ALLOWED,
+    values::MANIFEST_VERSION_FORMAT,
+    values::DEVELOPMENT_STATUS_ALLOWED,
+    files::MISSING_README,
+    values::CATEGORY_ALLOWED,
+    files::MISSING_ODOO_FILE,
+    keys::MANIFEST_SUPERFLUOUS_KEY,
+    values::CATEGORY_ALLOWED_APP,
+    files::MISSING_ODOO_FILE_APP,
+    keys::MANIFEST_REQUIRED_KEY_APP,
+    values::MANIFEST_SUMMARY_MULTILINE,
     e0001_syntax_error::RULE,
+    author::MANIFEST_AUTHOR_STRING,
+    values::MANIFEST_MAINTAINERS_LIST,
+    files::MANIFEST_BEHIND_MIGRATIONS,
+    files::RESOURCE_NOT_EXIST,
     odoo001_missing_depends::RULE,
+    values::INVALID_EMAIL,
+    values::WEBSITE_MANIFEST_KEY_NOT_VALID_URI,
+    files::MANIFEST_DATA_DUPLICATED,
+    values::MANIFEST_EXTERNAL_ASSETS,
 ];
 
 pub fn find(code_or_name: &str) -> Option<&'static Rule> {
