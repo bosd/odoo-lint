@@ -61,6 +61,12 @@ uv run nox -s parity -- --write
    `0.1.0-alpha.5`); `tests/integrations.rs` checks this.
 2. Publish the GitHub release drafted by Release Drafter, with tag
    `v<version>`.
+3. Once the release is on PyPI, tag the Claude Code plugin and push the tag:
+   `claude plugin tag --push integrations/claude-code` creates
+   `odoo-lint--v<version>`. Submit that tag as an update in Anthropic's
+   developer portal ([claude.ai/directory/manage](https://claude.ai/directory/manage)).
+   A tag does not move, so later merges to `main` do not invalidate the
+   submission.
 
 The release workflow checks that the tag matches `Cargo.toml`, builds wheels
 for Linux, macOS and Windows, signs them with Sigstore, attaches the
