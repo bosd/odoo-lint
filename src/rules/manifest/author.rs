@@ -1,8 +1,9 @@
 //! Manifest `author`: C8101 manifest-required-author (extended with
 //! per-module-prefix authors) and E8101 manifest-author-string.
 
-use super::key_or_dict;
+use super::{add_default, add_value, key_or_dict};
 use crate::checker::{ManifestContext, Reporter};
+use crate::fix::{Edit, Fix};
 use crate::rules::{Check, Rule};
 use ruff_text_size::Ranged;
 
@@ -69,6 +70,14 @@ Use instead:
     "author": "Acme Corp, Odoo Community Association (OCA)",
 }
 ```
+
+## Fix safety
+
+When the manifest has no `author`: safe, with `author` from
+[`manifest-defaults`](../configuration.md#manifest-defaults), or else the
+first author of a configured `manifest-required-author`. When the author
+lacks the required one: unsafe, the required author is appended (it changes
+the attribution). Without a configuration there is no fix.
 "#,
     check: Check::Manifest(check_required_author),
     min_odoo: None,
@@ -127,7 +136,10 @@ fn check_author_string(ctx: &ManifestContext, reporter: &mut Reporter) {
 
 fn check_required_author(ctx: &ManifestContext, reporter: &mut Reporter) {
     let required = ctx.settings.config.required_authors(&ctx.module.name);
-    let location = match ctx.manifest.entry("author") {
+    // Only an author the configuration names is filled in, never the
+    // built-in OCA default.
+    let configured = ctx.settings.config.rules().manifest_required_author.is_some();
+    let (location, fix) = match ctx.manifest.entry("author") {
         Some((key, value)) => {
             // A non-string author is reported by manifest-author-string (E8101).
             let Some(author) = value.as_string_literal_expr() else {
@@ -137,19 +149,40 @@ fn check_required_author(ctx: &ManifestContext, reporter: &mut Reporter) {
             if required.iter().any(|r| authors.contains(&r.as_str())) {
                 return;
             }
-            key.start()
+            // `"Someone"` -> `"Someone, Acme Corp"`, before the closing quote
+            // of a plain (not triple-quoted) string.
+            let text = &ctx.source[value.range()];
+            let simple = (text.starts_with('"') || text.starts_with('\''))
+                && !text.starts_with("\"\"\"")
+                && !text.starts_with("\'\'\'");
+            let fix = (configured && simple && author.value.as_slice().len() == 1).then(|| {
+                Fix::unsafe_(
+                    format!("Add `{}` to the authors", required[0]),
+                    vec![Edit::insert(value.end().to_usize() - 1, format!(", {}", required[0]))],
+                )
+            });
+            (key.start(), fix)
         }
-        None => ctx.manifest.dict().start(),
+        None => {
+            let fix = add_default(ctx, "author").or_else(|| {
+                configured
+                    .then(|| add_value(ctx, "author", &toml::Value::String(required[0].clone())))
+                    .flatten()
+            });
+            (ctx.manifest.dict().start(), fix)
+        }
     };
     let quoted: Vec<String> = required.iter().map(|a| format!("'{a}'")).collect();
-    reporter.report(
-        &MANIFEST_REQUIRED_AUTHOR,
-        location,
-        format!(
-            "One of the following authors must be present in manifest: {}",
-            quoted.join(", ")
-        ),
-    );
+    reporter
+        .report(
+            &MANIFEST_REQUIRED_AUTHOR,
+            location,
+            format!(
+                "One of the following authors must be present in manifest: {}",
+                quoted.join(", ")
+            ),
+        )
+        .fix = fix;
 }
 
 #[cfg(test)]

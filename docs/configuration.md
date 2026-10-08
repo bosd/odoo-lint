@@ -96,6 +96,22 @@ Default: `"Odoo Community Association (OCA)"`.
 : Table of module folder name or `prefix*` pattern to required author(s). An
 exact name wins over a pattern; among patterns the longest prefix wins.
 
+### `manifest-defaults`
+
+Values that `odl check --fix` fills in when a manifest lacks a required key
+(C8102, C8119) or its author (C8101), per module pattern:
+
+```toml
+[tool.odoo-lint.manifest-defaults]
+"*" = { license = "AGPL-3" }
+"acme_*" = { license = "LGPL-3", author = "Acme Corp", website = "https://acme.example" }
+```
+
+An exact module name wins over the longest matching `prefix*` pattern, which
+wins over `*`, key by key. Values are strings, numbers, booleans or lists of
+them. Without a configured value there is no fix: odoo-lint does not guess a
+license or an author.
+
 ### Other rule options
 
 Rules ported from pylint-odoo take the same options, under
