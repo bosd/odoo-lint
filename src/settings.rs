@@ -101,10 +101,14 @@ impl Default for Settings {
     }
 }
 
+/// Rules `ALL` leaves out: policies many projects do not share, enabled by
+/// selecting them by code, name or code prefix.
+pub const OPT_IN: &[&str] = &["MOD008"];
+
 /// Whether a `select`/`ignore` entry matches `rule`: `ALL`, an exact code or
 /// name, or a code prefix such as `C81` or `ODOO`.
 pub fn selector_matches(selector: &str, rule: &Rule) -> bool {
-    selector.eq_ignore_ascii_case("all")
+    (selector.eq_ignore_ascii_case("all") && !OPT_IN.contains(&rule.code))
         || selector.eq_ignore_ascii_case(rule.code)
         || selector.eq_ignore_ascii_case(rule.name)
         || (!selector.is_empty()
@@ -277,6 +281,16 @@ mod tests {
     }
 
     #[test]
+    fn opt_in_rules_need_their_own_selector() {
+        let header = rule("MOD008");
+        assert!(!selector_matches("ALL", header));
+        assert!(selector_matches("MOD008", header));
+        assert!(selector_matches("use-header-comments", header));
+        assert!(selector_matches("MOD", header));
+        assert!(selector_matches("ALL", rule("MOD009")));
+    }
+
+    #[test]
     fn select_and_ignore() {
         let config = OdooLintConfig {
             select: Some(vec!["C".into(), "ODOO".into()]),
@@ -286,7 +300,10 @@ mod tests {
         let (settings, warnings) = Settings::new(config, None, CliOverrides::default()).unwrap();
         let codes: Vec<_> = settings.enabled_rules().iter().map(|r| r.code).collect();
         assert!(codes.contains(&"C8101"));
-        assert!(codes.iter().all(|c| c.starts_with('C')), "{codes:?}");
+        assert!(
+            codes.iter().all(|c| c.starts_with('C') || c.starts_with("ODOO")),
+            "{codes:?}"
+        );
         // ODOO001 is ignored by name; C8120 only applies from Odoo 20.0.
         assert!(!codes.contains(&"ODOO001"));
         assert!(!codes.contains(&"C8120"));

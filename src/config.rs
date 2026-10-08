@@ -79,6 +79,10 @@ pub struct RulesConfig {
     pub renamed_field_parameter: Option<ParametersConfig>,
     /// W8160: Odoo version -> model methods deprecated from that version.
     pub deprecated_odoo_model_method: Option<DeprecatedMethodsConfig>,
+    /// ODOO002: file extensions that do not belong in a module.
+    pub module_unwanted_file: Option<ExtensionsConfig>,
+    /// ODOO003: size limit of a file in a module.
+    pub module_large_file: Option<MaxSizeConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -105,6 +109,8 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     renamed_field_parameter: None,
     deprecated_odoo_model_method: None,
     no_search_all: None,
+    module_unwanted_file: None,
+    module_large_file: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -125,6 +131,19 @@ pub struct NoSearchAllConfig {
     /// Models with few records, such as `res.company`, that may be searched
     /// without a domain.
     pub bounded_models: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionsConfig {
+    pub extensions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct MaxSizeConfig {
+    /// In KiB.
+    pub max_kib: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

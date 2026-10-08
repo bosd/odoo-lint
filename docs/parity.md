@@ -7,7 +7,7 @@ repositories. Each tool's test suite states for every check how many
 messages it expects there. A check matches when `odl` reports exactly
 as many.
 
-**95 of 95 checks match.**
+**104 of 104 checks match.**
 
 ## pylint-odoo
 
@@ -98,14 +98,23 @@ Compared on `test_repo` at commit [`82a2e95`](https://github.com/OCA/odoo-pre-co
 | `po-requires-module` | [PO002](rules/PO002.md) | 1 | 1 | ✅ match |
 | `po-syntax-error` | [PO001](rules/PO001.md) | 2 | 2 | ✅ match |
 
-## oca-checks-odoo-module (XML)
+## oca-checks-odoo-module
 
 Compared on `test_repo` at commit [`82a2e95`](https://github.com/OCA/odoo-pre-commit-hooks/tree/82a2e95fa8bbea73a02bc377980ef8bd10e40dfd/test_repo), with the counts from `tests/test_checks.py`.
 
-**24 of 24 checks match**; odoo-lint implements 24 of them.
+**33 of 33 checks match**; odoo-lint implements 33 of them.
 
 | Check | Code | Expected | odl | Status |
 | ----- | ---- | -------: | --: | ------ |
+| `csv-duplicate-record-id` | [MOD004](rules/MOD004.md) | 1 | 1 | ✅ match |
+| `csv-syntax-error` | [MOD003](rules/MOD003.md) | 1 | 1 | ✅ match |
+| `field-string-redundant` | [MOD009](rules/MOD009.md) | 30 | 30 | ✅ match |
+| `file-not-used` | [MOD002](rules/MOD002.md) | 1 | 1 | ✅ match |
+| `manifest-syntax-error` | [MOD001](rules/MOD001.md) | 2 | 2 | ✅ match |
+| `prefer-readme-rst` | [MOD005](rules/MOD005.md) | 1 | 1 | ✅ match |
+| `unused-logger` | [MOD007](rules/MOD007.md) | 1 | 1 | ✅ match |
+| `use-header-comments` | [MOD008](rules/MOD008.md) | 1 | 1 | ✅ match |
+| `weblate-component-too-long` | [MOD006](rules/MOD006.md) | 1 | 1 | ✅ match |
 | `xml-create-user-wo-reset-password` | [XML019](rules/XML019.md) | 1 | 1 | ✅ match |
 | `xml-dangerous-qweb-replace-low-priority` | [XML018](rules/XML018.md) | 9 | 9 | ✅ match |
 | `xml-deprecated-data-node` | [XML010](rules/XML010.md) | 8 | 8 | ✅ match |

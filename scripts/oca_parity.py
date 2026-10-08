@@ -8,8 +8,11 @@ same files and compares the counts, for:
   ``testing/resources/test_repo``;
 - oca-checks-po from odoo-pre-commit-hooks (LGPL-3.0):
   ``tests/test_checks_po.py``, ``test_repo``;
-- oca-checks-odoo-module from the same repository, its XML checks:
-  ``tests/test_checks.py``, ``test_repo``.
+- oca-checks-odoo-module from the same repository: ``tests/test_checks.py``,
+  ``test_repo``, set up as its tests do (a git repository whose remote has
+  a long name, for ``weblate-component-too-long``). Two of its names,
+  ``manifest-superfluous-key`` and ``prefer-env-translation``, are also
+  pylint-odoo checks with different rules; odl follows pylint-odoo there.
 
 The sources are fetched at pinned commits into ``.cache/`` at run time and
 never copied into this repository.
@@ -60,6 +63,10 @@ class Source:
     readme_codes: bool
     #: Only the checks whose names start with this.
     prefix: str = ""
+    #: Checks compared with another source under the same name.
+    exclude: tuple[str, ...] = ()
+    #: Remote URL of the git repository the tests create around the test repo.
+    git_remote: str | None = None
 
     @property
     def cache(self) -> Path:
@@ -95,13 +102,15 @@ SOURCES = [
         readme_codes=False,
     ),
     Source(
-        title="oca-checks-odoo-module (XML)",
+        title="oca-checks-odoo-module",
         repo="https://github.com/OCA/odoo-pre-commit-hooks.git",
         commit="82a2e95fa8bbea73a02bc377980ef8bd10e40dfd",
         test_file="tests/test_checks.py",
         test_repo="test_repo",
         readme_codes=False,
-        prefix="xml-",
+        exclude=("manifest-superfluous-key", "prefer-env-translation"),
+        # tests/common.py: create_dummy_repo
+        git_remote="git@github.com:/OCA/" + "big-" * 17 + ".git",
     ),
 ]
 
@@ -138,6 +147,21 @@ def fetch(source: Source) -> Path:
     git("fetch", "-q", "--depth", "1", source.repo, source.commit, cwd=path)
     git("checkout", "-q", "FETCH_HEAD", cwd=path)
     return path
+
+
+def prepared_test_repo(source: Source, path: Path) -> Path:
+    """The test repo, inside a git repository with the remote the tests use."""
+    test_repo = path / source.test_repo
+    if source.git_remote is None:
+        return test_repo
+    copy = path.with_name(path.name + "-repo")
+    if not (copy / ".git").is_dir():
+        if copy.exists():
+            shutil.rmtree(copy)
+        shutil.copytree(test_repo, copy)
+        git("init", "-q", cwd=copy)
+        git("remote", "add", "my_remote", source.git_remote, cwd=copy)
+    return copy
 
 
 def expected_errors(path: Path, test_file: str) -> dict[str, int]:
@@ -190,7 +214,7 @@ def odl_counts(odl: str, test_repo: Path, version: str) -> Counter[str]:
         "--config",
         str(empty_config),
         "--select",
-        "ALL",
+        "ALL,MOD008",  # MOD008 is opt-in
         "--version",
         version,
         "--output-format",
@@ -205,11 +229,11 @@ def compare(odl: str, source: Source) -> list[Row]:
     expected = {
         name: count
         for name, count in expected_errors(path, source.test_file).items()
-        if name.startswith(source.prefix)
+        if name.startswith(source.prefix) and name not in source.exclude
     }
     codes = readme_codes(path) if source.readme_codes else {}
     rules = odl_rules(odl)
-    test_repo = path / source.test_repo
+    test_repo = prepared_test_repo(source, path)
 
     # The expectations hold for all Odoo versions at once; run each rule with
     # a version it applies to.

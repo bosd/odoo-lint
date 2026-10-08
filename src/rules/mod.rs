@@ -11,6 +11,7 @@ use po::PoContext;
 
 pub mod e0001_syntax_error;
 pub mod manifest;
+pub mod module;
 pub mod odoo001_missing_depends;
 pub mod po;
 pub mod po_fixes;
@@ -34,6 +35,8 @@ pub enum Check {
     /// Runs once per module, on the XML files its manifest loads. Gated on
     /// the module's own Odoo version.
     Xml(fn(&xml::XmlContext, &mut xml::XmlReporter)),
+    /// Runs once per module, on its folder and manifest.
+    Module(fn(&module::ModuleContext, &mut module::ModuleReporter)),
     /// Emitted by the linter itself (e.g. syntax errors).
     Builtin,
 }
@@ -96,7 +99,18 @@ pub const ALL: &[Rule] = &[
     translations::TRANSLATION_TOO_MANY_ARGS,
     translations::TRANSLATION_TOO_FEW_ARGS,
     files::RESOURCE_NOT_EXIST,
+    module::MANIFEST_SYNTAX_ERROR,
+    module::FILE_NOT_USED,
+    module::CSV_SYNTAX_ERROR,
+    module::CSV_DUPLICATE_RECORD_ID,
+    module::PREFER_README_RST,
+    module::WEBLATE_COMPONENT_TOO_LONG,
+    module::UNUSED_LOGGER,
+    module::USE_HEADER_COMMENTS,
+    module::FIELD_STRING_REDUNDANT,
     odoo001_missing_depends::RULE,
+    module::UNWANTED_FILE,
+    module::LARGE_FILE,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

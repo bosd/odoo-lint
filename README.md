@@ -17,10 +17,11 @@
 
 Blazing fast Rust-native linter for Odoo modules. The command is called `odl`.
 
-It checks Python files, manifests, XML data files and translation (`.po`)
-files, with the checks of OCA's pylint-odoo, `oca-checks-odoo-module` and
-`oca-checks-po`: same names, same messages, same results on their own test
-suites.
+It checks Python files, manifests, XML and CSV data files and translation
+(`.po`) files, with the checks of OCA's pylint-odoo, `oca-checks-odoo-module`
+and `oca-checks-po`: same names, same messages, same results on their own
+test suites. It also warns about files that do not belong in a module, such
+as packages or database dumps committed by accident.
 
 <p align="center">
   <img alt="Bar chart: linting OCA/sale-workflow takes 0.10s with odoo-lint and 25.8s with pylint-odoo" src="https://raw.githubusercontent.com/bosd/odoo-lint/main/docs/_static/benchmark.svg" width="640">
