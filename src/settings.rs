@@ -37,6 +37,9 @@ pub struct CliOverrides {
     pub select: Option<Vec<String>>,
     /// Added to `ignore` from the config.
     pub ignore: Vec<String>,
+    /// Apply `exclude` to files given explicitly too, as pre-commit passes
+    /// them.
+    pub force_exclude: bool,
 }
 
 /// A path pattern from `exclude` or `per-file-ignores`.
@@ -70,6 +73,8 @@ pub struct Settings {
     pub ignore: Vec<String>,
     /// Paths in `exclude` and `per-file-ignores` are relative to this.
     pub project_root: PathBuf,
+    /// Apply `exclude` to explicitly given files as well.
+    pub force_exclude: bool,
     exclude: Vec<PathPattern>,
     per_file_ignores: Vec<(PathPattern, Vec<String>)>,
 }
@@ -82,6 +87,7 @@ impl Default for Settings {
             select: vec!["ALL".to_string()],
             ignore: Vec::new(),
             project_root: PathBuf::from("."),
+            force_exclude: false,
             exclude: Vec::new(),
             per_file_ignores: Vec::new(),
         }
@@ -172,6 +178,7 @@ impl Settings {
             select,
             ignore,
             project_root,
+            force_exclude: cli.force_exclude,
             exclude,
             per_file_ignores,
         };
@@ -187,16 +194,31 @@ impl Settings {
             .collect()
     }
 
-    fn relative<'a>(&self, path: &'a Path) -> &'a Path {
-        path.strip_prefix(&self.project_root)
-            .or_else(|_| path.strip_prefix("./"))
-            .unwrap_or(path)
+    /// `path` relative to the project root. The root is found from a
+    /// canonical path (`\\?\C:\...` on Windows, symlinks resolved), so a
+    /// path as the user typed it may only match in its canonical form.
+    fn relative(&self, path: &Path) -> PathBuf {
+        if let Ok(relative) = path.strip_prefix(&self.project_root) {
+            return relative.to_path_buf();
+        }
+        if path.is_relative() {
+            // Relative to the working directory, as Git hooks pass files.
+            return path.strip_prefix("./").unwrap_or(path).to_path_buf();
+        }
+        if let Some(relative) = path
+            .canonicalize()
+            .ok()
+            .and_then(|canonical| canonical.strip_prefix(&self.project_root).ok().map(Path::to_path_buf))
+        {
+            return relative;
+        }
+        path.to_path_buf()
     }
 
     /// Whether `path` (a file or directory) is excluded by `exclude`.
     pub fn is_excluded(&self, path: &Path) -> bool {
         let relative = self.relative(path);
-        self.exclude.iter().any(|p| p.matches(relative))
+        self.exclude.iter().any(|p| p.matches(&relative))
     }
 
     /// Whether `per-file-ignores` turns `rule` off for `path`.
@@ -204,7 +226,7 @@ impl Settings {
         let relative = self.relative(path);
         self.per_file_ignores
             .iter()
-            .any(|(pattern, rules)| pattern.matches(relative) && rules.iter().any(|s| selector_matches(s, rule)))
+            .any(|(pattern, rules)| pattern.matches(&relative) && rules.iter().any(|s| selector_matches(s, rule)))
     }
 }
 
@@ -258,6 +280,7 @@ mod tests {
             target_version: Some("18.0".into()),
             select: Some(vec!["ALL".into()]),
             ignore: vec!["E0001".into()],
+            ..CliOverrides::default()
         };
         let (settings, _) = Settings::new(config, None, cli).unwrap();
         assert_eq!(settings.target_version, OdooVersion::new(18, 0));
@@ -303,5 +326,23 @@ exclude = ["setup", "addons/legacy_*"]
         assert!(settings.is_excluded(Path::new("/repo/setup")));
         assert!(settings.is_excluded(Path::new("/repo/addons/legacy_sale")));
         assert!(!settings.is_excluded(Path::new("/repo/addons/sale")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exclude_matches_paths_through_a_symlink() {
+        // The root comes from a canonical config path; the linted path may
+        // not be canonical (a symlink here, a `\\?\` prefix on Windows).
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir_all(real.join("addons/legacy_sale")).unwrap();
+        std::fs::write(real.join("addons/legacy_sale/a.py"), "").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let config = OdooLintConfig::from_odoo_lint_toml("exclude = [\"addons/legacy_*\"]\n").unwrap();
+        let config_path = real.canonicalize().unwrap().join("odoo-lint.toml");
+        let (settings, _) = Settings::new(config, Some(&config_path), CliOverrides::default()).unwrap();
+        assert!(settings.is_excluded(&link.join("addons/legacy_sale")));
+        assert!(!settings.is_excluded(&link.join("addons")));
     }
 }

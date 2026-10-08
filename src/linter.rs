@@ -59,7 +59,11 @@ pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
         if root.is_file() {
-            files.push(root.clone());
+            // Patterns usually name folders: check the file's folders too.
+            let excluded = settings.force_exclude && root.ancestors().any(|p| settings.is_excluded(p));
+            if !excluded {
+                files.push(root.clone());
+            }
             continue;
         }
         let walker = WalkDir::new(root).into_iter().filter_entry(|entry| {
