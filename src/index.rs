@@ -1,0 +1,456 @@
+//! A model of the addons path: per module, its dependencies and the models
+//! and fields its Python code declares. Checks across modules (fields in
+//! views, ...) ask it what a module can rely on: the fields of a model as
+//! the modules its `depends` reach define them.
+//!
+//! Modules are parsed on first use and cached for the run, so only the
+//! dependencies of the checked modules are read, not all of Odoo.
+
+use crate::checker::ModuleInfo;
+use crate::manifest::{Manifest, MANIFEST_FILE_NAMES};
+use crate::rules::python::classes;
+use crate::semantic::func_lib;
+use ruff_python_ast::{Expr, Stmt, StmtClassDef};
+use ruff_python_parser::parse_module;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::SystemTime;
+
+/// A field as a class declares it.
+#[derive(Debug, Clone)]
+pub struct Field {
+    pub name: String,
+    /// `Many2one`, `One2many`, `Char`, ...
+    pub kind: String,
+    /// The comodel of a relational field, when it is a literal.
+    pub comodel: Option<String>,
+}
+
+impl Field {
+    pub fn is_x2many(&self) -> bool {
+        matches!(self.kind.as_str(), "One2many" | "Many2many")
+    }
+}
+
+/// The fields of a model, by name.
+pub type FieldMap = HashMap<String, Field>;
+
+/// A class with `_name` or `_inherit`.
+#[derive(Debug)]
+pub struct ModelClass {
+    pub name: Option<String>,
+    pub inherit: Vec<String>,
+    /// `_inherits` parents.
+    pub delegates: Vec<String>,
+    pub fields: Vec<Field>,
+}
+
+#[derive(Debug)]
+pub struct ModuleIndex {
+    pub name: String,
+    pub path: PathBuf,
+    pub depends: Vec<String>,
+    pub classes: Vec<ModelClass>,
+}
+
+/// Folders of a module that Odoo does not import as models.
+const SKIPPED_DIRS: &[&str] = &[
+    "tests",
+    "migrations",
+    "upgrades",
+    "static",
+    "i18n",
+    "i18n_extra",
+    "__pycache__",
+    "node_modules",
+];
+
+/// Fields every model has.
+const MAGIC_FIELDS: &[&str] = &[
+    "id",
+    "display_name",
+    "create_uid",
+    "create_date",
+    "write_uid",
+    "write_date",
+    "__last_update",
+];
+
+/// A module's index and the fingerprint of the files it was built from.
+type Cached = (Option<Arc<ModuleIndex>>, Fingerprint);
+
+static CACHE: LazyLock<Mutex<HashMap<PathBuf, Cached>>> = LazyLock::new(Default::default);
+
+/// Whether cached modules are checked for changes: in a long-running
+/// process (the language server) files change between runs.
+static REVALIDATE: AtomicBool = AtomicBool::new(false);
+
+/// Re-read a module whenever its Python files or manifest change, instead of
+/// once per process.
+pub fn revalidate_cache() {
+    REVALIDATE.store(true, Ordering::Relaxed);
+}
+
+/// The number of indexed files of a module and their newest change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Fingerprint {
+    files: usize,
+    newest: Option<SystemTime>,
+}
+
+fn indexed_files(path: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_entry(|e| !(e.file_type().is_dir() && SKIPPED_DIRS.contains(&e.file_name().to_string_lossy().as_ref())))
+        .flatten()
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "py"))
+}
+
+fn fingerprint(path: &Path) -> Fingerprint {
+    let mut print = Fingerprint::default();
+    for file in indexed_files(path) {
+        print.files += 1;
+        let modified = file.metadata().ok().and_then(|m| m.modified().ok());
+        print.newest = print.newest.max(modified);
+    }
+    print
+}
+
+fn string(expr: &Expr) -> Option<String> {
+    expr.as_string_literal_expr().map(|s| s.value.to_str().to_string())
+}
+
+fn strings(expr: &Expr) -> Vec<String> {
+    match expr {
+        Expr::StringLiteral(_) => string(expr).into_iter().collect(),
+        Expr::List(list) => list.elts.iter().filter_map(string).collect(),
+        Expr::Tuple(tuple) => tuple.elts.iter().filter_map(string).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The value assigned to `name` in a class body.
+fn class_value<'a>(class: &'a StmtClassDef, name: &str) -> Option<&'a Expr> {
+    class.body.iter().rev().find_map(|stmt| match stmt {
+        Stmt::Assign(assign)
+            if assign
+                .targets
+                .iter()
+                .any(|t| t.as_name_expr().is_some_and(|n| n.id.as_str() == name)) =>
+        {
+            Some(&*assign.value)
+        }
+        _ => None,
+    })
+}
+
+fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
+    let name = class_value(class, "_name").and_then(string);
+    let inherit = class_value(class, "_inherit").map(strings).unwrap_or_default();
+    if name.is_none() && inherit.is_empty() {
+        return None;
+    }
+    let mut delegates: Vec<String> = match class_value(class, "_inherits") {
+        Some(Expr::Dict(dict)) => dict
+            .items
+            .iter()
+            .filter_map(|i| i.key.as_ref().and_then(string))
+            .collect(),
+        _ => Vec::new(),
+    };
+    // `name = fields.X(...)` and `name: Type = fields.X(...)`.
+    let fields = class
+        .body
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::Assign(assign) => match assign.targets.as_slice() {
+                [Expr::Name(target)] => Some((target, &*assign.value)),
+                _ => None,
+            },
+            Stmt::AnnAssign(assign) => match (&*assign.target, assign.value.as_deref()) {
+                (Expr::Name(target), Some(value)) => Some((target, value)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .filter_map(|(target, value)| {
+            let Expr::Call(call) = value else { return None };
+            let Expr::Attribute(func) = &*call.func else {
+                return None;
+            };
+            if func_lib(&call.func) != "fields" {
+                return None;
+            }
+            let kind = func.attr.to_string();
+            let comodel = call
+                .arguments
+                .keywords
+                .iter()
+                .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "comodel_name"))
+                .map(|k| &k.value)
+                .or_else(|| call.arguments.args.first())
+                .filter(|_| matches!(kind.as_str(), "Many2one" | "One2many" | "Many2many"))
+                .and_then(string);
+            Some(Field {
+                name: target.id.to_string(),
+                kind,
+                comodel,
+            })
+        })
+        .collect::<Vec<Field>>();
+    // `fields.Many2one(..., delegate=True)` is an `_inherits` too.
+    for stmt in &class.body {
+        let value = match stmt {
+            Stmt::Assign(assign) => Some(&*assign.value),
+            Stmt::AnnAssign(assign) => assign.value.as_deref(),
+            _ => None,
+        };
+        let Some(Expr::Call(call)) = value else { continue };
+        let delegate = call.arguments.keywords.iter().any(|k| {
+            k.arg.as_ref().is_some_and(|a| a.as_str() == "delegate")
+                && matches!(&k.value, Expr::BooleanLiteral(b) if b.value)
+        });
+        if let Some(comodel) = call.arguments.args.first().and_then(string).filter(|_| delegate) {
+            delegates.push(comodel);
+        }
+    }
+    Some(ModelClass {
+        name,
+        inherit,
+        delegates,
+        fields,
+    })
+}
+
+fn parse(path: &Path) -> Option<ModuleIndex> {
+    let manifest_path = MANIFEST_FILE_NAMES.iter().map(|n| path.join(n)).find(|p| p.is_file())?;
+    let manifest = Manifest::parse(&std::fs::read_to_string(manifest_path).ok()?)?;
+    let depends = manifest.get("depends").map(strings).unwrap_or_default();
+    let name = path.canonicalize().ok()?.file_name()?.to_string_lossy().into_owned();
+    let mut model_classes = Vec::new();
+    for file in indexed_files(path) {
+        let Ok(source) = std::fs::read_to_string(file.path()) else {
+            continue;
+        };
+        let Ok(parsed) = parse_module(&source) else { continue };
+        let mut found: Vec<(String, ModelClass)> = classes(parsed.suite())
+            .into_iter()
+            .filter_map(|class| Some((class.name.to_string(), model_class(class)?)))
+            .collect();
+        // `setattr(IrRule, 'global', global_)`: a field whose name is a
+        // Python keyword, added after the class.
+        for stmt in parsed.suite() {
+            let Stmt::Expr(expr) = stmt else { continue };
+            let Expr::Call(call) = &*expr.value else { continue };
+            if !matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "setattr") {
+                continue;
+            }
+            let [Expr::Name(class), name, _] = call.arguments.args.as_ref() else {
+                continue;
+            };
+            let Some(name) = string(name) else { continue };
+            if let Some((_, model)) = found.iter_mut().find(|(c, _)| c == class.id.as_str()) {
+                model.fields.push(Field {
+                    name,
+                    kind: String::new(),
+                    comodel: None,
+                });
+            }
+        }
+        model_classes.extend(found.into_iter().map(|(_, model)| model));
+    }
+    Some(ModuleIndex {
+        name,
+        path: path.to_path_buf(),
+        depends,
+        classes: model_classes,
+    })
+}
+
+/// The index of the module at `path`, parsed once per run.
+pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
+    let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let revalidate = REVALIDATE.load(Ordering::Relaxed);
+    // The manifest counts too: `depends` live there.
+    let current = revalidate.then(|| {
+        let mut print = fingerprint(&key);
+        print.files += 1;
+        let manifest = MANIFEST_FILE_NAMES.iter().map(|n| key.join(n)).find(|p| p.is_file());
+        let modified = manifest.and_then(|m| m.metadata().ok()).and_then(|m| m.modified().ok());
+        print.newest = print.newest.max(modified);
+        print
+    });
+    if let Some((found, print)) = CACHE.lock().expect("index cache").get(&key) {
+        if current.is_none_or(|current| current == *print) {
+            return found.clone();
+        }
+    }
+    let parsed = parse(&key).map(Arc::new);
+    CACHE
+        .lock()
+        .expect("index cache")
+        .insert(key, (parsed.clone(), current.unwrap_or_default()));
+    parsed
+}
+
+/// The modules a module can rely on: itself and everything its `depends`
+/// reach, with the fields of their models.
+pub struct Closure {
+    modules: Vec<Arc<ModuleIndex>>,
+    fields: Mutex<HashMap<String, Option<Arc<FieldMap>>>>,
+}
+
+/// The closure of `module`, looking up dependencies next to it and in
+/// `addons_path`. `None` when a dependency cannot be found: the checks then
+/// know too little to report anything.
+pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> {
+    let mut dirs: Vec<PathBuf> = module.path.parent().map(Path::to_path_buf).into_iter().collect();
+    dirs.extend(addons_path.iter().cloned());
+    let find = |name: &str| {
+        dirs.iter()
+            .map(|dir| dir.join(name))
+            .find(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
+            .and_then(|path| module_index(&path))
+    };
+    let root = module_index(&module.path)?;
+    let mut seen: HashSet<String> = HashSet::from([root.name.clone()]);
+    let mut queue: Vec<String> = root.depends.clone();
+    queue.push("base".into());
+    let mut modules = vec![root];
+    while let Some(name) = queue.pop() {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let found = find(&name)?;
+        queue.extend(found.depends.iter().cloned());
+        modules.push(found);
+    }
+    Some(Closure {
+        modules,
+        fields: Mutex::new(HashMap::new()),
+    })
+}
+
+impl Closure {
+    /// The fields of `model` in this closure; `None` when no module of the
+    /// closure defines it (with `_name`).
+    pub fn fields(&self, model: &str) -> Option<Arc<FieldMap>> {
+        if let Some(found) = self.fields.lock().expect("fields cache").get(model) {
+            return found.clone();
+        }
+        let computed = self.compute(model, &mut HashSet::new()).map(Arc::new);
+        self.fields
+            .lock()
+            .expect("fields cache")
+            .insert(model.to_string(), computed.clone());
+        computed
+    }
+
+    fn classes(&self) -> impl Iterator<Item = &ModelClass> {
+        self.modules.iter().flat_map(|m| m.classes.iter())
+    }
+
+    fn compute(&self, model: &str, visiting: &mut HashSet<String>) -> Option<HashMap<String, Field>> {
+        if !visiting.insert(model.to_string()) {
+            return Some(HashMap::new());
+        }
+        // `base` is every model; modules extend it without defining it.
+        if model != "base" && !self.classes().any(|c| c.name.as_deref() == Some(model)) {
+            visiting.remove(model);
+            return None;
+        }
+        let mut fields: HashMap<String, Field> = HashMap::new();
+        let mut parents: Vec<String> = Vec::new();
+        for class in self.classes() {
+            let defines = class.name.as_deref() == Some(model);
+            let extends = class.name.is_none() && class.inherit.iter().any(|i| i == model);
+            if !defines && !extends {
+                continue;
+            }
+            for field in &class.fields {
+                fields.insert(field.name.clone(), field.clone());
+            }
+            parents.extend(class.inherit.iter().filter(|i| *i != model).cloned());
+            parents.extend(class.delegates.iter().cloned());
+        }
+        if model != "base" {
+            parents.push("base".into());
+        }
+        for parent in parents {
+            // A parent no module of the closure defines: its fields are unknown.
+            let inherited = match self.compute(&parent, visiting) {
+                Some(inherited) => inherited,
+                None if parent == "base" => HashMap::new(),
+                None => return None,
+            };
+            for (name, field) in inherited {
+                fields.entry(name).or_insert(field);
+            }
+        }
+        for name in MAGIC_FIELDS {
+            fields.entry(name.to_string()).or_insert_with(|| Field {
+                name: name.to_string(),
+                kind: String::new(),
+                comodel: None,
+            });
+        }
+        visiting.remove(model);
+        Some(fields)
+    }
+}
+
+/// The modules in `dirs` that give `model` a field `field`: where to look
+/// when a module uses a field its dependencies do not have.
+pub fn modules_defining(dirs: &[PathBuf], model: &str, field: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()) {
+                continue;
+            }
+            let Some(module) = module_index(&path) else { continue };
+            let defines = module.classes.iter().any(|class| {
+                let on_model = class.name.as_deref() == Some(model)
+                    || (class.name.is_none() && class.inherit.iter().any(|i| i == model));
+                on_model && class.fields.iter().any(|f| f.name == field)
+            });
+            if defines && !found.contains(&module.name) {
+                found.push(module.name.clone());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_revalidated_cache_sees_new_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = dir.path().join("acme_idx");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("__manifest__.py"), "{'name': 'Idx'}\n").unwrap();
+        let model = "from odoo import fields, models\n\n\nclass P(models.Model):\n    _name = 'acme.p'\n";
+        std::fs::write(module.join("a.py"), format!("{model}\n    a = fields.Char()\n")).unwrap();
+        revalidate_cache();
+        let fields = |index: &ModuleIndex| -> Vec<String> {
+            index
+                .classes
+                .iter()
+                .flat_map(|c| c.fields.iter().map(|f| f.name.clone()))
+                .collect()
+        };
+        assert_eq!(fields(&module_index(&module).unwrap()), vec!["a"]);
+        std::fs::write(module.join("b.py"), format!("{model}\n    b = fields.Char()\n")).unwrap();
+        let mut found = fields(&module_index(&module).unwrap());
+        found.sort();
+        assert_eq!(found, vec!["a", "b"]);
+    }
+}

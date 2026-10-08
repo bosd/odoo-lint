@@ -24,6 +24,8 @@ select = ["ALL"]
 ignore = ["ODOO001"]
 # Extra paths to skip, relative to this file.
 exclude = ["setup", "addons/legacy_*"]
+# Where the dependencies of your modules are, Odoo's included.
+addons-path = ["../odoo/odoo/addons", "../odoo/addons", "../oca/*"]
 
 [tool.odoo-lint.per-file-ignores]
 "*/tests/*" = ["missing-depends"]
@@ -79,6 +81,21 @@ Glob patterns of files and directories to skip, relative to the directory of
 the configuration file. A pattern without `/` also matches a bare file or
 directory name anywhere. Directories such as `.git`, `.venv`, `node_modules`
 and `__pycache__` are always skipped.
+
+### `addons-path`
+
+Folders with addons, as in Odoo's `addons_path`, relative to this file; a
+glob such as `../oca/*` adds every folder it matches. `odl check
+--addons-path` replaces it, relative to the working directory.
+
+Checks across modules use it to look up what a module's `depends` reach,
+such as [ODOO004](rules/ODOO004.md) for fields in views. The modules next to
+the checked module are found without it. A module whose dependencies cannot
+all be found is not checked by these rules, so without `addons-path` they
+stay silent rather than guess.
+
+Only the dependencies of the checked modules are read: with all of Odoo 18.0
+in the path, checking every core module takes about two seconds.
 
 ### `per-file-ignores`
 

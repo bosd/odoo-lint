@@ -40,6 +40,38 @@ pub struct CliOverrides {
     /// Apply `exclude` to files given explicitly too, as pre-commit passes
     /// them.
     pub force_exclude: bool,
+    /// Replaces `addons-path` from the config; relative to the working
+    /// directory.
+    pub addons_path: Option<Vec<String>>,
+}
+
+/// `paths` relative to `base`, with glob patterns expanded to the folders
+/// they match.
+fn expand_paths(base: &Path, paths: &[String]) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for path in paths {
+        let full = base.join(path);
+        if !path.contains(['*', '?', '[']) {
+            found.push(full);
+            continue;
+        }
+        let Some(parent) = full.parent() else { continue };
+        let Some(pattern) = full.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        let Ok(glob) = Glob::new(&pattern) else { continue };
+        let matcher = glob.compile_matcher();
+        let mut matches: Vec<PathBuf> = std::fs::read_dir(parent)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().is_dir() && matcher.is_match(e.file_name()))
+            .map(|e| e.path())
+            .collect();
+        matches.sort();
+        found.extend(matches);
+    }
+    found
 }
 
 /// A path pattern from `exclude` or `per-file-ignores`.
@@ -80,6 +112,8 @@ pub struct Settings {
     pub assume_module_version: Option<OdooVersion>,
     /// Keep only the violations this accepts.
     pub violation_filter: Option<ViolationFilter>,
+    /// Folders with addons, for checks across modules.
+    pub addons_path: Vec<PathBuf>,
     exclude: Vec<PathPattern>,
     per_file_ignores: Vec<(PathPattern, Vec<String>)>,
 }
@@ -95,6 +129,7 @@ impl Default for Settings {
             force_exclude: false,
             assume_module_version: None,
             violation_filter: None,
+            addons_path: Vec::new(),
             exclude: Vec::new(),
             per_file_ignores: Vec::new(),
         }
@@ -193,6 +228,10 @@ impl Settings {
             .and_then(Path::parent)
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
+        let addons_path = match &cli.addons_path {
+            Some(paths) => expand_paths(Path::new("."), paths),
+            None => expand_paths(&project_root, config.addons_path.as_deref().unwrap_or_default()),
+        };
         let settings = Self {
             config,
             target_version,
@@ -202,6 +241,7 @@ impl Settings {
             force_exclude: cli.force_exclude,
             assume_module_version: None,
             violation_filter: None,
+            addons_path,
             exclude,
             per_file_ignores,
         };

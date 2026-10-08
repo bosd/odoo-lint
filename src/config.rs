@@ -29,6 +29,10 @@ pub struct OdooLintConfig {
     /// Module pattern (`*`, `prefix*` or an exact name) -> manifest values
     /// that fixes fill in when a required key is missing.
     pub manifest_defaults: Option<HashMap<String, HashMap<String, toml::Value>>>,
+    /// Folders with addons (Odoo's `addons_path`), relative to the project
+    /// root; globs such as `../oca/*` are expanded. Checks across modules,
+    /// such as fields in views, look up dependencies there.
+    pub addons_path: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

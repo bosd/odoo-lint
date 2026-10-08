@@ -5,6 +5,7 @@ pub mod diagnostics;
 pub mod fix;
 pub mod fixer;
 pub mod hook;
+pub mod index;
 pub mod linter;
 pub mod manifest;
 pub mod mcp;
