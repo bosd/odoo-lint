@@ -206,3 +206,37 @@ jobs:
         run: ./mcp-publisher login github-oidc
       - name: Publish
         run: ./mcp-publisher publish
+
+  publish_npm:
+    name: Publish the dsh bundle to npm
+    # bin/odl pins this release of odoo-linter, so PyPI comes first.
+    needs: publish_release
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/dsh-odoo-lint
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # Trusted publishing needs npm 11.5.1 or later; Node 24 has it.
+          node-version: "24.21.0"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Publish with trusted publishing
+        working-directory: integrations/dsh
+        run: |
+          version="$(jq -r .version package.json)"
+          if npm view "dsh-odoo-lint@$version" version >/dev/null 2>&1; then
+            echo "dsh-odoo-lint $version is already on npm"
+            exit 0
+          fi
+          # npm wants a tag for prereleases; until 0.1.0 every release is one.
+          npm publish --access public --tag latest
