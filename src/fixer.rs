@@ -19,7 +19,7 @@ pub struct FixResult {
     pub remaining: Vec<Violation>,
     /// Number of fixes applied.
     pub fixed: usize,
-    /// Changed files: path, contents on disk, new contents.
+    /// Changed files: path, contents before fixing, new contents.
     pub changed: Vec<(PathBuf, String, String)>,
 }
 
@@ -34,12 +34,17 @@ fn current_text(sources: &Sources, path: &Path) -> Option<String> {
 }
 
 pub fn fix_paths(paths: &[PathBuf], settings: &Settings, mode: FixMode) -> FixResult {
-    let sources = Sources::default();
+    fix_paths_with(paths, settings, mode, &Sources::default())
+}
+
+/// Fixes `paths` as `sources` has them, e.g. with an editor's unsaved
+/// documents in it. `sources` holds the fixed contents afterwards.
+pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sources: &Sources) -> FixResult {
     let mut originals: HashMap<PathBuf, String> = HashMap::new();
     let mut fixed = 0;
     let files = collect_files(paths, settings);
-    let units = lint_units(&files, &sources);
-    let mut violations = lint_files_with(&files, settings, &sources);
+    let units = lint_units(&files, sources);
+    let mut violations = lint_files_with(&files, settings, sources);
     for _ in 0..MAX_PASSES {
         let candidates = violations.iter().filter_map(|v| {
             let fix = v.fix.as_ref().filter(|f| mode.allows(f.applicability))?;
@@ -58,14 +63,14 @@ pub fn fix_paths(paths: &[PathBuf], settings: &Settings, mode: FixMode) -> FixRe
         }
         let mut changed_units = HashSet::new();
         for (path, edits) in edits_by_file {
-            let Some(text) = current_text(&sources, &path) else {
+            let Some(text) = current_text(sources, &path) else {
                 continue;
             };
             let new_text = apply_edits(&text, &edits);
             if new_text != text {
                 if !originals.contains_key(&path) {
-                    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
-                    originals.insert(path.clone(), on_disk);
+                    let before = sources.read_to_string(&path).unwrap_or_default();
+                    originals.insert(path.clone(), before);
                 }
                 changed_units.insert(units.get(&path).cloned().unwrap_or_else(|| path.clone()));
                 sources.set(path, new_text);
@@ -83,17 +88,17 @@ pub fn fix_paths(paths: &[PathBuf], settings: &Settings, mode: FixMode) -> FixRe
             .collect();
         let relinted: HashSet<String> = relint.iter().map(|f| f.to_string_lossy().into_owned()).collect();
         violations.retain(|v| !relinted.contains(&v.file_path));
-        violations.extend(lint_files_with(&relint, settings, &sources));
+        violations.extend(lint_files_with(&relint, settings, sources));
         violations.sort();
     }
-    let changed = sources
-        .changed()
+    let mut changed: Vec<(PathBuf, String, String)> = originals
         .into_iter()
-        .map(|(path, new)| {
-            let old = originals.remove(&path).unwrap_or_default();
-            (path, old, new)
+        .filter_map(|(path, old)| {
+            let new = sources.read_to_string(&path).ok()?;
+            (new != old).then_some((path, old, new))
         })
         .collect();
+    changed.sort();
     FixResult {
         remaining: violations,
         fixed,

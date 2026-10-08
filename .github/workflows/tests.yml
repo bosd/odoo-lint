@@ -37,6 +37,8 @@ jobs:
           - { python: "3.13", os: "ubuntu-latest", session: "parity" }
           # Documentation
           - { python: "3.13", os: "ubuntu-latest", session: "docs-build" }
+          # Zed extension (WebAssembly)
+          - { python: "", os: "ubuntu-latest", session: "zed-extension" }
 
     env:
       NOXSESSION: ${{ matrix.session }}

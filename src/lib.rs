@@ -13,6 +13,7 @@ pub mod po;
 pub mod pyliteral;
 pub mod rules;
 pub mod semantic;
+pub mod server;
 pub mod settings;
 pub mod sources;
 pub mod suppression;
