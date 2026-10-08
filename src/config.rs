@@ -269,10 +269,14 @@ impl OdooLintConfig {
         Ok(pyproject.tool.and_then(|tool| tool.odoo_lint))
     }
 
-    /// Loads a config file explicitly, choosing the format by file name.
+    /// Loads a config file explicitly. A file with a top-level `tool` table is
+    /// a `pyproject.toml` whatever its name (such as a copy of one from
+    /// another branch); otherwise it is a standalone `odoo-lint.toml`.
     pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path).map_err(|e| ConfigError::Io(path.to_path_buf(), e))?;
-        let parsed = if path.file_name().is_some_and(|n| n == "pyproject.toml") {
+        let is_pyproject = path.file_name().is_some_and(|n| n == "pyproject.toml")
+            || toml::from_str::<toml::Table>(&content).is_ok_and(|table| table.contains_key("tool"));
+        let parsed = if is_pyproject {
             Self::from_pyproject_toml(&content).map(Option::unwrap_or_default)
         } else {
             Self::from_odoo_lint_toml(&content)
@@ -436,6 +440,20 @@ authors = "Odoo Community Association (OCA)"
         assert!(OdooLintConfig::from_pyproject_toml("[project]\nname = 'x'\n")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn explicit_pyproject_under_another_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pyproject_main.toml");
+        std::fs::write(&path, PYPROJECT).unwrap();
+        let c = OdooLintConfig::from_file(&path).unwrap();
+        assert_eq!(c.target_version.as_deref(), Some("16.0"));
+
+        let path = dir.path().join("lint.toml");
+        std::fs::write(&path, "target-version = \"18.0\"\n").unwrap();
+        let c = OdooLintConfig::from_file(&path).unwrap();
+        assert_eq!(c.target_version.as_deref(), Some("18.0"));
     }
 
     #[test]

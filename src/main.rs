@@ -239,8 +239,11 @@ fn main() -> ExitCode {
 
             if output_format == OutputFormat::Text {
                 eprintln!("🚀 Running odl check (Odoo {})...", settings.target_version);
-                if let Some(config_path) = &config_path {
-                    eprintln!("⚙️  Using config {}", config_path.display());
+                match &config_path {
+                    Some(config_path) => eprintln!("⚙️  Using config {}", config_path.display()),
+                    None => eprintln!(
+                        "⚙️  No config found (odoo-lint.toml or [tool.odoo-lint] in pyproject.toml); using the defaults"
+                    ),
                 }
             }
             let mode = if unsafe_fixes { FixMode::Unsafe } else { FixMode::Safe };
