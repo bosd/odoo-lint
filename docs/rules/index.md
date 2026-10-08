@@ -45,7 +45,18 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [E8305](E8305.md) | `translation-too-many-args` | `_()` gets more arguments than its format string uses. |
 | [E8306](E8306.md) | `translation-too-few-args` | `_()` gets fewer arguments than its format string needs. |
 | [F8101](F8101.md) | `resource-not-exist` | A data file listed in the manifest does not exist. |
+| [MOD001](MOD001.md) | `manifest-syntax-error` | The manifest could not be loaded. |
+| [MOD002](MOD002.md) | `file-not-used` | A data file is not referenced in the manifest. |
+| [MOD003](MOD003.md) | `csv-syntax-error` | A CSV file the manifest lists cannot be read. |
+| [MOD004](MOD004.md) | `csv-duplicate-record-id` | Two CSV records of a manifest key have the same `id`. |
+| [MOD005](MOD005.md) | `prefer-readme-rst` | The module has a `README.md` instead of a `README.rst`. |
+| [MOD006](MOD006.md) | `weblate-component-too-long` | Repository name, Odoo version and module name are too long for a Weblate component. |
+| [MOD007](MOD007.md) | `unused-logger` | `_logger = logging.getLogger(__name__)` is never used. |
+| [MOD008](MOD008.md) | `use-header-comments` | A Python file starts with comments such as a copyright header. |
+| [MOD009](MOD009.md) | `field-string-redundant` | A field's `string` is the label Odoo derives from its name anyway. |
 | [ODOO001](ODOO001.md) | `missing-depends` | Compute method referenced by `compute=` lacks `@api.depends`. |
+| [ODOO002](ODOO002.md) | `module-unwanted-file` | A package, archive, executable, database dump or video inside a module. |
+| [ODOO003](ODOO003.md) | `module-large-file` | A file inside a module is larger than the limit (1 MiB by default). |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -248,7 +259,18 @@ E8301
 E8305
 E8306
 F8101
+MOD001
+MOD002
+MOD003
+MOD004
+MOD005
+MOD006
+MOD007
+MOD008
+MOD009
 ODOO001
+ODOO002
+ODOO003
 PO001
 PO002
 PO003

@@ -43,6 +43,7 @@ def make_module(root: Path, name: str, author: str) -> Path:
         "    'license': 'AGPL-3',\n}\n"
     )
     (module / "README.rst").write_text(f"{name}\n")
+    (module / "__init__.py").write_text("")
     return module
 
 

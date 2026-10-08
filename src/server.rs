@@ -166,7 +166,9 @@ impl Server {
             return None;
         }
         let settings = Self::settings(path)?;
-        let violations = linter::lint_files_with(&[file], &settings, &self.sources);
+        let mut violations = linter::lint_files_with(std::slice::from_ref(&file), &settings, &self.sources);
+        // Module checks also report on other files of the module.
+        violations.retain(|v| Path::new(&v.file_path) == file);
         Some((settings, violations))
     }
 

@@ -41,8 +41,8 @@ uv run nox -s docs     # live-reloading documentation
 ### Parity with OCA's linters
 
 `uv run nox -s parity` lints the test repositories of pylint-odoo and of
-odoo-pre-commit-hooks (`oca-checks-po` and the XML checks of
-`oca-checks-odoo-module`), fetched at pinned commits into
+odoo-pre-commit-hooks (`oca-checks-po` and `oca-checks-odoo-module`),
+fetched at pinned commits into
 `.cache/` and not vendored, and compares the number of messages per check
 with what their test suites expect. It fails when a
 check odoo-lint implements reports a different number, so a ported check is

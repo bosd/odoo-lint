@@ -60,7 +60,8 @@ apply to some Odoo versions are skipped for other versions. Default: `"17.0"`.
 
 Which rules run. Each entry is one of:
 
-- `ALL`, every rule;
+- `ALL`, every rule except the opt-in ones ([MOD008](rules/MOD008.md),
+  which removes copyright headers);
 - a code such as `C8101`, or a name such as `manifest-required-author`;
 - a code prefix such as `C81`, `E` or `ODOO`.
 

@@ -51,6 +51,7 @@ pub fn lint_files_with(files: &[PathBuf], settings: &Settings, sources: &Sources
     // Rules across the files of a module.
     violations.extend(inherit::violations(inherit_facts));
     violations.extend(lint_xml(files, &modules, &rules, settings, sources));
+    violations.extend(lint_modules(&modules, &rules, settings, sources));
     if let Some(filter) = &settings.violation_filter {
         violations.retain(|v| (filter.0)(v));
     }
@@ -91,6 +92,34 @@ fn lint_xml(
             (requested.contains(path) || !path.exists())
                 && rules::find(&v.code).is_none_or(|rule| !settings.is_ignored_in_file(path, rule))
         })
+        .collect()
+}
+
+/// The module rules, once per module with a file among the linted ones.
+fn lint_modules(
+    modules: &HashMap<PathBuf, Option<Arc<ModuleInfo>>>,
+    rules: &[&'static Rule],
+    settings: &Settings,
+    sources: &Sources,
+) -> Vec<Violation> {
+    let module_rules: Vec<&Rule> = rules
+        .iter()
+        .copied()
+        .filter(|r| matches!(r.check, Check::Module(_)))
+        .collect();
+    if module_rules.is_empty() {
+        return Vec::new();
+    }
+    let mut seen = HashSet::new();
+    let module_list: Vec<&Arc<ModuleInfo>> = modules
+        .values()
+        .flatten()
+        .filter(|m| seen.insert(m.path.clone()))
+        .collect();
+    module_list
+        .par_iter()
+        .flat_map_iter(|module| rules::module::lint_module(module, &module_rules, settings, sources))
+        .filter(|v| rules::find(&v.code).is_none_or(|rule| !settings.is_ignored_in_file(Path::new(&v.file_path), rule)))
         .collect()
 }
 
