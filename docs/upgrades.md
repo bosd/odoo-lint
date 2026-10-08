@@ -23,7 +23,12 @@ acme_sale (17.0 → 19.0)
 Every rule that starts applying at a version, such as `name_get` in 17.0 or
 `self._cr` in 19.0, is an upgrade step. For each module, the report lists
 the findings of the steps after the module's own version (the series in its
-manifest's `version`, e.g. `17.0.1.0.0`) up to the target, grouped by step:
+manifest's `version`, e.g. `17.0.1.0.0`) up to the target, grouped by step.
+The [upgrade rules](#upgrade-rules) of the module's own version count too: a
+module whose version was bumped to 19.0 before its code was migrated is not
+ready for 19.0 yet.
+
+The findings are grouped by how they can be fixed:
 
 automatic
 : `--fix` changes it, and the change keeps the behaviour.
