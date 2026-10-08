@@ -28,9 +28,11 @@ integrations
 editors
 ai
 translations
+upgrades
 benchmarks
 rules/index
 parity
+roadmap
 development
 License <license>
 Changelog <https://github.com/bosd/odoo-lint/releases>

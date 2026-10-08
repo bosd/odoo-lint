@@ -80,6 +80,7 @@ fn handle_request(method: &str, params: &Value) -> Result<Value, (i64, String)> 
                 "check" => check(&arguments),
                 "fix" => fix(&arguments),
                 "rule" => rule(&arguments),
+                "upgrade_check" => upgrade_check(&arguments),
                 _ => return Err((-32602, format!("Unknown tool: {name}"))),
             };
             Ok(match outcome {
@@ -132,6 +133,20 @@ fn tools() -> Value {
             "description": "Apply odoo-lint's automatic fixes to Odoo addons and list what is left. Use dry_run to see a diff first.",
             "inputSchema": {"type": "object", "properties": fix_properties},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+        },
+        {
+            "name": "upgrade_check",
+            "title": "Check an Odoo upgrade",
+            "description": "Report what Odoo addons need to run on a newer Odoo version, per version step and module: how many changes, how many `fix` makes automatically, how many need review or manual work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Addon directories; default: the current directory"},
+                    "target": {"type": "string", "description": "Odoo version to upgrade to, e.g. 19.0"}
+                },
+                "required": ["target"]
+            },
+            "annotations": {"readOnlyHint": true, "openWorldHint": false},
         },
         {
             "name": "rule",
@@ -216,6 +231,21 @@ fn fix(arguments: &Value) -> Result<String, String> {
     text.push('\n');
     text.push_str(&describe(&result.remaining, &settings));
     Ok(text)
+}
+
+fn upgrade_check(arguments: &Value) -> Result<String, String> {
+    let target: crate::odoo_version::OdooVersion = arguments
+        .get("target")
+        .and_then(Value::as_str)
+        .ok_or("`target` is required, e.g. \"19.0\"")?
+        .parse()?;
+    let (paths, settings) = settings(&json!({"paths": arguments.get("paths").cloned().unwrap_or(Value::Null)}))?;
+    let report = crate::upgrade::check(&settings, &paths, target);
+    Ok(format!(
+        "{}\nApply the automatic changes with `odl upgrade-check --target {} --fix` (add `--unsafe-fixes` for the ones to review).",
+        crate::upgrade::render_text(&report, true),
+        report.target
+    ))
 }
 
 fn rule(arguments: &Value) -> Result<String, String> {
@@ -305,7 +335,7 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["check", "fix", "rule"]);
+        assert_eq!(names, ["check", "fix", "upgrade_check", "rule"]);
         let doc = responses[2]["result"]["content"][0]["text"].as_str().unwrap();
         assert!(doc.starts_with("# prefer-env-translation (W8161)"));
         assert_eq!(responses[3]["result"]["isError"], true);

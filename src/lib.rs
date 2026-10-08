@@ -17,5 +17,6 @@ pub mod server;
 pub mod settings;
 pub mod sources;
 pub mod suppression;
+pub mod upgrade;
 pub mod visit;
 pub mod xml;

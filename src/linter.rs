@@ -51,6 +51,9 @@ pub fn lint_files_with(files: &[PathBuf], settings: &Settings, sources: &Sources
     // Rules across the files of a module.
     violations.extend(inherit::violations(inherit_facts));
     violations.extend(lint_xml(files, &modules, &rules, settings, sources));
+    if let Some(filter) = &settings.violation_filter {
+        violations.retain(|v| (filter.0)(v));
+    }
     violations.sort();
     violations
 }
@@ -136,6 +139,18 @@ fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
 }
 
 /// Maps every file to the module (closest ancestor with a manifest) it is in.
+/// The modules the files belong to, once each.
+pub fn modules_of(files: &[PathBuf], sources: &Sources) -> Vec<Arc<ModuleInfo>> {
+    let mut seen = HashSet::new();
+    let mut modules: Vec<Arc<ModuleInfo>> = resolve_modules(files, sources)
+        .into_values()
+        .flatten()
+        .filter(|m| seen.insert(m.path.clone()))
+        .collect();
+    modules.sort_by(|a, b| a.path.cmp(&b.path));
+    modules
+}
+
 /// The unit every file is linted with: its module's folder, or the file itself
 /// outside a module. Rules only look across files within one unit.
 pub fn lint_units(files: &[PathBuf], sources: &Sources) -> HashMap<PathBuf, PathBuf> {

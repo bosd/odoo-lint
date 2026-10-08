@@ -75,6 +75,11 @@ pub struct Settings {
     pub project_root: PathBuf,
     /// Apply `exclude` to explicitly given files as well.
     pub force_exclude: bool,
+    /// Lint every module as if written for this version (version-gated XML
+    /// rules otherwise follow each module's manifest), for upgrade checks.
+    pub assume_module_version: Option<OdooVersion>,
+    /// Keep only the violations this accepts.
+    pub violation_filter: Option<ViolationFilter>,
     exclude: Vec<PathPattern>,
     per_file_ignores: Vec<(PathPattern, Vec<String>)>,
 }
@@ -88,6 +93,8 @@ impl Default for Settings {
             ignore: Vec::new(),
             project_root: PathBuf::from("."),
             force_exclude: false,
+            assume_module_version: None,
+            violation_filter: None,
             exclude: Vec::new(),
             per_file_ignores: Vec::new(),
         }
@@ -103,6 +110,16 @@ pub fn selector_matches(selector: &str, rule: &Rule) -> bool {
         || (!selector.is_empty()
             && rule.code.len() > selector.len()
             && rule.code[..selector.len()].eq_ignore_ascii_case(selector))
+}
+
+/// A predicate on violations, shared between threads.
+#[derive(Clone)]
+pub struct ViolationFilter(pub std::sync::Arc<dyn Fn(&crate::diagnostics::Violation) -> bool + Send + Sync>);
+
+impl std::fmt::Debug for ViolationFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ViolationFilter")
+    }
 }
 
 /// Settings as `odl check` builds them: the config file given, or the one
@@ -179,6 +196,8 @@ impl Settings {
             ignore,
             project_root,
             force_exclude: cli.force_exclude,
+            assume_module_version: None,
+            violation_filter: None,
             exclude,
             per_file_ignores,
         };
