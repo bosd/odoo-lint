@@ -17,10 +17,11 @@ starts `odl server` for Python files. It uses, in order, the binary set in
 the settings, `odl` on the project's PATH, or the latest release from PyPI,
 which it downloads.
 
-Until it is in Zed's extension registry, install it from a checkout of this
-repository: run _zed: install dev extension_ from the command palette and
-pick the `integrations/zed` folder (this needs Rust installed through
-rustup).
+Install it from Zed's extension registry: open _zed: extensions_ from the
+command palette and search for `odoo-lint`. To try a version that is not
+released yet, install it from a checkout of this repository instead: run
+_zed: install dev extension_ and pick the `integrations/zed` folder (this
+needs Rust installed through rustup).
 
 To use another binary, give its arguments too: with a `path`, Zed uses the
 `arguments` from the settings, and without `server` the server does not
