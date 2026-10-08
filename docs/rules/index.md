@@ -53,6 +53,10 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [PO005](PO005.md) | `po-duplicate-message-definition` | The same `msgid` is translated more than once. |
 | [PO006](PO006.md) | `po-duplicate-model-definition` | The same `model:` reference is translated more than once. |
 | [PO007](PO007.md) | `po-pretty-format` | A PO file is not formatted the way Odoo exports it. |
+| [PO101](PO101.md) | `po-not-in-pot` | A translation is ignored because its `msgid` is missing from the module's `.pot`. |
+| [PO102](PO102.md) | `po-unknown-occurrence` | Odoo cannot read a `#:` reference of a translation. |
+| [PO103](PO103.md) | `po-file-name` | Odoo never loads a `.po` file with this name. |
+| [PO104](PO104.md) | `po-fuzzy` | A translation is marked `fuzzy`, but Odoo loads it anyway. |
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
@@ -133,6 +137,10 @@ PO004
 PO005
 PO006
 PO007
+PO101
+PO102
+PO103
+PO104
 R8101
 R8180
 R8181
