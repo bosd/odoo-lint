@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="102" viewBox="0 0 640 102" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
+<text x="120" y="23" text-anchor="end" fill="#7d8590" font-weight="bold">odoo-lint</text>
+<rect x="130" y="9" width="2.0" height="20" rx="3" fill="#ef662f"/>
+<text x="140.0" y="23" fill="#7d8590" font-weight="bold">0.10s</text>
+<text x="120" y="57" text-anchor="end" fill="#7d8590" font-weight="normal">pylint-odoo</text>
+<rect x="130" y="43" width="440.0" height="20" rx="3" fill="#7d8590"/>
+<text x="578.0" y="57" fill="#7d8590" font-weight="normal">25.8s</text>
+<text x="130" y="94" fill="#7d8590" font-size="12">Linting OCA/sale-workflow (173 modules, 1333 Python files)</text>
+</svg>

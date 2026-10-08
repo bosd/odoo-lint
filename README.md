@@ -21,6 +21,29 @@ It checks Python files, manifests and translation (`.po`) files, with the
 checks of OCA's pylint-odoo and `oca-checks-po`: same names, same messages,
 same results on their own test suites.
 
+<p align="center">
+  <img alt="Bar chart: linting OCA/sale-workflow takes 0.10s with odoo-lint and 25.8s with pylint-odoo" src="https://raw.githubusercontent.com/bosd/odoo-lint/main/docs/_static/benchmark.svg" width="640">
+</p>
+
+<p align="center"><i>Linting all of OCA/sale-workflow 18.0, as OCA's pre-commit hook runs pylint-odoo. See <a href="https://odoo-lint.readthedocs.io/en/latest/benchmarks.html">benchmarks</a>.</i></p>
+
+- ⚡ **250x faster** than pylint with pylint-odoo, and still 30x faster on a
+  single core
+- ⚖️ **Drop-in for pylint-odoo and `oca-checks-po`**: same codes, names and
+  messages, 71/71 checks matching on their own test suites, and
+  `# pylint: disable=` comments keep working
+- 🔧 **Automatic fixes**, safe and unsafe as in Ruff, for Python, manifests
+  and `.po` files (`odl check --fix`, `--diff` to preview)
+- 🌍 **Translation checks that predict Odoo's loader**: why Odoo logs
+  "malformed po file", and why a translation does not show up
+- 🛠️ **Configured in `pyproject.toml`**, including company-specific author
+  rules
+- 📋 **Output for CI**: GitHub annotations, GitLab Code Quality, SARIF and
+  JSON
+- 🤖 **For AI coding agents**: an MCP server, and plugins for Claude Code,
+  DeepSeek Harness and OpenCode that lint every file the agent edits
+- 🪝 **Git hooks**: pre-commit and hk
+
 ## Installation
 
 ```bash
