@@ -1,8 +1,10 @@
 use clap::{Parser, Subcommand};
 use odoo_lint::config::OdooLintConfig;
+use odoo_lint::diagnostics::Violation;
+use odoo_lint::fix::{Applicability, FixMode};
 use odoo_lint::output::{self, OutputFormat};
 use odoo_lint::settings::{CliOverrides, Settings};
-use odoo_lint::{linter, rules};
+use odoo_lint::{fixer, linter, rules};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -35,6 +37,15 @@ enum Commands {
         /// Output format
         #[arg(long, value_enum, default_value_t)]
         output_format: OutputFormat,
+        /// Apply safe fixes
+        #[arg(long)]
+        fix: bool,
+        /// Also apply fixes that may change behaviour or lose information
+        #[arg(long)]
+        unsafe_fixes: bool,
+        /// Show the fixes as a diff instead of writing them
+        #[arg(long)]
+        diff: bool,
     },
     /// Explain a rule, or list all rules when no code is given
     Rule {
@@ -110,6 +121,9 @@ fn main() -> ExitCode {
             select,
             ignore,
             output_format,
+            fix,
+            unsafe_fixes,
+            diff,
         } => {
             let loaded = match config {
                 Some(file) => OdooLintConfig::from_file(&file).map(|c| (c, Some(file))),
@@ -144,13 +158,48 @@ fn main() -> ExitCode {
                     eprintln!("⚙️  Using config {}", config_path.display());
                 }
             }
-            let violations = linter::lint_paths(&paths, &settings);
+            let mode = if unsafe_fixes { FixMode::Unsafe } else { FixMode::Safe };
+            if diff {
+                let result = fixer::fix_paths(&paths, &settings, mode);
+                for (path, old, new) in &result.changed {
+                    print!("{}", fixer::unified_diff(path, old, new));
+                }
+                eprintln!(
+                    "{} fix(es) would change {} file(s).",
+                    result.fixed,
+                    result.changed.len()
+                );
+                return if result.changed.is_empty() {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                };
+            }
+            let (violations, fixed) = if fix {
+                let result = fixer::fix_paths(&paths, &settings, mode);
+                for (path, _, new) in &result.changed {
+                    if let Err(err) = std::fs::write(path, new) {
+                        eprintln!("error: cannot write {}: {err}", path.display());
+                        return ExitCode::from(2);
+                    }
+                }
+                (result.remaining, Some(result.fixed))
+            } else {
+                (linter::lint_paths(&paths, &settings), None)
+            };
             print!("{}", output::render(output_format, &violations));
             if output_format == OutputFormat::Text {
+                if let Some(fixed) = fixed {
+                    println!("Fixed {fixed} violation(s).");
+                }
                 if violations.is_empty() {
                     println!("✨ No violations found!");
                 } else {
-                    println!("Found {} violation(s).", violations.len());
+                    println!(
+                        "Found {} violation(s).{}",
+                        violations.len(),
+                        fixable_hint(&violations, fix)
+                    );
                 }
             }
             if violations.is_empty() {
@@ -159,5 +208,23 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         }
+    }
+}
+
+/// " 3 fixable with `--fix` (1 more with `--unsafe-fixes`)." for the summary.
+fn fixable_hint(violations: &[Violation], fixing: bool) -> String {
+    let count = |applicability| {
+        violations
+            .iter()
+            .filter(|v| v.fix.as_ref().is_some_and(|f| f.applicability == applicability))
+            .count()
+    };
+    let (safe, unsafe_) = (count(Applicability::Safe), count(Applicability::Unsafe));
+    match (safe, unsafe_, fixing) {
+        (0, 0, _) => String::new(),
+        (0, u, _) => format!(" {u} fixable with `--fix --unsafe-fixes`."),
+        (s, 0, false) => format!(" {s} fixable with `--fix`."),
+        (s, u, false) => format!(" {s} fixable with `--fix` ({u} more with `--unsafe-fixes`)."),
+        (_, u, true) => format!(" {u} fixable with `--unsafe-fixes`."),
     }
 }

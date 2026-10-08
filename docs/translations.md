@@ -32,6 +32,20 @@ the same names in `i18n_extra/`, in that order: the more specific file wins.
 | Translation file fails to load                            | syntax error                                                   | [PO001](rules/PO001.md)                          |
 | One of two translations lost on the next export           | duplicate `msgid` or `model:` reference                        | [PO005](rules/PO005.md), [PO006](rules/PO006.md) |
 
+## Fixing translation files
+
+`odl check --fix` repairs what can be repaired mechanically: it adds missing
+`#. module:` comments, adds `:0` to `code:` references, merges identical
+duplicates and sorts the file the way OCA's `po-pretty-format` does. Review
+with `--diff` first.
+
+`--unsafe-fixes` also copies translations whose `msgid` is missing from the
+`.pot` into the template, untranslated and with only the references Odoo can
+read. Entries that only have references Odoo cannot read, or that label a
+field the template already labels differently, are left alone: they are
+translations of old texts. Regenerate the `.pot` from a running Odoo when
+possible; the fix is for when that is not practical.
+
 ## Reloading translations
 
 Even a correct file only shows up once Odoo reloads it, and that differs per

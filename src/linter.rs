@@ -9,6 +9,7 @@ use crate::rules::python::inherit::{self, InheritFact, CONSIDER_MERGING_CLASSES_
 use crate::rules::{e0001_syntax_error, Check, Rule};
 use crate::semantic::Semantic;
 use crate::settings::{Settings, DEFAULT_EXCLUDES};
+use crate::sources::{normalize_newlines, Sources};
 use crate::suppression::Suppressions;
 use rayon::prelude::*;
 use ruff_python_parser::parse_module;
@@ -21,15 +22,24 @@ use walkdir::WalkDir;
 
 /// Lints `paths` (files or directories) and returns sorted violations.
 pub fn lint_paths(paths: &[PathBuf], settings: &Settings) -> Vec<Violation> {
-    let files = collect_files(paths, settings);
-    let modules = resolve_modules(&files);
+    lint_paths_with(paths, settings, &Sources::default())
+}
+
+/// Like [`lint_paths`], reading files through `sources` (for fixes in memory).
+pub fn lint_paths_with(paths: &[PathBuf], settings: &Settings, sources: &Sources) -> Vec<Violation> {
+    lint_files_with(&collect_files(paths, settings), settings, sources)
+}
+
+/// Lints the given files (as collected from the paths, excludes applied).
+pub fn lint_files_with(files: &[PathBuf], settings: &Settings, sources: &Sources) -> Vec<Violation> {
+    let modules = resolve_modules(files, sources);
     let rules = settings.enabled_rules();
 
     let results: Vec<(Vec<Violation>, Vec<InheritFact>)> = files
         .par_iter()
         .map(|file| {
             let module = modules.get(file).and_then(Option::as_deref);
-            lint_file(file, module, &rules, settings)
+            lint_file(file, module, &rules, settings, sources)
         })
         .collect();
     let mut violations = Vec::new();
@@ -44,7 +54,8 @@ pub fn lint_paths(paths: &[PathBuf], settings: &Settings) -> Vec<Violation> {
     violations
 }
 
-fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
+/// The files to lint under `paths`, without excluded ones.
+pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
         if root.is_file() {
@@ -84,7 +95,19 @@ fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
 }
 
 /// Maps every file to the module (closest ancestor with a manifest) it is in.
-fn resolve_modules(files: &[PathBuf]) -> HashMap<PathBuf, Option<Arc<ModuleInfo>>> {
+/// The unit every file is linted with: its module's folder, or the file itself
+/// outside a module. Rules only look across files within one unit.
+pub fn lint_units(files: &[PathBuf], sources: &Sources) -> HashMap<PathBuf, PathBuf> {
+    resolve_modules(files, sources)
+        .into_iter()
+        .map(|(file, module)| {
+            let unit = module.map_or_else(|| file.clone(), |m| m.path.clone());
+            (file, unit)
+        })
+        .collect()
+}
+
+fn resolve_modules(files: &[PathBuf], sources: &Sources) -> HashMap<PathBuf, Option<Arc<ModuleInfo>>> {
     let mut by_dir: HashMap<PathBuf, Option<Arc<ModuleInfo>>> = HashMap::new();
     let mut result = HashMap::new();
     for file in files {
@@ -97,7 +120,7 @@ fn resolve_modules(files: &[PathBuf]) -> HashMap<PathBuf, Option<Arc<ModuleInfo>
                 }
                 continue;
             }
-            let module = load_module(dir);
+            let module = load_module(dir, sources);
             by_dir.insert(dir.to_path_buf(), module.clone());
             if module.is_some() {
                 found = module;
@@ -109,9 +132,9 @@ fn resolve_modules(files: &[PathBuf]) -> HashMap<PathBuf, Option<Arc<ModuleInfo>
     result
 }
 
-fn load_module(dir: &Path) -> Option<Arc<ModuleInfo>> {
+fn load_module(dir: &Path, sources: &Sources) -> Option<Arc<ModuleInfo>> {
     let manifest_path = MANIFEST_FILE_NAMES.iter().map(|n| dir.join(n)).find(|p| p.is_file())?;
-    let source = std::fs::read_to_string(&manifest_path).ok()?;
+    let source = sources.read_to_string(&manifest_path).ok()?;
     let name = (if dir.as_os_str().is_empty() {
         Path::new(".")
     } else {
@@ -135,11 +158,12 @@ fn lint_file(
     module: Option<&ModuleInfo>,
     rules: &[&'static Rule],
     settings: &Settings,
+    sources: &Sources,
 ) -> (Vec<Violation>, Vec<InheritFact>) {
     if path.extension().is_some_and(is_po_extension) {
-        return (lint_po_file(path, rules, settings), Vec::new());
+        return (lint_po_file(path, rules, settings, sources), Vec::new());
     }
-    let Ok(source) = std::fs::read_to_string(path) else {
+    let Ok(source) = sources.read_to_string(path) else {
         return (Vec::new(), Vec::new());
     };
     let file_path = path.to_string_lossy();
@@ -230,18 +254,18 @@ fn lint_file(
 
 /// Lints a `.po`/`.pot` file. Files are read as UTF-8 with universal
 /// newlines, like OCA's `oca-checks-po` reads them.
-fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings) -> Vec<Violation> {
+fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings, sources: &Sources) -> Vec<Violation> {
     let rules: Vec<&Rule> = rules
         .iter()
         .copied()
         .filter(|rule| !settings.is_ignored_in_file(path, rule))
         .collect();
     let file_path = path.to_string_lossy();
-    let Ok(bytes) = std::fs::read(path) else {
+    let Ok(bytes) = sources.read(path) else {
         return Vec::new();
     };
     match String::from_utf8(bytes) {
-        Ok(source) => lint_po_source(&file_path, &source, &rules, settings),
+        Ok(source) => lint_po_source_with(&file_path, &source, &rules, settings, sources),
         Err(error) => {
             let position = error.utf8_error().valid_up_to();
             let byte = error.as_bytes()[position];
@@ -251,7 +275,7 @@ fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings) -> Ve
                     "'utf-8' codec can't decode byte {byte:#04x} in position {position}: invalid start byte"
                 ),
             };
-            run_po_rules(&file_path, "", Err(&decode_error), path, &rules, settings)
+            run_po_rules(&file_path, "", Err(&decode_error), path, &rules, settings, sources)
         }
     }
 }
@@ -259,7 +283,17 @@ fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings) -> Ve
 /// Lints PO file contents; `file_path` decides the data section (`i18n`,
 /// `i18n_extra`).
 pub fn lint_po_source(file_path: &str, source: &str, rules: &[&Rule], settings: &Settings) -> Vec<Violation> {
-    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    lint_po_source_with(file_path, source, rules, settings, &Sources::default())
+}
+
+fn lint_po_source_with(
+    file_path: &str,
+    source: &str,
+    rules: &[&Rule],
+    settings: &Settings,
+    sources: &Sources,
+) -> Vec<Violation> {
+    let normalized = normalize_newlines(source);
     let parsed = PoFile::parse(&normalized);
     run_po_rules(
         file_path,
@@ -268,6 +302,7 @@ pub fn lint_po_source(file_path: &str, source: &str, rules: &[&Rule], settings: 
         Path::new(file_path),
         rules,
         settings,
+        sources,
     )
 }
 
@@ -278,6 +313,7 @@ fn run_po_rules(
     path: &Path,
     rules: &[&Rule],
     settings: &Settings,
+    sources: &Sources,
 ) -> Vec<Violation> {
     let data_section = path
         .parent()
@@ -292,6 +328,7 @@ fn run_po_rules(
         po,
         data_section: &data_section,
         settings,
+        sources,
     };
     for rule in rules {
         if let Check::Po(check) = rule.check {

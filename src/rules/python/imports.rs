@@ -1,8 +1,9 @@
 //! Rules on import statements.
 
 use crate::checker::{PythonContext, Reporter};
+use crate::fix::{Edit, Fix};
 use crate::rules::{Check, Rule};
-use ruff_python_ast::Stmt;
+use ruff_python_ast::{Expr, Stmt, StmtImportFrom};
 use ruff_text_size::Ranged;
 use std::path::Path;
 
@@ -31,6 +32,12 @@ Use instead:
 ```python
 from odoo.exceptions import UserError
 ```
+
+## Fix safety
+
+Unsafe: the import becomes `UserError`, and without an `as` name every
+`Warning` in the file is renamed, including any that does not refer to the
+import.
 "#,
     check: Check::Python(check_exception_warning),
     min_odoo: None,
@@ -99,13 +106,73 @@ fn check_exception_warning(ctx: &PythonContext, reporter: &mut Reporter) {
         let from_exceptions =
             import.level == 0 && import.module.as_ref().is_some_and(|m| m.as_str() == "odoo.exceptions");
         if from_exceptions && import.names.iter().any(|a| a.name.as_str() == "Warning") {
-            reporter.report(
+            let violation = reporter.report(
                 &ODOO_EXCEPTION_WARNING,
                 import.start(),
                 "`odoo.exceptions.Warning` is a deprecated alias to `odoo.exceptions.UserError` use `from odoo.exceptions import UserError`",
             );
+            violation.fix = use_user_error(ctx, import);
         }
     });
+}
+
+/// Imports `UserError` instead of `Warning`. Without an `as` name, the uses
+/// of `Warning` in the file are renamed too. Unsafe: a `Warning` that is not
+/// the import (a local of that name) is renamed as well.
+fn use_user_error(ctx: &PythonContext, import: &StmtImportFrom) -> Option<Fix> {
+    let index = import.names.iter().position(|a| a.name.as_str() == "Warning")?;
+    let alias = &import.names[index];
+    let title = "Import `UserError` instead";
+    if alias.asname.is_some() {
+        let edit = Edit::replace(alias.name.start().to_usize(), alias.name.end().to_usize(), "UserError");
+        return Some(Fix::unsafe_(title, vec![edit]));
+    }
+    let mut edits = Vec::new();
+    crate::visit::walk(ctx.parsed.suite(), |node, _| {
+        if let crate::visit::Node::Expr(Expr::Name(name)) = node {
+            if name.id.as_str() == "Warning" {
+                edits.push(Edit::replace(
+                    name.start().to_usize(),
+                    name.end().to_usize(),
+                    "UserError",
+                ));
+            }
+        }
+    });
+    let imports_user_error = ctx.parsed.suite().iter().any(|stmt| {
+        matches!(stmt, Stmt::ImportFrom(i) if i.level == 0
+            && i.module.as_ref().is_some_and(|m| m.as_str() == "odoo.exceptions")
+            && i.names.iter().any(|a| a.name.as_str() == "UserError" && a.asname.is_none()))
+    });
+    if !imports_user_error {
+        edits.push(Edit::replace(
+            alias.start().to_usize(),
+            alias.end().to_usize(),
+            "UserError",
+        ));
+    } else if import.names.len() > 1 {
+        // Drop `Warning` and the comma that separates it.
+        let (start, end) = match import.names.get(index + 1) {
+            Some(next) => (alias.start(), next.start()),
+            None => (import.names[index - 1].end(), alias.end()),
+        };
+        edits.push(Edit::delete(start.to_usize(), end.to_usize()));
+    } else {
+        // `from odoo.exceptions import Warning` alone on its line(s).
+        let source = ctx.source;
+        let start = import.start().to_usize();
+        let line_start = source[..start].rfind('\n').map_or(0, |i| i + 1);
+        let rest = &source[import.end().to_usize()..];
+        let rest = rest.trim_start_matches([' ', '\t']);
+        let rest = rest.strip_prefix("\r\n").or_else(|| rest.strip_prefix('\n'))?;
+        // Inside a block the statement may be the only one in its body.
+        let top_level = ctx.parsed.suite().iter().any(|stmt| stmt.range() == import.range());
+        if !top_level || !source[line_start..start].trim().is_empty() {
+            return None;
+        }
+        edits.push(Edit::delete(line_start, source.len() - rest.len()));
+    }
+    Some(Fix::unsafe_(title, edits))
 }
 
 /// Module names imported through `odoo.addons` by an import statement.

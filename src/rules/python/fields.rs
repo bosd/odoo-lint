@@ -3,6 +3,7 @@
 
 use super::{classes, field_definitions, methods, str_value};
 use crate::checker::{PythonContext, Reporter};
+use crate::fix::{Edit, Fix};
 use crate::rules::{Check, Rule};
 use crate::semantic::func_name;
 use ruff_python_ast::{Expr, ExprCall, Stmt, StmtClassDef};
@@ -148,6 +149,12 @@ index.
 [tool.odoo-lint.rules.renamed-field-parameter]
 parameters = { digits_compute = "digits", select = "index" }
 ```
+
+## Fix safety
+
+`select` to `index` is safe. Other renames, such as `digits_compute` to
+`digits`, are unsafe: the new parameter may expect another kind of value.
+There is no fix when the new parameter is already set.
 "#,
     check: Check::Python(check_renamed_parameters),
     min_odoo: None,
@@ -350,8 +357,9 @@ fn check_renamed_parameters(ctx: &PythonContext, reporter: &mut Reporter) {
         });
     for class in classes(ctx.parsed.suite()) {
         for (_, call) in field_definitions(class) {
-            for (arg, value) in keywords(call) {
-                let Some(arg) = arg else { continue };
+            for keyword in &call.arguments.keywords {
+                let Some(identifier) = &keyword.arg else { continue };
+                let (arg, value) = (identifier.as_str(), &keyword.value);
                 // pylint-odoo only looks at renames when the method-name check
                 // does not apply to this argument.
                 let method_name_issue = ["compute", "search", "inverse"].contains(&arg)
@@ -360,11 +368,29 @@ fn check_renamed_parameters(ctx: &PythonContext, reporter: &mut Reporter) {
                     continue;
                 }
                 if let Some(new) = renamed.get(arg) {
-                    reporter.report(
+                    let violation = reporter.report(
                         &RENAMED_FIELD_PARAMETER,
                         call.start(),
                         format!("Field parameter \"{arg}\" is no longer supported. Use \"{new}\" instead."),
                     );
+                    // Renaming next to an existing `new=` would repeat a keyword.
+                    let taken = keywords(call).any(|(other, _)| other == Some(new.as_str()));
+                    if !taken {
+                        let edits = vec![Edit::replace(
+                            identifier.start().to_usize(),
+                            identifier.end().to_usize(),
+                            new.clone(),
+                        )];
+                        let title = format!("Rename to `{new}`");
+                        // `index` takes the same values as `select`; other
+                        // renames can expect other values (`digits_compute`
+                        // took a function).
+                        violation.fix = Some(if (arg, new.as_str()) == ("select", "index") {
+                            Fix::safe(title, edits)
+                        } else {
+                            Fix::unsafe_(title, edits)
+                        });
+                    }
                 }
             }
         }

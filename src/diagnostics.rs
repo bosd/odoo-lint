@@ -1,3 +1,4 @@
+use crate::fix::Fix;
 use serde::Serialize;
 use std::fmt;
 
@@ -12,6 +13,9 @@ pub struct Violation {
     /// Symbolic rule name, e.g. `manifest-required-author`.
     pub name: String,
     pub message: String,
+    /// How to fix the violation automatically, if odoo-lint can.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<Fix>,
 }
 
 impl Violation {
@@ -70,6 +74,7 @@ mod tests {
             code: code.into(),
             name: "x".into(),
             message: "m".into(),
+            fix: None,
         }
     }
 

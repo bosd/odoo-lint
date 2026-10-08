@@ -13,6 +13,7 @@ pub mod e0001_syntax_error;
 pub mod manifest;
 pub mod odoo001_missing_depends;
 pub mod po;
+pub mod po_fixes;
 pub mod po_odoo;
 pub mod python;
 

@@ -67,7 +67,7 @@ impl<'a> Reporter<'a> {
     }
 
     /// Reports at the start of a 1-based line, for files without an AST.
-    pub fn report_line(&mut self, rule: &Rule, line: usize, message: impl Into<String>) {
+    pub fn report_line(&mut self, rule: &Rule, line: usize, message: impl Into<String>) -> &mut Violation {
         self.violations.push(Violation {
             file_path: self.file_path.to_string(),
             line,
@@ -75,10 +75,12 @@ impl<'a> Reporter<'a> {
             code: rule.code.to_string(),
             name: rule.name.to_string(),
             message: message.into(),
+            fix: None,
         });
+        self.violations.last_mut().expect("just pushed")
     }
 
-    pub fn report(&mut self, rule: &Rule, offset: TextSize, message: impl Into<String>) {
+    pub fn report(&mut self, rule: &Rule, offset: TextSize, message: impl Into<String>) -> &mut Violation {
         let location = self.line_index.line_column(offset, self.source);
         self.violations.push(Violation {
             file_path: self.file_path.to_string(),
@@ -87,7 +89,9 @@ impl<'a> Reporter<'a> {
             code: rule.code.to_string(),
             name: rule.name.to_string(),
             message: message.into(),
+            fix: None,
         });
+        self.violations.last_mut().expect("just pushed")
     }
 }
 

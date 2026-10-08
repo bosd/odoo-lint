@@ -2,6 +2,7 @@
 
 use super::{calls_in, classes, field_definitions, source_of, str_value};
 use crate::checker::{PythonContext, Reporter};
+use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
 use crate::rules::{Check, Rule};
 use crate::semantic::{func_lib, func_name};
@@ -95,6 +96,10 @@ Reports `self._cr` in model classes.
 
 Odoo 19.0 deprecated the `_cr` shortcut; `self.env.cr` is the supported way
 to reach the cursor.
+
+## Fix safety
+
+Safe: `self._cr` becomes `self.env.cr`, the same cursor.
 "#,
     check: Check::Python(check_self_cr),
     min_odoo: Some(OdooVersion::new(19, 0)),
@@ -278,11 +283,20 @@ fn check_self_cr(ctx: &PythonContext, reporter: &mut Reporter) {
             attr.attr.as_str() == "_cr" && matches!(&*attr.value, Expr::Name(n) if n.id.as_str() == "self");
         let in_model = enclosing_class(scopes).is_some_and(|c| ctx.semantic.odoo_model_kind(c).is_some());
         if is_self_cr && in_model {
-            reporter.report(
-                &DEPRECATED_SELF_CR,
-                attr.start(),
-                "Use \"self.env.cr\" instead of \"self._cr\" (deprecated since 19.0)",
-            );
+            reporter
+                .report(
+                    &DEPRECATED_SELF_CR,
+                    attr.start(),
+                    "Use \"self.env.cr\" instead of \"self._cr\" (deprecated since 19.0)",
+                )
+                .fix = Some(Fix::safe(
+                "Use `self.env.cr`",
+                vec![Edit::replace(
+                    attr.attr.start().to_usize(),
+                    attr.attr.end().to_usize(),
+                    "env.cr",
+                )],
+            ));
         }
     });
 }

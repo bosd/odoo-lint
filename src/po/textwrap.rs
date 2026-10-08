@@ -71,9 +71,40 @@ fn munge_whitespace(text: &str) -> String {
     out
 }
 
+/// `wordsep_re.split(text)` without empty strings. The regex only splits
+/// runs of non-whitespace at hyphens, and whitespace is neither `\w` nor
+/// punctuation for its lookarounds, so runs are split on their own and the
+/// slow regex only sees runs containing `-`.
+fn split_chunks(text: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    let mut in_space = None;
+    for (i, c) in text.char_indices() {
+        let space = WHITESPACE.contains(&c);
+        if in_space.is_some_and(|s| s != space) {
+            push_run(&mut chunks, &text[start..i]);
+            start = i;
+        }
+        in_space = Some(space);
+    }
+    push_run(&mut chunks, &text[start..]);
+    chunks
+}
+
+fn push_run(chunks: &mut Vec<String>, run: &str) {
+    if run.is_empty() {
+        return;
+    }
+    if run.contains('-') && !run.starts_with(WHITESPACE) {
+        chunks.extend(split_chunks_regex(run));
+    } else {
+        chunks.push(run.to_string());
+    }
+}
+
 /// `wordsep_re.split(text)` without empty strings: the chunks matched by the
 /// regex and the text between matches.
-fn split_chunks(text: &str) -> Vec<String> {
+fn split_chunks_regex(text: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut last = 0;
     let mut position = 0;

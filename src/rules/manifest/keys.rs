@@ -4,6 +4,7 @@
 use super::key_or_dict;
 use crate::checker::{ManifestContext, Reporter};
 use crate::config::list_or;
+use crate::fix::{Edit, Fix};
 use crate::pyliteral::{is_truthy, str_of};
 use crate::rules::{Check, Rule};
 use ruff_python_ast::Expr;
@@ -102,6 +103,10 @@ Use instead: remove both keys.
 # Keys whose default value is True
 keys-values-true = ["active", "installable"]
 ```
+
+## Fix safety
+
+Safe: the key is removed when its entry has its lines to itself.
 "#,
     check: Check::Manifest(check_superfluous_keys),
     min_odoo: None,
@@ -191,13 +196,34 @@ fn check_superfluous_keys(ctx: &ManifestContext, reporter: &mut Reporter) {
         let default_true = values_true.iter().any(|k| k == key);
         if truthy == default_true {
             let shown = str_of(value).unwrap_or_default();
-            reporter.report(
+            let violation = reporter.report(
                 &MANIFEST_SUPERFLUOUS_KEY,
                 key_expr.start(),
                 format!("Manifest superfluous key \"{key}\". It is the same as the default value: {shown}. Better remove it"),
             );
+            let unique = ctx.manifest.entries().filter(|(k, _, _)| *k == key).count() == 1;
+            if unique {
+                violation.fix = remove_entry(ctx.source, key_expr, value)
+                    .map(|edit| Fix::safe(format!("Remove `{key}`"), vec![edit]));
+            }
         }
     }
+}
+
+/// Deletes a `key: value,` entry that has its lines to itself, with the
+/// line break after it.
+fn remove_entry(source: &str, key: &Expr, value: &Expr) -> Option<Edit> {
+    let start = key.start().to_usize();
+    let line_start = source[..start].rfind('\n').map_or(0, |i| i + 1);
+    if !source[line_start..start].trim().is_empty() {
+        return None;
+    }
+    let after = &source[value.end().to_usize()..];
+    let rest = after.trim_start_matches([' ', '\t']);
+    let rest = rest.strip_prefix(',').unwrap_or(rest).trim_start_matches([' ', '\t']);
+    let rest = rest.strip_prefix("\r\n").or_else(|| rest.strip_prefix('\n'))?;
+    let end = source.len() - rest.len();
+    Some(Edit::delete(line_start, end))
 }
 
 fn check_required_keys_app(ctx: &ManifestContext, reporter: &mut Reporter) {

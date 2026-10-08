@@ -3,7 +3,9 @@
 //! with a file, where OCA's checks only look at the file itself.
 
 use super::po::PoContext;
+use super::po_fixes::{first_field_line, line_offset, line_starts, line_text};
 use crate::checker::Reporter;
+use crate::fix::{Edit, Fix};
 use crate::po::{PoEntry, PoFile};
 use crate::rules::{Check, Rule};
 use regex::Regex;
@@ -34,6 +36,13 @@ translated in Weblate, while the `.pot` was not regenerated.
 Regenerate the `.pot` from Odoo (Settings > Translations > Export, or
 `odoo-bin --i18n-export`) after changing translatable terms, and commit it
 with the `.po` files.
+
+## Fix safety
+
+Unsafe: the entry is copied untranslated to the `.pot`, with only the
+references Odoo can read. Check that the text is still used: there is no fix
+when the entry has no such reference left, or when its field is already
+labelled by another entry (an old label).
 "#,
     check: Check::Po(check_not_in_pot),
     min_odoo: None,
@@ -64,6 +73,10 @@ For an unknown reference Odoo logs `malformed po file: unknown occurrence`
 and ignores it. A `code:` reference without a line number is worse: reading
 the file raises `ValueError`, so none of the module's code translations load
 in that language.
+
+## Fix safety
+
+Safe for a `code:` reference without a line number: `:0` is added.
 "#,
     check: Check::Po(check_unknown_occurrences),
     min_odoo: None,
@@ -134,9 +147,11 @@ pub fn pot_path_for(po_path: &Path) -> Option<PathBuf> {
     pot.is_file().then_some(pot)
 }
 
-fn read_pot(path: &Path) -> Option<PoFile> {
-    let source = std::fs::read_to_string(path).ok()?;
-    PoFile::parse(&source.replace("\r\n", "\n").replace('\r', "\n")).ok()
+/// The template's normalised source and parsed contents.
+fn read_pot(ctx: &PoContext, path: &Path) -> Option<(String, PoFile)> {
+    let source = crate::sources::normalize_newlines(&ctx.sources.read_to_string(path).ok()?);
+    let po = PoFile::parse(&source).ok()?;
+    Some((source, po))
 }
 
 fn is_translated(entry: &PoEntry) -> bool {
@@ -148,21 +163,92 @@ fn check_not_in_pot(ctx: &PoContext, reporter: &mut Reporter) {
     let Some(pot_path) = pot_path_for(Path::new(ctx.file_path)) else {
         return;
     };
-    let Some(pot) = read_pot(&pot_path) else { return };
+    let Some((pot_source, pot)) = read_pot(ctx, &pot_path) else {
+        return;
+    };
     let known: HashSet<String> = pot.entries.iter().map(msgid_with_context).collect();
+    // Fields whose label a copied entry must not claim: those the template
+    // already labels, and those several entries of this file claim.
+    let mut taken_fields: HashSet<&str> = model_fields(&pot.entries).collect();
+    let mut seen = HashSet::new();
+    let translated = po.entries.iter().filter(|e| !e.obsolete && is_translated(e));
+    taken_fields.extend(model_fields(translated).filter(|field| !seen.insert(*field)));
     let pot_name = pot_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     for entry in po.entries.iter().filter(|e| !e.obsolete && is_translated(e)) {
         if !known.contains(&msgid_with_context(entry)) {
-            reporter.report_line(
+            let violation = reporter.report_line(
                 &PO_NOT_IN_POT,
                 entry.msgid_line(),
                 format!("Translation is ignored by Odoo: its msgid is not in {pot_name}"),
             );
+            violation.fix = add_to_pot(entry, &pot_source, &pot_path, &taken_fields, &pot_name);
         }
     }
+}
+
+/// The `model:` references (one per field label) of some entries.
+fn model_fields<'a>(entries: impl IntoIterator<Item = &'a PoEntry>) -> impl Iterator<Item = &'a str> {
+    entries
+        .into_iter()
+        .flat_map(|e| &e.occurrences)
+        .map(|(path, _)| path.as_str())
+        .filter(|path| path.starts_with("model:"))
+}
+
+/// Copies an entry into the template, untranslated, with only the references
+/// Odoo can read. None when no reference would be left: such an entry is
+/// stale (an old field label, an OpenERP-era reference) and the template
+/// does not need it.
+fn add_to_pot(
+    entry: &PoEntry,
+    pot_source: &str,
+    pot_path: &Path,
+    taken_fields: &HashSet<&str>,
+    pot_name: &str,
+) -> Option<Fix> {
+    let occurrences: Vec<(String, String)> = entry
+        .occurrences
+        .iter()
+        .filter_map(|(path, line)| {
+            if CODE_OCCURRENCE.is_match(path) {
+                let line = if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) {
+                    line.clone()
+                } else {
+                    "0".to_owned()
+                };
+                return Some((path.clone(), line));
+            }
+            // A field labelled elsewhere: this translation is for an old or
+            // a disputed label.
+            let readable = MODEL_OCCURRENCE.is_match(path) && !taken_fields.contains(path.as_str());
+            readable.then(|| (path.clone(), line.clone()))
+        })
+        .collect();
+    if occurrences.is_empty() {
+        return None;
+    }
+    let template = PoEntry {
+        msgstr: String::new(),
+        msgstr_plural: entry.msgstr_plural.keys().map(|k| (*k, String::new())).collect(),
+        tcomment: String::new(),
+        flags: entry.flags.iter().filter(|f| *f != "fuzzy").cloned().collect(),
+        occurrences,
+        previous_msgctxt: None,
+        previous_msgid: None,
+        previous_msgid_plural: None,
+        ..entry.clone()
+    };
+    let separator = if pot_source.ends_with('\n') { "\n" } else { "\n\n" };
+    Some(Fix::unsafe_(
+        format!("Add the msgid to {pot_name} (check it is still used in the code)"),
+        vec![
+            Edit::insert(pot_source.len(), format!("{separator}{}", template.to_po_string()))
+                .in_file(pot_path.to_path_buf()),
+        ],
+    ))
 }
 
 static MODEL_OCCURRENCE: LazyLock<Regex> =
@@ -188,13 +274,16 @@ fn check_unknown_occurrences(ctx: &PoContext, reporter: &mut Reporter) {
                 // Odoo reads one code reference per entry and converts its
                 // line number with int().
                 if !seen_code && (line.is_empty() || !line.chars().all(|c| c.is_ascii_digit())) {
-                    reporter.report_line(
-                        &PO_UNKNOWN_OCCURRENCE,
-                        entry.msgid_line(),
-                        format!(
-                            "Reference `{path}` has no line number; Odoo fails to read the file's code translations (ValueError). Use `{path}:0`"
-                        ),
-                    );
+                    let fix = add_line_number(ctx, entry, path);
+                    reporter
+                        .report_line(
+                            &PO_UNKNOWN_OCCURRENCE,
+                            entry.msgid_line(),
+                            format!(
+                                "Reference `{path}` has no line number; Odoo fails to read the file's code translations (ValueError). Use `{path}:0`"
+                            ),
+                        )
+                        .fix = fix;
                 }
                 seen_code = true;
                 continue;
@@ -211,6 +300,29 @@ fn check_unknown_occurrences(ctx: &PoContext, reporter: &mut Reporter) {
             );
         }
     }
+}
+
+/// `#: code:path` -> `#: code:path:0` in the entry's reference lines.
+fn add_line_number(ctx: &PoContext, entry: &PoEntry, path: &str) -> Option<Fix> {
+    let starts = line_starts(ctx.source);
+    for line in entry.linenum.max(1)..first_field_line(ctx.source, &starts, entry) {
+        let text = line_text(ctx.source, &starts, line);
+        if !text.starts_with("#:") {
+            continue;
+        }
+        // The reference as a whole token: preceded by a space, followed by
+        // a space or the end of the line.
+        let found = text.match_indices(path).find(|(i, _)| {
+            let before = text[..*i].chars().last();
+            let after = text[i + path.len()..].chars().next();
+            before.is_some_and(char::is_whitespace) && after.is_none_or(char::is_whitespace)
+        });
+        if let Some((i, _)) = found {
+            let at = line_offset(&starts, line) + i + path.len();
+            return Some(Fix::safe("Add line number `:0`", vec![Edit::insert(at, ":0")]));
+        }
+    }
+    None
 }
 
 static LANGUAGE_FILE: LazyLock<Regex> =

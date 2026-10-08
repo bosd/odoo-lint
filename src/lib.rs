@@ -1,6 +1,8 @@
 pub mod checker;
 pub mod config;
 pub mod diagnostics;
+pub mod fix;
+pub mod fixer;
 pub mod linter;
 pub mod manifest;
 pub mod odoo_version;
@@ -10,5 +12,6 @@ pub mod pyliteral;
 pub mod rules;
 pub mod semantic;
 pub mod settings;
+pub mod sources;
 pub mod suppression;
 pub mod visit;
