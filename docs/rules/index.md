@@ -60,6 +60,27 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
+| [U1701](U1701.md) | `upgrade-attrs-states` | A view uses `attrs` or `states`, rejected since Odoo 17.0. |
+| [U1702](U1702.md) | `upgrade-list-column-invisible` | A list column hidden with `invisible`, which only hides the cells since Odoo 17.0. |
+| [U1703](U1703.md) | `upgrade-report-act-window-tags` | `<report>` or `<act_window>`, removed in Odoo 17.0. |
+| [U1704](U1704.md) | `upgrade-calendar-quick-add` | A calendar view uses `quick_add`, renamed `quick_create` in Odoo 17.0. |
+| [U1705](U1705.md) | `upgrade-view-active-id` | A view expression uses `active_id` directly, deprecated in 17.0 and rejected in 18.0. |
+| [U1706](U1706.md) | `upgrade-server-action-lines` | A server action uses `fields_lines`/`ir.server.object.lines`, removed in Odoo 17.0. |
+| [U1707](U1707.md) | `upgrade-view-field-parent` | A view record sets `field_parent`, removed in Odoo 17.0. |
+| [U1708](U1708.md) | `upgrade-view-qweb-directives` | A view uses a QWeb directive Odoo 17.0 forbids in views. |
+| [U1709](U1709.md) | `upgrade-name-get` | `name_get`, no longer used for display names since Odoo 17.0. |
+| [U1710](U1710.md) | `upgrade-name-search-signature` | A `_name_search` override with the 16.0 signature (`args`, `name_get_uid`). |
+| [U1711](U1711.md) | `upgrade-search-count-true` | `search(..., count=True)`, removed in Odoo 17.0. |
+| [U1712](U1712.md) | `upgrade-removed-recordset-methods` | A recordset method deprecated in 16.0 and removed in 17.0. |
+| [U1713](U1713.md) | `upgrade-field-states` | A field uses `states=`, ignored since Odoo 17.0. |
+| [U1714](U1714.md) | `upgrade-savepoint-case` | `SavepointCase`/`HttpSavepointCase`, removed in Odoo 17.0. |
+| [U1715](U1715.md) | `upgrade-old-exceptions` | `odoo.exceptions.Warning` or `except_orm`, removed in Odoo 17.0. |
+| [U1716](U1716.md) | `upgrade-onchange-domain` | An onchange returns a `domain`, ignored since Odoo 17.0. |
+| [U1717](U1717.md) | `upgrade-norecompute` | `env.norecompute()`, a no-op since Odoo 17.0. |
+| [U1718](U1718.md) | `upgrade-ir-default-get` | `ir.default.get()`, renamed `_get()` in Odoo 17.0. |
+| [U1719](U1719.md) | `upgrade-private-read-group` | `_read_group` called with the 16.0 signature (`lazy`, `orderby`, fields). |
+| [U1720](U1720.md) | `upgrade-openerp-manifest` | The manifest is `__openerp__.py`, deprecated in 17.0 and not found by 19.0. |
+| [U1721](U1721.md) | `upgrade-removed-asset-bundles` | The manifest adds files to an asset bundle removed in Odoo 17.0. |
 | [U1801](U1801.md) | `upgrade-tree-view` | A view uses `<tree>`, renamed `<list>` in Odoo 18.0. |
 | [U1802](U1802.md) | `upgrade-view-mode-tree` | An action's `view_mode` says `tree`, renamed `list` in Odoo 18.0. |
 | [U1803](U1803.md) | `upgrade-tree-reference` | An xpath, `mode` or `tree_view_ref` refers to `tree`, renamed `list` in Odoo 18.0. |
@@ -201,6 +222,27 @@ PO104
 R8101
 R8180
 R8181
+U1701
+U1702
+U1703
+U1704
+U1705
+U1706
+U1707
+U1708
+U1709
+U1710
+U1711
+U1712
+U1713
+U1714
+U1715
+U1716
+U1717
+U1718
+U1719
+U1720
+U1721
 U1801
 U1802
 U1803
