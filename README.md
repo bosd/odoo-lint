@@ -31,16 +31,18 @@ to an existing PyPI project. On crates.io it is `odoo-lint`.
 ```bash
 odl check path/to/addons   # lint a directory
 odl rule                   # list all rules
-odl rule ODOO001           # explain a rule
+odl rule C8101             # explain a rule
 ```
 
-Company-specific rules are configured in your `pyproject.toml`:
+Rules ported from pylint-odoo keep its codes, names and messages, and
+`# pylint: disable=` comments keep working. Company-specific rules are
+configured in your `pyproject.toml`:
 
 ```toml
 [tool.odoo-lint]
 target-version = "17.0"
 
-[tool.odoo-lint.rules.manifest-author.mapping]
+[tool.odoo-lint.rules.manifest-required-author.mapping]
 "acme_*" = "Acme Corp"
 ```
 

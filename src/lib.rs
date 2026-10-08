@@ -1,4 +1,10 @@
+pub mod checker;
 pub mod config;
 pub mod diagnostics;
 pub mod linter;
+pub mod manifest;
+pub mod odoo_version;
+pub mod output;
 pub mod rules;
+pub mod settings;
+pub mod suppression;
