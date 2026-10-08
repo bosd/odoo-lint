@@ -85,7 +85,7 @@ jobs:
           sccache: false
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: wheels-${{ matrix.runs-on }}-${{ matrix.target }}
+          name: dist-wheels-${{ matrix.runs-on }}-${{ matrix.target }}
           path: dist/*.whl
 
   build_sdist:
@@ -104,7 +104,7 @@ jobs:
           args: --out dist
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: sdist
+          name: dist-sdist
           path: dist/*.tar.gz
 
   publish_release:
@@ -119,9 +119,12 @@ jobs:
       contents: read
       attestations: write
     steps:
-      - name: Download all artifacts
+      - name: Download the wheels and the sdist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
+          # Only the dists: a re-run must not pick up the signatures an
+          # earlier attempt uploaded.
+          pattern: dist-*
           path: dist
           merge-multiple: true
       - name: Generate build provenance attestations
