@@ -14,10 +14,12 @@ uv run nox -s docs     # live-reloading documentation
 
 ## Adding a rule
 
-1. Add `src/rules/odooNNN_<name>.rs` with a `pub const RULE: Rule` holding the
-   code, name, summary and Markdown documentation, and the check itself.
-2. Register it in `ALL` in `src/rules/mod.rs` (sorted by code) and call it
-   from `src/linter.rs`.
+1. Add `src/rules/<code>_<name>.rs` with a `pub const RULE: Rule` holding the
+   code, name, summary, Markdown documentation, the check function
+   (`Check::Python` or `Check::Manifest`) and optionally the Odoo versions it
+   applies to.
+2. Register it in `ALL` in `src/rules/mod.rs`, sorted by code. The linter
+   runs it for every Python file or once per module manifest.
 3. Regenerate the documentation pages:
 
    ```bash
@@ -25,6 +27,16 @@ uv run nox -s docs     # live-reloading documentation
    ```
 
    CI fails when `docs/rules/` is out of date.
+
+### Codes, names and messages
+
+- Rules ported from [pylint-odoo](https://github.com/OCA/pylint-odoo) keep its
+  message id as code, its symbolic name and its message text, so existing
+  `# pylint: disable=` comments, configs and forum answers keep applying.
+- pylint-odoo is AGPL-3.0 and odoo-lint is MIT: rules are reimplemented from
+  their documented behaviour, never translated from the pylint-odoo source,
+  and pylint-odoo's test fixtures are not copied into this repository.
+- Rules of odoo-lint's own use `ODOO###` codes.
 
 ## Releasing
 

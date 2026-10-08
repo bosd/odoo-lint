@@ -1,3 +1,5 @@
+# Planning notes are kept verbatim.
+exclude: ^(PROJECT_PLAN|AGENT_INSTRUCTIONS)\.md$
 repos:
   - repo: local
     hooks:

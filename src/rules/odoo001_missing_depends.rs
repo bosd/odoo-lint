@@ -1,11 +1,9 @@
 //! ODOO001: compute method without `@api.depends`.
 
-use crate::diagnostics::Violation;
-use crate::rules::Rule;
+use crate::checker::{PythonContext, Reporter};
+use crate::rules::{Check, Rule};
 use ruff_python_ast::statement_visitor::{walk_stmt, StatementVisitor};
 use ruff_python_ast::{Decorator, Expr, Stmt, StmtClassDef};
-use ruff_python_parser::parse_module;
-use ruff_source_file::LineIndex;
 use ruff_text_size::Ranged;
 use std::collections::BTreeMap;
 
@@ -63,21 +61,17 @@ user), declare that with `@api.depends_context("company")`.
 Only compute methods defined in the same class as the field are checked; a
 method inherited from another class is not reported.
 "#,
+    check: Check::Python(check),
+    min_odoo: None,
+    max_odoo: None,
 };
 
-pub fn check_python_file(file_path: &str, content: &str) -> Vec<Violation> {
-    let Ok(parsed) = parse_module(content) else {
-        return vec![];
-    };
+fn check(ctx: &PythonContext, reporter: &mut Reporter) {
     let mut collector = ClassCollector::default();
-    collector.visit_body(parsed.suite());
-
-    let line_index = LineIndex::from_source_text(content);
-    let mut violations = Vec::new();
+    collector.visit_body(ctx.parsed.suite());
     for class in collector.classes {
-        check_class(class, file_path, &line_index, &mut violations);
+        check_class(class, reporter);
     }
-    violations
 }
 
 /// Collects every class definition, including nested ones and those inside
@@ -96,7 +90,7 @@ impl<'a> StatementVisitor<'a> for ClassCollector<'a> {
     }
 }
 
-fn check_class(class: &StmtClassDef, file_path: &str, line_index: &LineIndex, out: &mut Vec<Violation>) {
+fn check_class(class: &StmtClassDef, reporter: &mut Reporter) {
     // compute method name -> fields that use it
     let mut computes: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for stmt in &class.body {
@@ -122,16 +116,15 @@ fn check_class(class: &StmtClassDef, file_path: &str, line_index: &LineIndex, ou
         if func.decorator_list.iter().any(is_depends_decorator) {
             continue;
         }
-        out.push(Violation {
-            file_path: file_path.to_string(),
-            line: line_index.line_index(func.name.start()).get(),
-            rule_code: RULE.code,
-            message: format!(
+        reporter.report(
+            &RULE,
+            func.name.start(),
+            format!(
                 "Compute method '{}' (field(s): {}) is missing @api.depends",
                 func.name.as_str(),
                 fields.join(", ")
             ),
-        });
+        );
     }
 }
 
@@ -173,9 +166,10 @@ fn is_depends_decorator(decorator: &Decorator) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostics::Violation;
 
     fn check(src: &str) -> Vec<Violation> {
-        check_python_file("test.py", src)
+        crate::checker::run_python_rule(&RULE, src)
     }
 
     #[test]
@@ -194,7 +188,7 @@ class SaleOrder(models.Model):
 "#;
         let v = check(src);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].rule_code, "ODOO001");
+        assert_eq!(v[0].code, "ODOO001");
         assert_eq!(v[0].line, 9);
         assert!(v[0].message.contains("_compute_total"));
     }

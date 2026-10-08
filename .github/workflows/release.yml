@@ -56,8 +56,16 @@ jobs:
         include:
           - { runs-on: ubuntu-latest, target: x86_64, manylinux: auto }
           - { runs-on: ubuntu-24.04-arm, target: aarch64, manylinux: auto }
-          - { runs-on: ubuntu-latest, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2 }
-          - { runs-on: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - {
+              runs-on: ubuntu-latest,
+              target: x86_64-unknown-linux-musl,
+              manylinux: musllinux_1_2,
+            }
+          - {
+              runs-on: ubuntu-24.04-arm,
+              target: aarch64-unknown-linux-musl,
+              manylinux: musllinux_1_2,
+            }
           - { runs-on: windows-latest, target: x86_64, manylinux: "off" }
           - { runs-on: macos-15-intel, target: x86_64, manylinux: "off" }
           - { runs-on: macos-latest, target: aarch64, manylinux: "off" }
