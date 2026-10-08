@@ -14,7 +14,7 @@ pub mod odoo001_missing_depends;
 pub mod python;
 
 use manifest::{author, files, keys, values};
-use python::{calls, fields, imports, methods, misc, models};
+use python::{calls, fields, imports, inherit, methods, misc, models, sql, translations};
 
 /// How a rule is run.
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +51,7 @@ pub const ALL: &[Rule] = &[
     keys::MANIFEST_DEPRECATED_KEY,
     values::LICENSE_ALLOWED,
     values::MANIFEST_VERSION_FORMAT,
+    translations::TRANSLATION_REQUIRED,
     fields::METHOD_COMPUTE,
     fields::METHOD_SEARCH,
     fields::METHOD_INVERSE,
@@ -67,6 +68,7 @@ pub const ALL: &[Rule] = &[
     e0001_syntax_error::RULE,
     author::MANIFEST_AUTHOR_STRING,
     calls::INVALID_COMMIT,
+    sql::SQL_INJECTION,
     values::MANIFEST_MAINTAINERS_LIST,
     calls::EXTERNAL_REQUEST_TIMEOUT,
     imports::TEST_FOLDER_IMPORTED,
@@ -77,9 +79,15 @@ pub const ALL: &[Rule] = &[
     fields::INHERITABLE_METHOD_STRING,
     fields::INHERITABLE_METHOD_LAMBDA,
     misc::DEPRECATED_INSELECT_OPERATOR,
+    translations::TRANSLATION_INJECTION,
+    translations::TRANSLATION_UNSUPPORTED_FORMAT,
+    translations::TRANSLATION_FORMAT_TRUNCATED,
+    translations::TRANSLATION_TOO_MANY_ARGS,
+    translations::TRANSLATION_TOO_FEW_ARGS,
     files::RESOURCE_NOT_EXIST,
     odoo001_missing_depends::RULE,
     imports::ODOO_EXCEPTION_WARNING,
+    inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,
     fields::TRANSLATION_FIELD,
     fields::ATTRIBUTE_DEPRECATED,
@@ -89,18 +97,24 @@ pub const ALL: &[Rule] = &[
     fields::RENAMED_FIELD_PARAMETER,
     fields::ATTRIBUTE_STRING_REDUNDANT,
     values::WEBSITE_MANIFEST_KEY_NOT_VALID_URI,
+    translations::TRANSLATION_CONTAINS_VARIABLE,
     calls::PRINT_USED,
+    translations::TRANSLATION_POSITIONAL_USED,
     calls::CONTEXT_OVERRIDDEN,
     files::MANIFEST_DATA_DUPLICATED,
     misc::EXCEPT_PASS,
     imports::ODOO_ADDONS_RELATIVE_IMPORT,
     calls::BAD_BUILTIN_GROUPBY,
     methods::DEPRECATED_ODOO_MODEL_METHOD,
+    translations::PREFER_ENV_TRANSLATION,
     values::MANIFEST_EXTERNAL_ASSETS,
     calls::NO_SEARCH_ALL,
     methods::SUPER_METHOD_MISMATCH,
     models::DEPRECATED_SELF_CR,
     misc::USE_VIM_COMMENT,
+    translations::TRANSLATION_NOT_LAZY,
+    translations::TRANSLATION_FORMAT_INTERPOLATION,
+    translations::TRANSLATION_FSTRING_INTERPOLATION,
 ];
 
 pub fn find(code_or_name: &str) -> Option<&'static Rule> {

@@ -55,11 +55,11 @@ linting fast enough to run on every save. odoo-lint applies that idea to Odoo:
 
 ## Status and trade-offs
 
-odoo-lint is young. It implements most of pylint-odoo's checks: the
-[parity page](parity.md) shows, check by check, which ones give exactly the
-same results as pylint-odoo on its own test repository. The SQL injection and
-translation checks are still missing, so until they land, run odoo-lint next
-to pylint-odoo and switch off the checks odoo-lint already covers.
+odoo-lint is young, but it implements all of pylint-odoo's checks: the
+[parity page](parity.md) shows, check by check, that odoo-lint reports exactly
+what pylint-odoo's own test suite expects on its test repository. It can
+replace the pylint-odoo pre-commit hook; please report any difference you see
+on your own code.
 
 In OCA repositories ruff runs alongside both; it covers general Python style,
 not the Odoo checks, so odoo-lint replaces pylint-odoo, not ruff.
