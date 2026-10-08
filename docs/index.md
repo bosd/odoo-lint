@@ -24,6 +24,7 @@ maxdepth: 2
 why
 usage
 configuration
+integrations
 rules/index
 parity
 development

@@ -177,3 +177,28 @@ def test_rule_json() -> None:
     c8101 = next(r for r in rules if r["code"] == "C8101")
     assert c8101["name"] == "manifest-required-author"
     assert c8101["min_odoo_version"] is None
+
+
+def test_sarif_output(project: Path) -> None:
+    """SARIF output references the rule and its documentation."""
+    make_module(project, "acme_sale", OCA)
+
+    result = run_odl("check", str(project / "addons"), "--output-format", "sarif")
+
+    run = json.loads(result.stdout)["runs"][0]
+    assert run["tool"]["driver"]["name"] == "odoo-lint"
+    assert [r["ruleId"] for r in run["results"]] == ["C8101"]
+    rule = run["tool"]["driver"]["rules"][run["results"][0]["ruleIndex"]]
+    assert rule["helpUri"].endswith("/rules/C8101.html")
+
+
+def test_gitlab_output(project: Path) -> None:
+    """GitLab output is a Code Quality report."""
+    make_module(project, "acme_sale", OCA)
+
+    result = run_odl("check", str(project / "addons"), "--output-format", "gitlab")
+
+    issue = json.loads(result.stdout)[0]
+    assert issue["check_name"] == "C8101"
+    assert issue["location"]["lines"]["begin"] == 3
+    assert {"description", "fingerprint", "severity"} <= issue.keys()
