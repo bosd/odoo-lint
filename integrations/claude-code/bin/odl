@@ -19,7 +19,7 @@ for dir in $PATH; do
 done
 IFS=$old_ifs
 if command -v uvx >/dev/null 2>&1; then
-  exec uvx --quiet --from odoo-linter==0.1.0a7 odl "$@"
+  exec uvx --quiet --from odoo-linter==0.1.0a8 odl "$@"
 fi
 echo "odoo-lint: 'odl' not found. Install it with 'uv tool install odoo-linter' or 'pip install odoo-linter'." >&2
 exit 127
