@@ -24,6 +24,7 @@ name = "odoo-linter"
 path = "src/bin/odoo-linter.rs"
 
 [dependencies]
+comrak = { version = "=0.54.0", default-features = false }
 clap = { version = "4.4", features = ["derive"] }
 ruff_python_parser = "0.0.16"
 ruff_python_ast = "0.0.16"

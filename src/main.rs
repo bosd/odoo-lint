@@ -97,6 +97,15 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Build each module's README.md and static/description/index.html from its readme/ fragments
+    Readme {
+        /// Modules, folders with modules, or files of modules (as hooks pass them)
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// Write nothing; exit with 1 when a file is out of date (for CI)
+        #[arg(long)]
+        check: bool,
+    },
     /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
     Hook,
     /// Run a language server on stdin/stdout, for editors
@@ -152,6 +161,24 @@ fn main() -> ExitCode {
             config,
             output,
         } => badge(&paths, upgrade, config, output),
+        Commands::Readme { paths, check } => match odoo_lint::readme::run(&paths, check) {
+            Ok(changes) => {
+                for change in &changes {
+                    let verb = if change.written { "wrote" } else { "out of date:" };
+                    eprintln!("{verb} {}", change.path.display());
+                }
+                if check && !changes.is_empty() {
+                    eprintln!("Run `odl readme` to update {} file(s).", changes.len());
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::from(2)
+            }
+        },
         Commands::Hook => {
             let mut event = String::new();
             // A hook must never break the agent: problems mean "nothing to report".
