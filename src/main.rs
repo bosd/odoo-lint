@@ -42,6 +42,9 @@ enum Commands {
         /// Apply `exclude` to files given on the command line as well (for pre-commit)
         #[arg(long)]
         force_exclude: bool,
+        /// Exit with 0 even when there are violations (advisory hooks); errors still exit with 2
+        #[arg(long)]
+        exit_zero: bool,
         /// Folders with addons for checks across modules; replaces `addons-path` from the config
         #[arg(long, value_delimiter = ',')]
         addons_path: Option<Vec<String>>,
@@ -248,6 +251,7 @@ fn main() -> ExitCode {
             unsafe_fixes,
             diff,
             force_exclude,
+            exit_zero,
             addons_path,
         } => {
             let overrides = CliOverrides {
@@ -289,7 +293,7 @@ fn main() -> ExitCode {
                     result.fixed,
                     result.changed.len()
                 );
-                return if result.changed.is_empty() {
+                return if result.changed.is_empty() || exit_zero {
                     ExitCode::SUCCESS
                 } else {
                     ExitCode::from(1)
@@ -322,7 +326,7 @@ fn main() -> ExitCode {
                     );
                 }
             }
-            if violations.is_empty() {
+            if violations.is_empty() || exit_zero {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
