@@ -27,6 +27,8 @@ pub struct Field {
     pub kind: String,
     /// The comodel of a relational field, when it is a literal.
     pub comodel: Option<String>,
+    /// Whether the definition sets a `domain`.
+    pub has_domain: bool,
 }
 
 impl Field {
@@ -213,10 +215,16 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
                 .or_else(|| call.arguments.args.first())
                 .filter(|_| matches!(kind.as_str(), "Many2one" | "One2many" | "Many2many"))
                 .and_then(string);
+            let has_domain = call
+                .arguments
+                .keywords
+                .iter()
+                .any(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "domain"));
             Some(Field {
                 name: target.id.to_string(),
                 kind,
                 comodel,
+                has_domain,
             })
         })
         .collect::<Vec<Field>>();
@@ -284,6 +292,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     name,
                     kind: String::new(),
                     comodel: None,
+                    has_domain: false,
                 });
             }
         }
@@ -449,6 +458,7 @@ impl Closure {
                 name: name.to_string(),
                 kind: String::new(),
                 comodel: None,
+                has_domain: false,
             });
         }
         visiting.remove(model);

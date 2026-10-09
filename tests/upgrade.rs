@@ -836,3 +836,48 @@ fn fixes_for_odoo_20() {
         .replace(".acc_number", ".account_number");
     assert_eq!(python, expected);
 }
+
+#[test]
+fn onchange_domains_are_dead_code_or_a_regression() {
+    let dir = tempfile::tempdir().unwrap();
+    let views = r#"<odoo>
+    <record id="view_wizard" model="ir.ui.view">
+        <field name="model">acme.wizard</field>
+        <field name="arch" type="xml">
+            <form><field name="brand_id" domain="[('id', 'in', brand_ids)]"/></form>
+        </field>
+    </record>
+</odoo>
+"#;
+    let python = r#"from odoo import api, fields, models
+
+
+class Wizard(models.TransientModel):
+    _name = "acme.wizard"
+
+    brand_ids = fields.Many2many("res.partner")
+    brand_id = fields.Many2one("res.partner")
+    lot_id = fields.Many2one("stock.lot", domain="[('product_id', '=', product_id)]")
+    serial_id = fields.Many2one("stock.lot")
+
+    @api.onchange("brand_ids")
+    def _onchange_brands(self):
+        return {"domain": {"brand_id": [("id", "in", self.brand_ids.ids)]}}
+
+    @api.onchange("product_id")
+    def _onchange_product(self):
+        return {"domain": {"lot_id": [], "serial_id": []}}
+"#;
+    module(dir.path(), "17.0.1.0.0", &[("views/wizard.xml", views)], python);
+    let messages: Vec<String> = lint_paths(&[dir.path().to_path_buf()], &settings("U1716", OdooVersion::new(17, 0)))
+        .into_iter()
+        .map(|v| v.message)
+        .collect();
+    assert_eq!(
+        messages,
+        vec![
+            "Onchange `domain` results are ignored since Odoo 17.0; `brand_id` already has a domain of its own, so this is dead code",
+            "Onchange `domain` results are ignored since Odoo 17.0: the choices of `serial_id` are no longer restricted; set the domain on the field",
+        ]
+    );
+}
