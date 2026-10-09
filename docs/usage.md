@@ -46,6 +46,10 @@ when a file would change.
 too. Git hooks pass the changed files one by one; without this flag, an
 excluded file is linted when it is named explicitly.
 
+`--exit-zero`
+: Exit with `0` even when there are violations, so a hook or CI job reports
+them without failing. Invalid configuration or usage still exits with `2`.
+
 ### Output formats
 
 `text`
@@ -106,11 +110,11 @@ translation files are described in [Translations](translations.md).
 
 ### Exit codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| `0`  | No violations found            |
-| `1`  | One or more violations found   |
-| `2`  | Invalid configuration or usage |
+| Code | Meaning                                |
+| ---- | -------------------------------------- |
+| `0`  | No violations found (or `--exit-zero`) |
+| `1`  | One or more violations found           |
+| `2`  | Invalid configuration or usage         |
 
 ## `odl rule`
 
@@ -149,13 +153,16 @@ the prebuilt wheel, with a tag for every release:
 ```yaml
 repos:
   - repo: https://github.com/bosd/odoo-lint-pre-commit
-    rev: v0.1.0a2
+    rev: v0.1.0a8
     hooks:
       - id: odoo-lint
         # args: [--fix]   # also apply the safe fixes
 ```
 
-It lints the staged `.py`, `.xml`, `.po` and `.pot` files, with `--force-exclude`.
+It lints the staged `.py`, `.xml`, `.po` and `.pot` files, with `--force-exclude`,
+and fails the commit when it finds something. To try odoo-lint next to your
+other linters first, use `odoo-lint-advisory` instead: it shows the findings
+on every commit (`--exit-zero`, `verbose`) but never fails it.
 Checks across a module's files read the other files from disk.
 
 ## In hk

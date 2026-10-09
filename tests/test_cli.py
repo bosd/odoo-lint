@@ -285,3 +285,20 @@ def test_upgrade_check(project: Path) -> None:
     fixed = run_odl("upgrade-check", addons, "--target", "19.0", "--fix")
     assert fixed.returncode == 0, fixed.stdout
     assert "self.env.cr" in (module / "models" / "partner.py").read_text()
+
+
+def test_exit_zero(project: Path) -> None:
+    """`--exit-zero` reports violations but exits 0, for advisory hooks."""
+    make_module(project, "acme_sale", "Other")
+    addons = str(project / "addons")
+    assert run_odl("check", addons).returncode == 1
+    result = run_odl("check", "--exit-zero", addons)
+    assert result.returncode == 0
+    assert "C8101" in result.stdout
+    # Errors are still errors.
+    assert (
+        run_odl(
+            "check", "--exit-zero", "--config", str(project / "nope.toml"), addons
+        ).returncode
+        == 2
+    )
