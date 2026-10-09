@@ -12,6 +12,7 @@ use crate::rules::python::classes;
 use crate::semantic::func_lib;
 use ruff_python_ast::{Expr, Stmt, StmtClassDef};
 use ruff_python_parser::parse_module;
+use ruff_text_size::Ranged;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,6 +41,9 @@ pub type FieldMap = HashMap<String, Field>;
 /// A class with `_name` or `_inherit`.
 #[derive(Debug)]
 pub struct ModelClass {
+    /// Where the class is: file and line of its `class` statement.
+    pub file: PathBuf,
+    pub line: usize,
     pub name: Option<String>,
     pub inherit: Vec<String>,
     /// `_inherits` parents.
@@ -49,6 +53,11 @@ pub struct ModelClass {
 
 #[derive(Debug)]
 pub struct ModuleIndex {
+    /// The XML ids the module creates, by full name (`module.name`), and
+    /// where, including the ones Odoo generates for its models and fields.
+    pub xml_ids: HashMap<String, Position>,
+    /// The data files the manifest loads, in Odoo's order.
+    pub data_files: Vec<DataFile>,
     pub name: String,
     pub path: PathBuf,
     pub depends: Vec<String>,
@@ -110,7 +119,18 @@ fn indexed_files(path: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
 
 fn fingerprint(path: &Path) -> Fingerprint {
     let mut print = Fingerprint::default();
-    for file in indexed_files(path) {
+    // Python for models and fields, data files for XML ids.
+    let files = walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_entry(|e| !(e.file_type().is_dir() && SKIPPED_DIRS.contains(&e.file_name().to_string_lossy().as_ref())))
+        .flatten()
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path()
+                    .extension()
+                    .is_some_and(|x| matches!(x.to_str(), Some("py" | "xml" | "csv" | "sql")))
+        });
+    for file in files {
         print.files += 1;
         let modified = file.metadata().ok().and_then(|m| m.modified().ok());
         print.newest = print.newest.max(modified);
@@ -217,6 +237,8 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         }
     }
     Some(ModelClass {
+        file: PathBuf::new(),
+        line: 0,
         name,
         inherit,
         delegates,
@@ -235,9 +257,15 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
             continue;
         };
         let Ok(parsed) = parse_module(&source) else { continue };
+        let line_of = |offset: usize| source[..offset].matches('\n').count() + 1;
         let mut found: Vec<(String, ModelClass)> = classes(parsed.suite())
             .into_iter()
-            .filter_map(|class| Some((class.name.to_string(), model_class(class)?)))
+            .filter_map(|class| {
+                let mut model = model_class(class)?;
+                model.file = file.path().to_path_buf();
+                model.line = line_of(class.name.start().to_usize());
+                Some((class.name.to_string(), model))
+            })
             .collect();
         // `setattr(IrRule, 'global', global_)`: a field whose name is a
         // Python keyword, added after the class.
@@ -261,7 +289,11 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
         }
         model_classes.extend(found.into_iter().map(|(_, model)| model));
     }
+    let data_files = data_files(path, &manifest);
+    let xml_ids = xml_ids(&name, path, &data_files, &model_classes);
     Some(ModuleIndex {
+        xml_ids,
+        data_files,
         name,
         path: path.to_path_buf(),
         depends,
@@ -334,6 +366,29 @@ pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> 
 }
 
 impl Closure {
+    /// The module `name` if the closure has it.
+    pub fn module(&self, name: &str) -> Option<&Arc<ModuleIndex>> {
+        self.modules.iter().find(|m| m.name == name)
+    }
+
+    /// Where a module of the closure creates the XML id `id` (`module.name`).
+    pub fn xml_id(&self, id: &str) -> Option<Position> {
+        self.modules.iter().find_map(|m| m.xml_ids.get(id).copied())
+    }
+
+    /// Whether a module of the closure other than `module` creates `id`:
+    /// it then exists before `module` loads.
+    pub fn xml_id_elsewhere(&self, id: &str, module: &str) -> bool {
+        self.modules
+            .iter()
+            .any(|m| m.name != module && m.xml_ids.contains_key(id))
+    }
+
+    /// Whether a module of the closure defines `model` (with `_name`).
+    pub fn defines(&self, model: &str) -> bool {
+        model == "base" || self.classes().any(|c| c.name.as_deref() == Some(model))
+    }
+
     /// The fields of `model` in this closure; `None` when no module of the
     /// closure defines it (with `_name`).
     pub fn fields(&self, model: &str) -> Option<Arc<FieldMap>> {
@@ -425,6 +480,192 @@ pub fn modules_defining(dirs: &[PathBuf], model: &str, field: &str) -> Vec<Strin
     }
     found.sort();
     found
+}
+
+/// Where Odoo creates an XML id: the rank of the data file in load order
+/// (0 for ids Odoo creates before loading data) and the byte offset of the
+/// defining element in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Position {
+    pub rank: usize,
+    pub offset: usize,
+}
+
+/// A data file the manifest loads.
+#[derive(Debug, Clone)]
+pub struct DataFile {
+    pub path: PathBuf,
+    /// Its place in Odoo's load order, from 1.
+    pub rank: usize,
+}
+
+/// Manifest keys of data files, in the order Odoo loads them: data, then demo.
+const DATA_KEYS: &[&str] = &["init_xml", "update_xml", "data", "demo_xml", "demo"];
+
+/// Elements that define an XML id.
+const ID_ELEMENTS: &[&str] = &["record", "template", "menuitem", "report", "act_window", "url", "asset"];
+
+fn data_files(path: &Path, manifest: &Manifest) -> Vec<DataFile> {
+    let mut files: Vec<DataFile> = Vec::new();
+    for key in DATA_KEYS {
+        for name in manifest.get(key).map(strings).unwrap_or_default() {
+            let file = path.join(&name);
+            if files.iter().any(|f| f.path == file) {
+                continue;
+            }
+            let rank = files.len() + 1;
+            files.push(DataFile { path: file, rank });
+        }
+    }
+    files
+}
+
+static SQL_XML_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)insert\s+into\s+ir_model_data\s*\(\s*name\s*,\s*module[^)]*\)\s*values\s*\(\s*'([^']+)'\s*,\s*'([^']+)'",
+    )
+    .unwrap()
+});
+
+/// Magic fields, which get `field_<model>__<name>` ids like the others.
+const MAGIC_FIELD_IDS: &[&str] = &[
+    "id",
+    "display_name",
+    "create_uid",
+    "create_date",
+    "write_uid",
+    "write_date",
+];
+
+static PYTHON_XML_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?:['"]xml_id['"]\s*:|\b(?:ref_name|xml_id|xmlid)\s*=)\s*['"]([\w.]+)['"]"#).unwrap()
+});
+
+/// The XML ids a module creates, by full name (`module.name`): its own and
+/// those it creates in another module's namespace (`base.demo_company_ae`).
+fn xml_ids(module: &str, path: &Path, files: &[DataFile], classes: &[ModelClass]) -> HashMap<String, Position> {
+    let mut ids: HashMap<String, Position> = HashMap::new();
+    let full = |id: &str| {
+        if id.contains('.') {
+            id.to_string()
+        } else {
+            format!("{module}.{id}")
+        }
+    };
+    let generated = Position { rank: 0, offset: 0 };
+    // ir.model and ir.model.fields records of the module's classes.
+    for class in classes {
+        for model in class.name.iter().chain(class.inherit.iter()) {
+            let model = model.replace('.', "_");
+            ids.insert(format!("{module}.model_{model}"), generated);
+            let magic = class
+                .name
+                .iter()
+                .flat_map(|_| MAGIC_FIELD_IDS.iter().map(|f| f.to_string()));
+            for field in class.fields.iter().map(|f| f.name.clone()).chain(magic) {
+                ids.insert(format!("{module}.field_{model}__{field}"), generated);
+            }
+        }
+    }
+    // Records `base_data.sql` creates before any data file.
+    for entry in walkdir::WalkDir::new(path.join("data"))
+        .max_depth(1)
+        .into_iter()
+        .flatten()
+    {
+        if entry.path().extension().is_none_or(|e| e != "sql") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for captures in SQL_XML_ID.captures_iter(&text) {
+            ids.insert(format!("{}.{}", &captures[2], &captures[1]), generated);
+        }
+    }
+    // Records Python code creates with an XML id (`_load_records`).
+    for file in indexed_files(path) {
+        let Ok(text) = std::fs::read_to_string(file.path()) else {
+            continue;
+        };
+        for captures in PYTHON_XML_ID.captures_iter(&text) {
+            ids.entry(full(&captures[1])).or_insert(generated);
+        }
+    }
+    // The manifest's data files, in load order, then the module's other
+    // data files, which code loads (`convert_file`) at a moment we cannot
+    // know: those count as there from the start.
+    let listed: Vec<PathBuf> = files.iter().map(|f| f.path.clone()).collect();
+    let others = walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_entry(|e| !(e.file_type().is_dir() && SKIPPED_DIRS.contains(&e.file_name().to_string_lossy().as_ref())))
+        .flatten()
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path()
+                    .extension()
+                    .is_some_and(|x| matches!(x.to_str(), Some("xml" | "csv")))
+                && !listed.contains(&e.path().to_path_buf())
+        })
+        .map(|e| DataFile {
+            path: e.path().to_path_buf(),
+            rank: 0,
+        })
+        .collect::<Vec<_>>();
+    for file in files.iter().chain(others.iter()) {
+        let Ok(text) = std::fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let extension = file.path.extension().map(|e| e.to_string_lossy().to_lowercase());
+        match extension.as_deref() {
+            Some("xml") => {
+                // `_load_records` in `<function>`/`eval` code.
+                for captures in PYTHON_XML_ID.captures_iter(&text) {
+                    let offset = captures.get(0).map_or(0, |m| m.start());
+                    ids.entry(full(&captures[1])).or_insert(Position {
+                        rank: file.rank,
+                        offset,
+                    });
+                }
+                let Ok(doc) = roxmltree::Document::parse(&text) else {
+                    continue;
+                };
+                for node in doc.descendants().filter(|n| n.is_element()) {
+                    if !ID_ELEMENTS.contains(&node.tag_name().name()) {
+                        continue;
+                    }
+                    let Some(id) = node.attribute("id") else { continue };
+                    let position = Position {
+                        rank: file.rank,
+                        offset: node.range().start,
+                    };
+                    ids.entry(full(id)).or_insert(position);
+                }
+            }
+            Some("csv") => {
+                let Ok(records) = crate::rules::module::read_csv(&text) else {
+                    continue;
+                };
+                let mut rows = records.into_iter();
+                let Some(header) = rows.next() else { continue };
+                let Some(column) = header.fields.iter().position(|f| f == "id") else {
+                    continue;
+                };
+                for row in rows {
+                    let Some(id) = row.fields.get(column).filter(|id| !id.is_empty()) else {
+                        continue;
+                    };
+                    let position = Position {
+                        rank: file.rank,
+                        offset: row.line,
+                    };
+                    ids.entry(full(id)).or_insert(position);
+                }
+            }
+            _ => {}
+        }
+    }
+    ids
 }
 
 #[cfg(test)]

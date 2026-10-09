@@ -11,12 +11,11 @@ version, from an Odoo source checkout (`--odoo-src`), and an XPath engine.
 
 ## A model of the whole addons path
 
-The index of models and fields across the addons path is there (see
-`addons-path`), with fields in views as its first check (ODOO004). Next on
-top of it: XML ids (`ref()`, `inherit_id`, `t-call`) that do not exist or
-come from a module outside `depends`, models used without the module that
-defines them, and go to definition for models, fields and XML ids in the
-language server.
+The index of models, fields and XML ids across the addons path is there
+(see `addons-path`), with checks of fields in views (ODOO004), XML ids
+(ODOO005) and models (ODOO006). Next on top of it: go to definition for
+models, fields and XML ids in the language server, and fields used in
+Python (`depends`, domains, `mapped`) that do not exist.
 
 ## Editor extensions
 
