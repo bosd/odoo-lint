@@ -1092,17 +1092,110 @@ Reports `@api.onchange` methods that return a dict with a `domain` key.
 
 ## Why is this bad?
 
-Odoo 17.0 ignores the key without a warning (16.0 logged one): the
-field's choices are no longer restricted. Put the domain on the field, or
-compute it into a field the view's `domain` uses.
+Odoo 17.0 ignores the key without a warning (16.0 logged one). What that
+means depends on the field:
+
+- When the field has a domain of its own, in its definition or in a view
+  of the module, the returned domain is dead code: the message says so, and
+  removing it changes nothing.
+- When it has none, its choices are no longer restricted: a real
+  regression. Put the domain on the field, or compute it into a field the
+  view's `domain` uses.
 "#,
     check: Check::Python(check_onchange_domain),
     min_odoo: ODOO_17,
     max_odoo: None,
 };
 
+/// The model a class defines or extends.
+fn class_model(class: &ruff_python_ast::StmtClassDef) -> Option<String> {
+    let value = |name: &str| {
+        class.body.iter().rev().find_map(|stmt| match stmt {
+            Stmt::Assign(assign)
+                if assign
+                    .targets
+                    .iter()
+                    .any(|t| matches!(t, Expr::Name(n) if n.id.as_str() == name)) =>
+            {
+                Some(&*assign.value)
+            }
+            _ => None,
+        })
+    };
+    let literal = |expr: &Expr| expr.as_string_literal_expr().map(|s| s.value.to_str().to_string());
+    value("_name").and_then(literal).or_else(|| match value("_inherit")? {
+        Expr::List(list) => list.elts.first().and_then(literal),
+        other => literal(other),
+    })
+}
+
+/// Whether `field` of `model` has a domain of its own: in its definition
+/// (this file, or the index when the dependencies are known) or in a view
+/// of the module. `None` when nothing is known about the field.
+fn field_has_domain(ctx: &PythonContext, model: &str, field: &str) -> Option<bool> {
+    let mut known = false;
+    for class in classes(ctx.parsed.suite()) {
+        if class_model(class).as_deref() != Some(model) {
+            continue;
+        }
+        for (assign, call) in field_definitions(class) {
+            if !matches!(assign.targets.as_slice(), [Expr::Name(n)] if n.id.as_str() == field) {
+                continue;
+            }
+            known = true;
+            if call
+                .arguments
+                .keywords
+                .iter()
+                .any(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "domain"))
+            {
+                return Some(true);
+            }
+        }
+    }
+    let module = ctx.module?;
+    if let Some(closure) = crate::index::closure(module, &ctx.settings.addons_path) {
+        if let Some(found) = closure.fields(model).and_then(|fields| fields.get(field).cloned()) {
+            known = true;
+            if found.has_domain {
+                return Some(true);
+            }
+        }
+    }
+    // A `domain` on the field in a view of the module.
+    let index = crate::index::module_index(&module.path)?;
+    for file in &index.data_files {
+        let Ok(text) = std::fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(doc) = roxmltree::Document::parse(&text) else {
+            continue;
+        };
+        for record in doc
+            .descendants()
+            .filter(|n| n.has_tag_name("record") && n.attribute("model") == Some("ir.ui.view"))
+        {
+            let view_model = record
+                .children()
+                .find(|c| c.has_tag_name("field") && c.attribute("name") == Some("model"))
+                .and_then(|c| c.text())
+                .map(str::trim);
+            if view_model != Some(model) {
+                continue;
+            }
+            if record.descendants().any(|n| {
+                n.has_tag_name("field") && n.attribute("name") == Some(field) && n.attribute("domain").is_some()
+            }) {
+                return Some(true);
+            }
+        }
+    }
+    known.then_some(false)
+}
+
 fn check_onchange_domain(ctx: &PythonContext, reporter: &mut Reporter) {
     for class in classes(ctx.parsed.suite()) {
+        let model = class_model(class);
         for method in methods(class) {
             let onchange = method.decorator_list.iter().any(|d| match &d.expression {
                 Expr::Call(call) => func_name(&call.func) == "onchange",
@@ -1122,13 +1215,49 @@ fn check_onchange_domain(ctx: &PythonContext, reporter: &mut Reporter) {
                         .and_then(Expr::as_string_literal_expr)
                         .is_some_and(|k| k.value.to_str() == "domain")
                 });
-                if let Some(item) = domain {
-                    reporter.report(
-                        &ONCHANGE_DOMAIN,
-                        item.key.as_ref().expect("found by key").start(),
-                        "Onchange `domain` results are ignored since Odoo 17.0; set the domain on the field",
-                    );
-                }
+                let Some(item) = domain else { return };
+                // The fields the returned domains restrict, and what is
+                // known about their own domains.
+                let fields: Vec<String> = match &item.value {
+                    Expr::Dict(domains) => domains
+                        .items
+                        .iter()
+                        .filter_map(|i| {
+                            i.key
+                                .as_ref()?
+                                .as_string_literal_expr()
+                                .map(|k| k.value.to_str().to_string())
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                let status: Vec<(String, Option<bool>)> = fields
+                    .iter()
+                    .map(|f| (f.clone(), model.as_deref().and_then(|m| field_has_domain(ctx, m, f))))
+                    .collect();
+                let unrestricted: Vec<&str> = status
+                    .iter()
+                    .filter(|(_, s)| *s == Some(false))
+                    .map(|(f, _)| f.as_str())
+                    .collect();
+                let message = if !status.is_empty() && status.iter().all(|(_, s)| *s == Some(true)) {
+                    format!(
+                        "Onchange `domain` results are ignored since Odoo 17.0; `{}` already has a domain of its own, so this is dead code",
+                        fields.join("`, `")
+                    )
+                } else if !unrestricted.is_empty() {
+                    format!(
+                        "Onchange `domain` results are ignored since Odoo 17.0: the choices of `{}` are no longer restricted; set the domain on the field",
+                        unrestricted.join("`, `")
+                    )
+                } else {
+                    "Onchange `domain` results are ignored since Odoo 17.0; set the domain on the field".to_string()
+                };
+                reporter.report(
+                    &ONCHANGE_DOMAIN,
+                    item.key.as_ref().expect("found by key").start(),
+                    message,
+                );
             });
         }
     }
