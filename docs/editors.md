@@ -9,32 +9,24 @@ are left alone, so the server can run for every Python project.
 It needs `odl` on PATH, or in the project's virtual environment:
 `uv tool install odoo-linter`.
 
-## VS Code and its forks
+## Go to definition
 
-The extension in
-[`integrations/vscode`](https://github.com/bosd/odoo-lint/tree/main/integrations/vscode)
-starts `odl server` for Python, XML and translation (`.po`/`.pot`) files in
-workspaces with an Odoo addon. It uses, in order, `odoo-lint.path` from the
-settings, `odl` in the workspace's `.venv` or on PATH, or the latest release
-from PyPI, which it downloads once and checks against PyPI's SHA-256.
+_Go to definition_ jumps from what a module refers to, to where it is
+defined:
 
-It is meant for the Visual Studio Marketplace and for Open VSX, where editors
-based on VS Code find their extensions. Until it is published, build it from a
-checkout of this repository and install the file with _Extensions: Install
-from VSIX..._:
+- **XML ids**: `ref="..."`, `inherit_id`, the `parent` and `action` of
+  menus, `groups`, `t-call`, `%(...)d` and `ref('...')` in XML, and
+  `env.ref("...")` and `has_group("...")` in Python, to the record;
+- **models**: `model="..."`, `<field name="model">`, `_name`, `_inherit`,
+  `_inherits`, `env["..."]` and the comodel of a relational field, to the
+  model's class;
+- **fields**: `<field name="...">` in views (through embedded lists and
+  forms to their comodel) and data records, and each part of a path in
+  `@api.depends`, `related=` and `mapped()`, to the field's definition.
 
-```bash
-cd integrations/vscode
-npm ci && npm run build && npm run package   # writes odoo-lint-<version>.vsix
-```
-
-To apply the safe fixes on save:
-
-```json
-"editor.codeActionsOnSave": {
-  "source.fixAll.odoo-lint": "explicit"
-}
-```
+It looks in the module's dependencies, Odoo's included, as listed in
+[`addons-path`](configuration.md#addons-path); the modules next to the
+open one are found without it.
 
 ## Zed
 
