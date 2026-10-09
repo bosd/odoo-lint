@@ -3,6 +3,7 @@
 import os
 import shlex
 import shutil
+import sys
 from pathlib import Path
 from textwrap import dedent
 
@@ -21,6 +22,7 @@ nox.options.sessions = (
     "parity",
     "docs-build",
     "zed-extension",
+    "vscode-extension",
 )
 
 
@@ -267,3 +269,26 @@ def zed_extension(session: nox.Session) -> None:
         "cargo", "clippy", *manifest, *target, "--", "-D", "warnings", external=True
     )
     session.run("cargo", "build", *manifest, *target, "--release", external=True)
+
+
+@nox.session(name="vscode-extension", python=False)
+def vscode_extension(session: nox.Session) -> None:
+    """Check, test and package the VS Code extension, and run it in VS Code."""
+    session.chdir("integrations/vscode")
+    session.run("npm", "ci", "--no-audit", "--no-fund", external=True)
+    session.run("npm", "run", "typecheck", external=True)
+    session.run("npm", "run", "build", external=True)
+    session.run("npm", "test", external=True)
+    session.run("npm", "run", "package", external=True)
+    # The test in VS Code needs a display; on Linux CI that is xvfb-run.
+    session.run("cargo", "build", "--locked", external=True)
+    target = os.environ.get("CARGO_TARGET_DIR", "../../target")
+    odl = str(Path(target).resolve() / "debug" / "odl")
+    command = ["npm", "run", "test:vscode"]
+    if shutil.which("xvfb-run"):
+        command = ["xvfb-run", "-a", *command]
+    elif sys.platform == "linux" and not os.environ.get("DISPLAY"):
+        if os.environ.get("CI"):
+            session.error("xvfb-run is needed to run VS Code without a display")
+        session.skip("no display and no xvfb-run: skipping the test in VS Code")
+    session.run(*command, env={"ODL": odl}, external=True)

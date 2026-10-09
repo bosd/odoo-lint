@@ -9,6 +9,33 @@ are left alone, so the server can run for every Python project.
 It needs `odl` on PATH, or in the project's virtual environment:
 `uv tool install odoo-linter`.
 
+## VS Code and its forks
+
+The extension in
+[`integrations/vscode`](https://github.com/bosd/odoo-lint/tree/main/integrations/vscode)
+starts `odl server` for Python, XML and translation (`.po`/`.pot`) files in
+workspaces with an Odoo addon. It uses, in order, `odoo-lint.path` from the
+settings, `odl` in the workspace's `.venv` or on PATH, or the latest release
+from PyPI, which it downloads once and checks against PyPI's SHA-256.
+
+It is meant for the Visual Studio Marketplace and for Open VSX, where editors
+based on VS Code find their extensions. Until it is published, build it from a
+checkout of this repository and install the file with _Extensions: Install
+from VSIX..._:
+
+```bash
+cd integrations/vscode
+npm ci && npm run build && npm run package   # writes odoo-lint-<version>.vsix
+```
+
+To apply the safe fixes on save:
+
+```json
+"editor.codeActionsOnSave": {
+  "source.fixAll.odoo-lint": "explicit"
+}
+```
+
 ## Zed
 
 The extension in

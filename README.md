@@ -46,6 +46,8 @@ as packages or database dumps committed by accident.
   rules
 - 📋 **Output for CI**: GitHub annotations, GitLab Code Quality, SARIF and
   JSON
+- ✍️ **In your editor**: a language server (`odl server`) with quick fixes,
+  and extensions for VS Code and Zed
 - 🤖 **For AI coding agents**: an MCP server, and plugins for Claude Code,
   DeepSeek Harness and OpenCode that lint every file the agent edits
 - 🪝 **Git hooks**: pre-commit and hk

@@ -1,0 +1,83 @@
+{
+  "name": "odoo-lint",
+  "displayName": "odoo-lint",
+  "description": "Odoo linting as you type: pylint-odoo's and OCA's checks for Python, XML and translation files, with quick fixes",
+  "version": "0.1.0",
+  "publisher": "bosd",
+  "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://odoo-lint.readthedocs.io/en/latest/editors.html",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosd/odoo-lint.git",
+    "directory": "integrations/vscode"
+  },
+  "bugs": "https://github.com/bosd/odoo-lint/issues",
+  "categories": [
+    "Linters"
+  ],
+  "keywords": [
+    "odoo",
+    "pylint-odoo",
+    "oca",
+    "linter",
+    "translations"
+  ],
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "activationEvents": [
+    "workspaceContains:**/__manifest__.py"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "odoo-lint",
+      "properties": {
+        "odoo-lint.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the `odl` executable. When empty, odoo-lint uses `odl` from the workspace's `.venv`, then from `PATH`, and otherwise downloads the latest release from PyPI."
+        },
+        "odoo-lint.download": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Download `odl` from PyPI when it is not installed."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "odoo-lint.restart",
+        "title": "Restart Server",
+        "category": "odoo-lint"
+      },
+      {
+        "command": "odoo-lint.showLogs",
+        "title": "Show Logs",
+        "category": "odoo-lint"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test out/wheel.test.js",
+    "test:vscode": "node out/runTest.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "vscode-languageclient": "10.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
+    "ovsx": "1.2.0",
+    "typescript": "5.9.3"
+  }
+}
