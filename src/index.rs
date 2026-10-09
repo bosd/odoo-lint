@@ -64,6 +64,8 @@ pub struct ModuleIndex {
     pub xml_ids: HashMap<String, Position>,
     /// Where each XML id of a data file is: file and line.
     pub xml_id_lines: HashMap<String, (PathBuf, usize)>,
+    /// The views (`ir.ui.view` records and `<template>`s) of its data files.
+    pub views: Vec<View>,
     /// The data files the manifest loads, in Odoo's order.
     pub data_files: Vec<DataFile>,
     pub name: String,
@@ -327,9 +329,11 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
     }
     let data_files = data_files(path, &manifest);
     let (xml_ids, xml_id_lines) = xml_ids(&name, path, &data_files, &model_classes);
+    let views = views(&name, &data_files);
     Some(ModuleIndex {
         xml_ids,
         xml_id_lines,
+        views,
         data_files,
         name,
         path: path.to_path_buf(),
@@ -403,6 +407,52 @@ pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> 
 }
 
 impl Closure {
+    /// Every view of the closure, by full XML id; for an id defined twice,
+    /// the definition loaded last.
+    pub fn views(&self) -> HashMap<String, (&View, usize)> {
+        let ranks = self.module_ranks();
+        let mut found: HashMap<String, (&View, usize)> = HashMap::new();
+        for module in &self.modules {
+            let rank = ranks.get(&module.name).copied().unwrap_or(usize::MAX);
+            for view in &module.views {
+                let key = (rank, view.position.rank, view.position.offset);
+                match found.get(&view.id) {
+                    Some((existing, existing_rank))
+                        if (*existing_rank, existing.position.rank, existing.position.offset) > key => {}
+                    _ => {
+                        found.insert(view.id.clone(), (view, rank));
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// The load order of the closure's modules: dependencies first.
+    pub fn module_ranks(&self) -> HashMap<String, usize> {
+        fn visit(closure: &Closure, name: &str, visiting: &mut HashSet<String>, order: &mut Vec<String>) {
+            // Done, or in progress (a dependency cycle).
+            if order.iter().any(|s| s == name) || !visiting.insert(name.to_string()) {
+                return;
+            }
+            if let Some(module) = closure.module(name) {
+                let mut depends = module.depends.clone();
+                if name != "base" {
+                    depends.push("base".into());
+                }
+                for dependency in depends {
+                    visit(closure, &dependency, visiting, order);
+                }
+                order.push(name.to_string());
+            }
+        }
+        let (mut visiting, mut order) = (HashSet::new(), Vec::new());
+        for module in &self.modules {
+            visit(self, &module.name, &mut visiting, &mut order);
+        }
+        order.into_iter().enumerate().map(|(i, m)| (m, i)).collect()
+    }
+
     /// The module `name` if the closure has it.
     pub fn module(&self, name: &str) -> Option<&Arc<ModuleIndex>> {
         self.modules.iter().find(|m| m.name == name)
@@ -766,6 +816,159 @@ fn xml_ids(
         }
     }
     (ids, lines)
+}
+
+/// A view as a data file defines it.
+#[derive(Debug, Clone)]
+pub struct View {
+    /// Full XML id (`module.name`).
+    pub id: String,
+    pub file: PathBuf,
+    /// Where the view is loaded; also its line.
+    pub position: Position,
+    pub line: usize,
+    /// Full XML id of the view it inherits from.
+    pub inherit_id: Option<String>,
+    /// A primary view starts a new arch; an extension changes its parent's.
+    pub primary: bool,
+    pub priority: i64,
+    pub active: bool,
+    /// The arch as XML text: its root element (or `<data>` with the specs).
+    pub arch: Option<String>,
+    /// Byte offset in `file` of the arch text, and the length of what was
+    /// added in front of it (a wrapper element), to find lines again.
+    pub arch_offset: usize,
+    pub arch_prefix: usize,
+}
+
+fn qualify(module: &str, id: &str) -> String {
+    if id.contains('.') {
+        id.to_string()
+    } else {
+        format!("{module}.{id}")
+    }
+}
+
+fn truthy(value: &str) -> bool {
+    !matches!(value.trim(), "" | "0" | "False" | "false")
+}
+
+/// The views of a module's data files, in load order.
+fn views(module: &str, files: &[DataFile]) -> Vec<View> {
+    let mut out = Vec::new();
+    for file in files {
+        if file.path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("xml")) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(doc) = roxmltree::Document::parse(&text) else {
+            continue;
+        };
+        let line_of = |offset: usize| text[..offset].matches('\n').count() + 1;
+        for node in doc.descendants().filter(|n| n.is_element()) {
+            let Some(id) = node.attribute("id") else { continue };
+            let position = Position {
+                rank: file.rank,
+                offset: node.range().start,
+            };
+            if node.has_tag_name("template") {
+                let inherit_id = node.attribute("inherit_id").map(|i| qualify(module, i));
+                let primary = inherit_id.is_none() || node.attribute("primary").is_some_and(truthy);
+                // Odoo's `_tag_template`: `<t t-name>` for a primary view,
+                // `<data>` with the specs for an extension.
+                let (inner_start, inner_end) = inner_range(&text, node);
+                let full = qualify(module, id);
+                let prefix = if primary && inherit_id.is_none() {
+                    format!("<t t-name=\"{full}\">")
+                } else {
+                    "<data>".to_string()
+                };
+                let suffix = if primary && inherit_id.is_none() {
+                    "</t>"
+                } else {
+                    "</data>"
+                };
+                let arch = format!("{prefix}{}{suffix}", &text[inner_start..inner_end]);
+                out.push(View {
+                    id: full,
+                    file: file.path.clone(),
+                    position,
+                    line: line_of(node.range().start),
+                    inherit_id,
+                    primary,
+                    priority: node
+                        .attribute("priority")
+                        .and_then(|p| p.trim().parse().ok())
+                        .unwrap_or(16),
+                    active: node.attribute("active").is_none_or(truthy),
+                    arch: Some(arch),
+                    arch_offset: inner_start,
+                    arch_prefix: prefix.len(),
+                });
+                continue;
+            }
+            if !(node.has_tag_name("record") && node.attribute("model") == Some("ir.ui.view")) {
+                continue;
+            }
+            let field = |name: &str| {
+                node.children()
+                    .find(|c| c.has_tag_name("field") && c.attribute("name") == Some(name))
+            };
+            let value = |name: &str| {
+                field(name).map(|f| {
+                    f.attribute("eval")
+                        .or_else(|| f.text())
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string()
+                })
+            };
+            let inherit_id = field("inherit_id")
+                .and_then(|f| f.attribute("ref"))
+                .map(|r| qualify(module, r));
+            let primary = inherit_id.is_none() || value("mode").as_deref() == Some("primary");
+            let (arch, arch_offset) = match field("arch") {
+                Some(arch) => {
+                    let (start, end) = inner_range(&text, arch);
+                    (Some(format!("<__arch__>{}</__arch__>", &text[start..end])), start)
+                }
+                None => (None, 0),
+            };
+            out.push(View {
+                id: qualify(module, id),
+                file: file.path.clone(),
+                position,
+                line: line_of(node.range().start),
+                inherit_id,
+                primary,
+                priority: value("priority").and_then(|p| p.parse().ok()).unwrap_or(16),
+                active: value("active").is_none_or(|a| truthy(&a)),
+                arch,
+                arch_offset,
+                arch_prefix: "<__arch__>".len(),
+            });
+        }
+    }
+    out
+}
+
+/// The byte range of an element's content, between its tags.
+fn inner_range(text: &str, node: roxmltree::Node) -> (usize, usize) {
+    let range = node.range();
+    let source = &text[range.clone()];
+    if source.ends_with("/>") {
+        return (range.end, range.end);
+    }
+    let start = node
+        .attributes()
+        .map(|a| a.range().end)
+        .max()
+        .unwrap_or(range.start + 1);
+    let start = text[start..range.end].find('>').map_or(range.end, |i| start + i + 1);
+    let end = source.rfind("</").map_or(range.end, |i| range.start + i);
+    (start, end.max(start))
 }
 
 #[cfg(test)]
