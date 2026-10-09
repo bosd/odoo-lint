@@ -75,6 +75,13 @@ crates.io (`odoo-lint`) with trusted publishing. It then publishes
 `server.json` to the MCP Registry, with the version from `Cargo.toml`, and
 the dsh bundle to npm (`dsh-odoo-lint`), also with trusted publishing.
 
+The VS Code extension (`integrations/vscode`) has a version of its own in its
+`package.json`, as the marketplaces do not take prerelease tags. The release
+workflow publishes it to Open VSX (trusted publishing, environment
+`open-vsx`) and the Visual Studio Marketplace (secret `VSCE_PAT`) and skips a version that is already there, so
+bump it when the extension changes. To publish it between releases, run the
+Release workflow by hand (_Run workflow_ on GitHub).
+
 ### Python and polib compatibility
 
 The PO checks emulate Python's `%` and `str.format` errors and use a port of

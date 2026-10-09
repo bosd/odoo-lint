@@ -7,6 +7,9 @@ on:
       - master
   release:
     types: [published]
+  # Publishes the VS Code extension only (publish_vscode), e.g. after its
+  # version changed between releases.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -240,3 +243,46 @@ jobs:
           fi
           # npm wants a tag for prereleases; until 0.1.0 every release is one.
           npm publish --access public --tag latest
+
+  publish_vscode:
+    name: Publish the VS Code extension
+    # The extension has a version of its own (no prerelease tags on the
+    # marketplaces); a version that is already published is skipped.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: open-vsx
+      url: https://open-vsx.org/extension/bosd/odoo-lint
+    permissions:
+      contents: read
+      # Open VSX trusted publishing exchanges the OIDC token for a short-lived one.
+      id-token: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - name: Build the .vsix
+        working-directory: integrations/vscode
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx vsce package --no-dependencies -o odoo-lint.vsix
+      - name: Publish to Open VSX (trusted publishing)
+        working-directory: integrations/vscode
+        run: npx ovsx publish --packagePath odoo-lint.vsix --skip-duplicate --trusted-publishing
+      - name: Publish to the Visual Studio Marketplace
+        working-directory: integrations/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::No VSCE_PAT secret: not publishing to the Visual Studio Marketplace"
+            exit 0
+          fi
+          npx vsce publish --packagePath odoo-lint.vsix --skip-duplicate
