@@ -86,3 +86,5 @@ select = ["B", "E", "F", "I", "PTH", "RUF", "S", "SIM", "UP", "W"]
 "noxfile.py" = ["S101"]
 # Dev tooling that deliberately runs git and odl.
 "scripts/*.py" = ["S603", "S607"]
+# An Odoo manifest is a bare dict expression.
+"**/__manifest__.py" = ["B018"]

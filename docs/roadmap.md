@@ -19,9 +19,9 @@ Python (`depends`, domains, `mapped`) that do not exist.
 
 ## Editor extensions
 
-`odl server` works in every editor with a language server client; Zed has
-an extension. VS Code and PyCharm (through LSP4IJ) need small extensions of
-their own to start it.
+`odl server` works in every editor with a language server client; Zed and
+VS Code have extensions. PyCharm (through LSP4IJ) needs a small extension of
+its own to start it.
 
 ## Ferris' clean sweep
 

@@ -39,6 +39,8 @@ jobs:
           - { python: "3.13", os: "ubuntu-latest", session: "docs-build" }
           # Zed extension (WebAssembly)
           - { python: "", os: "ubuntu-latest", session: "zed-extension" }
+          # VS Code extension (TypeScript), also run in VS Code
+          - { python: "", os: "ubuntu-latest", session: "vscode-extension" }
 
     env:
       NOXSESSION: ${{ matrix.session }}
