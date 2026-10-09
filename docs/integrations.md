@@ -21,7 +21,7 @@ findings as annotations, or with `sarif: true` sends them to code scanning:
     persist-credentials: false
 - uses: bosd/odoo-lint-action@v1
   with:
-    version: 0.1.0a6 # optional, the latest release otherwise
+    version: 0.1.0a7 # optional, the latest release otherwise
 ```
 
 The steps below do the same without the action.
