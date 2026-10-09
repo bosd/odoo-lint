@@ -58,6 +58,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO002](ODOO002.md) | `module-unwanted-file` | A package, archive, executable, database dump or video inside a module. |
 | [ODOO003](ODOO003.md) | `module-large-file` | A file inside a module is larger than the limit (1 MiB by default). |
 | [ODOO004](ODOO004.md) | `view-field-not-found` | A view uses a field that does not exist on its model. |
+| [ODOO005](ODOO005.md) | `xml-id-not-found` | A reference to an XML id that does not exist, comes from outside `depends`, or is loaded later. |
+| [ODOO006](ODOO006.md) | `model-not-found` | A model that no module of `depends` defines. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -273,6 +275,8 @@ ODOO001
 ODOO002
 ODOO003
 ODOO004
+ODOO005
+ODOO006
 PO001
 PO002
 PO003

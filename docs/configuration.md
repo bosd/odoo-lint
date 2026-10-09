@@ -88,8 +88,10 @@ Folders with addons, as in Odoo's `addons_path`, relative to this file; a
 glob such as `../oca/*` adds every folder it matches. `odl check
 --addons-path` replaces it, relative to the working directory.
 
-Checks across modules use it to look up what a module's `depends` reach,
-such as [ODOO004](rules/ODOO004.md) for fields in views. The modules next to
+Checks across modules use it to look up what a module's `depends` reach:
+[ODOO004](rules/ODOO004.md) for fields in views,
+[ODOO005](rules/ODOO005.md) for XML ids and [ODOO006](rules/ODOO006.md)
+for models. The modules next to
 the checked module are found without it. A module whose dependencies cannot
 all be found is not checked by these rules, so without `addons-path` they
 stay silent rather than guess.

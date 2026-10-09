@@ -292,15 +292,15 @@ const CSV_FIELD_LIMIT: usize = 131_072;
 
 /// A record of a CSV file and the physical line it ends on (Python's
 /// `reader.line_num`).
-struct CsvRecord {
-    fields: Vec<String>,
-    line: usize,
+pub(crate) struct CsvRecord {
+    pub(crate) fields: Vec<String>,
+    pub(crate) line: usize,
 }
 
 /// Reads CSV text as Python's `csv.reader` does with the default `excel`
 /// dialect on a file opened in text mode: universal newlines, quotes only
 /// special at the start of a field, empty lines skipped.
-fn read_csv(text: &str) -> Result<Vec<CsvRecord>, String> {
+pub(crate) fn read_csv(text: &str) -> Result<Vec<CsvRecord>, String> {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut records = Vec::new();
     let mut fields: Vec<String> = Vec::new();
