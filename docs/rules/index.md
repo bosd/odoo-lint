@@ -60,6 +60,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO004](ODOO004.md) | `view-field-not-found` | A view uses a field that does not exist on its model. |
 | [ODOO005](ODOO005.md) | `xml-id-not-found` | A reference to an XML id that does not exist, comes from outside `depends`, or is loaded later. |
 | [ODOO006](ODOO006.md) | `model-not-found` | A model that no module of `depends` defines. |
+| [ODOO007](ODOO007.md) | `python-field-not-found` | Python code names a field the model does not have. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -277,6 +278,7 @@ ODOO003
 ODOO004
 ODOO005
 ODOO006
+ODOO007
 PO001
 PO002
 PO003
