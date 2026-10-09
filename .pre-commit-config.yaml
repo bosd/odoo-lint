@@ -1,5 +1,6 @@
-# Generated reference output that must stay byte for byte as it is.
-exclude: ^tests/fixtures/readme/
+# Generated reference output and the page template of `odl readme`, which
+# must stay byte for byte as they are.
+exclude: ^(tests/fixtures/readme/|src/readme/page\.html$)
 repos:
   - repo: local
     hooks:

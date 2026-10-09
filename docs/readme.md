@@ -18,18 +18,18 @@ when it changes.
 
 ## Fragments
 
-| File | Heading |
-| --- | --- |
-| `DESCRIPTION.md` | Introduction |
-| `FEATURES.md` | Features |
-| `INSTALL.md` | Installation |
-| `CONFIGURE.md` | Configuration |
-| `USAGE.md` | Usage |
-| `CONTEXT.md` | Context |
-| `HISTORY.md` | History |
-| `ROADMAP.md` | Roadmap |
-| `CONTRIBUTORS.md` | Contributors |
-| `CREDITS.md` | Credits |
+| File              | Heading       |
+| ----------------- | ------------- |
+| `DESCRIPTION.md`  | Introduction  |
+| `FEATURES.md`     | Features      |
+| `INSTALL.md`      | Installation  |
+| `CONFIGURE.md`    | Configuration |
+| `USAGE.md`        | Usage         |
+| `CONTEXT.md`      | Context       |
+| `HISTORY.md`      | History       |
+| `ROADMAP.md`      | Roadmap       |
+| `CONTRIBUTORS.md` | Contributors  |
+| `CREDITS.md`      | Credits       |
 
 Empty or missing fragments are left out.
 
