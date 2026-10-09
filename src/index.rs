@@ -41,6 +41,8 @@ pub type FieldMap = HashMap<String, Field>;
 /// A class with `_name` or `_inherit`.
 #[derive(Debug)]
 pub struct ModelClass {
+    /// Whether the class is an `AbstractModel` (a mixin).
+    pub abstract_model: bool,
     /// Where the class is: file and line of its `class` statement.
     pub file: PathBuf,
     pub line: usize,
@@ -236,7 +238,13 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
             delegates.push(comodel);
         }
     }
+    let abstract_model = class.arguments.as_ref().is_some_and(|a| {
+        a.args
+            .iter()
+            .any(|b| crate::semantic::dotted_name(b).is_some_and(|d| d.ends_with("AbstractModel")))
+    });
     Some(ModelClass {
+        abstract_model,
         file: PathBuf::new(),
         line: 0,
         name,
@@ -382,6 +390,13 @@ impl Closure {
         self.modules
             .iter()
             .any(|m| m.name != module && m.xml_ids.contains_key(id))
+    }
+
+    /// Whether `model` is an `AbstractModel`: a mixin, whose methods may
+    /// name fields of the models that inherit it.
+    pub fn is_abstract(&self, model: &str) -> bool {
+        self.classes()
+            .any(|c| c.name.as_deref() == Some(model) && c.abstract_model)
     }
 
     /// Whether a module of the closure defines `model` (with `_name`).

@@ -148,3 +148,70 @@ fn silent_without_all_dependencies() {
     module(&addons, "acme_sale", &["sale"], "", Some(VIEWS));
     assert!(messages(&[addons], Vec::new()).is_empty());
 }
+
+#[test]
+fn fields_in_python() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = odoo(dir.path());
+    let addons = dir.path().join("addons");
+    module(
+        &addons,
+        "acme_sale",
+        &["sale"],
+        r#"from odoo import api, fields, models
+
+
+class Order(models.Model):
+    _inherit = "sale.order"
+    _order = "partner_id desc, nope"
+    _rec_name = "partner_id"
+
+    country = fields.Char(related="partner_id.country_id.name")
+    typo = fields.Char(related="partner_idd.name")
+    vip = fields.Boolean(related="partner_id.vip")
+    studio = fields.Char(related="partner_id.x_studio_field")
+    line_count = fields.Integer(compute="_compute_line_count")
+    other_lines = fields.One2many("sale.order.line", "order_idd")
+    partner_ids = fields.Many2many("res.partner", domain=[("name", "!=", False), ("nope", "=", 1)])
+
+    @api.depends("order_line.product_uom_qty", "order_line.nope")
+    def _compute_line_count(self):
+        for order in self:
+            order.line_count = len(order.mapped("order_line"))
+        return self.mapped("order_line.order_id.partner_idd")
+
+
+class Mixin(models.AbstractModel):
+    _name = "acme.mixin"
+
+    @api.depends("whatever_the_concrete_model_has")
+    def _compute_x(self):
+        pass
+"#,
+        None,
+    );
+    let mut settings = Settings::default();
+    settings.select = vec!["ODOO007".into()];
+    settings.addons_path = vec![core];
+    let mut found: Vec<(usize, String)> = lint_paths(&[addons], &settings)
+        .into_iter()
+        .map(|v| (v.line, v.message))
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            (6, "Field `nope` does not exist on `sale.order`".to_string()),
+            (10, "Field `partner_idd` does not exist on `sale.order`".to_string()),
+            (
+                11,
+                "Field `vip` does not exist on `res.partner`; it is defined in `extra`, which `depends` does not reach"
+                    .to_string()
+            ),
+            (14, "Field `order_idd` does not exist on `sale.order.line`".to_string()),
+            (15, "Field `nope` does not exist on `res.partner`".to_string()),
+            (17, "Field `nope` does not exist on `sale.order.line`".to_string()),
+            (21, "Field `partner_idd` does not exist on `sale.order`".to_string()),
+        ]
+    );
+}
