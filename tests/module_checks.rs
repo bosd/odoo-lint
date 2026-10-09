@@ -235,6 +235,10 @@ class Partner(models.Model):
     partner_id = fields.Many2one("res.partner", "Partner")
     tag_ids = fields.Many2many("res.partner.category", "Tag", "rel_table")
     label = fields.Char("Label", related="name")
+    issuing_authority = fields.Char(
+        string="Issuing Authority",
+    )
+    third = fields.Char(string="Third",)
     other = fields.Char("Something else")
 "#;
     let file = write(&module, "models.py", python);
@@ -244,6 +248,8 @@ class Partner(models.Model):
             ("field-string-redundant".to_string(), "models.py".to_string(), 14),
             ("field-string-redundant".to_string(), "models.py".to_string(), 15),
             ("field-string-redundant".to_string(), "models.py".to_string(), 16),
+            ("field-string-redundant".to_string(), "models.py".to_string(), 18),
+            ("field-string-redundant".to_string(), "models.py".to_string(), 21),
             ("unused-logger".to_string(), "models.py".to_string(), 8),
             ("use-header-comments".to_string(), "models.py".to_string(), 3),
         ]
@@ -258,7 +264,13 @@ class Partner(models.Model):
         .replace(
             "fields.Many2one(\"res.partner\", \"Partner\")",
             "fields.Many2one(\"res.partner\")",
-        );
+        )
+        // The only argument, with a trailing comma.
+        .replace(
+            "fields.Char(\n        string=\"Issuing Authority\",\n    )",
+            "fields.Char()",
+        )
+        .replace("fields.Char(string=\"Third\",)", "fields.Char()");
     assert_eq!(safe, expected);
     let all = fixed(dir.path(), "MOD008", &file, FixMode::Unsafe);
     assert!(all.starts_with("# -*- coding: utf-8 -*-\nimport logging\n"), "{all}");

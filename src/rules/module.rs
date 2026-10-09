@@ -1070,7 +1070,10 @@ fn check_field_string_redundant(ctx: &PythonContext, reporter: &mut Reporter) {
                 } else if all.len() > 1 {
                     Edit::delete(range.start().to_usize(), all[1].start().to_usize())
                 } else {
-                    Edit::delete(range.start().to_usize(), range.end().to_usize())
+                    // The only argument: empty the parentheses, trailing
+                    // comma and line breaks included.
+                    let arguments = call.arguments.range();
+                    Edit::delete(arguments.start().to_usize() + 1, arguments.end().to_usize() - 1)
                 };
                 Fix::safe("Remove the redundant string", vec![edit])
             });
