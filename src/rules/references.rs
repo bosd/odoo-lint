@@ -341,7 +341,12 @@ fn check_xml_ids(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
                     Some(match own.data_files.iter().find(|f| f.rank == defined.rank) {
                         Some(file) if defined.rank != used.rank => format!(
                             "XML id `{id}` is defined in `{}`, which Odoo loads later",
-                            file.path.strip_prefix(&own.path).unwrap_or(&file.path).display().to_string().replace('\\', "/")
+                            file.path
+                                .strip_prefix(&own.path)
+                                .unwrap_or(&file.path)
+                                .display()
+                                .to_string()
+                                .replace('\\', "/")
                         ),
                         _ => format!("XML id `{id}` is defined further down in this file; Odoo loads it later"),
                     })
