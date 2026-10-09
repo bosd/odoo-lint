@@ -1,3 +1,5 @@
+# Generated reference output that must stay byte for byte as it is.
+exclude: ^tests/fixtures/readme/
 repos:
   - repo: local
     hooks:

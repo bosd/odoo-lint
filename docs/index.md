@@ -29,6 +29,7 @@ editors
 ai
 translations
 upgrades
+readme
 benchmarks
 rules/index
 parity

@@ -13,6 +13,7 @@ pub mod odoo_version;
 pub mod output;
 pub mod po;
 pub mod pyliteral;
+pub mod readme;
 pub mod rules;
 pub mod semantic;
 pub mod server;
