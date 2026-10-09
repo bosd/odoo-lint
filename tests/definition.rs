@@ -109,8 +109,12 @@ fn go(core: &Path, file: &Path, needle: &str, inside: usize) -> Option<(String, 
         .next()
         .unwrap();
     definition(&module, &[core.to_path_buf()], file, &text, offset).map(|Definition { path, line }| {
+        // Definitions use canonical paths (`/private/var` on macOS).
+        let root = core.parent().unwrap().canonicalize().unwrap();
         let relative = path
-            .strip_prefix(core.parent().unwrap())
+            .canonicalize()
+            .unwrap()
+            .strip_prefix(&root)
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");

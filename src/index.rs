@@ -318,8 +318,8 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     name,
                     kind: String::new(),
                     comodel: None,
-pub has_domain: bool,
-    pub line: usize,
+                    has_domain: false,
+                    line: 0,
                 });
             }
         }
@@ -421,7 +421,7 @@ impl Closure {
             .any(|m| m.name != module && m.xml_ids.contains_key(id))
     }
 
-/// Whether `model` is an `AbstractModel`: a mixin, whose methods may
+    /// Whether `model` is an `AbstractModel`: a mixin, whose methods may
     /// name fields of the models that inherit it.
     pub fn is_abstract(&self, model: &str) -> bool {
         self.classes()
@@ -469,7 +469,6 @@ impl Closure {
     /// Where the XML id `id` (`module.name`) is defined in a data file.
     pub fn xml_id_location(&self, id: &str) -> Option<(PathBuf, usize)> {
         self.modules.iter().find_map(|m| m.xml_id_lines.get(id).cloned())
-    }
     }
 
     /// Whether a module of the closure defines `model` (with `_name`).

@@ -604,9 +604,15 @@ mod tests {
             "textDocument/definition",
             json!({"textDocument": {"uri": uri}, "position": {"line": 4, "character": 20}}),
         );
+        // The index works on canonical paths (`/private/var` on macOS, long
+        // names on Windows): compare the files, not their spellings.
+        let target = Url::parse(result["uri"].as_str().unwrap())
+            .unwrap()
+            .to_file_path()
+            .unwrap();
         assert_eq!(
-            result["uri"],
-            json!(Url::from_file_path(base.join("models.py")).unwrap())
+            target.canonicalize().unwrap(),
+            base.join("models.py").canonicalize().unwrap()
         );
         assert_eq!(result["range"]["start"]["line"], json!(3));
         // Not on anything: no location.
