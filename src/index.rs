@@ -29,6 +29,8 @@ pub struct Field {
     pub comodel: Option<String>,
     /// Whether the definition sets a `domain`.
     pub has_domain: bool,
+    /// The line of its definition in its class's file (0 when unknown).
+    pub line: usize,
 }
 
 impl Field {
@@ -60,6 +62,8 @@ pub struct ModuleIndex {
     /// The XML ids the module creates, by full name (`module.name`), and
     /// where, including the ones Odoo generates for its models and fields.
     pub xml_ids: HashMap<String, Position>,
+    /// Where each XML id of a data file is: file and line.
+    pub xml_id_lines: HashMap<String, (PathBuf, usize)>,
     /// The data files the manifest loads, in Odoo's order.
     pub data_files: Vec<DataFile>,
     pub name: String,
@@ -170,6 +174,15 @@ fn class_value<'a>(class: &'a StmtClassDef, name: &str) -> Option<&'a Expr> {
     })
 }
 
+/// The models a class defines or extends: its `_name`, or every model of
+/// its `_inherit`.
+pub(crate) fn class_models(class: &StmtClassDef) -> Vec<String> {
+    if let Some(name) = class_value(class, "_name").and_then(string) {
+        return vec![name];
+    }
+    class_value(class, "_inherit").map(strings).unwrap_or_default()
+}
+
 fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
     let name = class_value(class, "_name").and_then(string);
     let inherit = class_value(class, "_inherit").map(strings).unwrap_or_default();
@@ -227,6 +240,8 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
                 kind,
                 comodel,
                 has_domain,
+                // A byte offset until `parse` turns it into a line.
+                line: target.start().to_usize(),
             })
         })
         .collect::<Vec<Field>>();
@@ -280,6 +295,9 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                 let mut model = model_class(class)?;
                 model.file = file.path().to_path_buf();
                 model.line = line_of(class.name.start().to_usize());
+                for field in &mut model.fields {
+                    field.line = line_of(field.line);
+                }
                 Some((class.name.to_string(), model))
             })
             .collect();
@@ -300,16 +318,18 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     name,
                     kind: String::new(),
                     comodel: None,
-                    has_domain: false,
+pub has_domain: bool,
+    pub line: usize,
                 });
             }
         }
         model_classes.extend(found.into_iter().map(|(_, model)| model));
     }
     let data_files = data_files(path, &manifest);
-    let xml_ids = xml_ids(&name, path, &data_files, &model_classes);
+    let (xml_ids, xml_id_lines) = xml_ids(&name, path, &data_files, &model_classes);
     Some(ModuleIndex {
         xml_ids,
+        xml_id_lines,
         data_files,
         name,
         path: path.to_path_buf(),
@@ -401,11 +421,55 @@ impl Closure {
             .any(|m| m.name != module && m.xml_ids.contains_key(id))
     }
 
-    /// Whether `model` is an `AbstractModel`: a mixin, whose methods may
+/// Whether `model` is an `AbstractModel`: a mixin, whose methods may
     /// name fields of the models that inherit it.
     pub fn is_abstract(&self, model: &str) -> bool {
         self.classes()
             .any(|c| c.name.as_deref() == Some(model) && c.abstract_model)
+    }
+
+    /// Where `model` is defined: the file and line of its class with `_name`.
+    pub fn model_location(&self, model: &str) -> Option<(PathBuf, usize)> {
+        self.classes()
+            .find(|c| c.name.as_deref() == Some(model))
+            .map(|c| (c.file.clone(), c.line))
+    }
+
+    /// Where `field` of `model` is defined: the class that defines the
+    /// model first, then its extensions, then its parents.
+    pub fn field_location(&self, model: &str, field: &str) -> Option<(PathBuf, usize)> {
+        self.field_location_in(model, field, &mut HashSet::new())
+    }
+
+    fn field_location_in(&self, model: &str, field: &str, seen: &mut HashSet<String>) -> Option<(PathBuf, usize)> {
+        if !seen.insert(model.to_string()) {
+            return None;
+        }
+        let on_model = |c: &&ModelClass| {
+            c.name.as_deref() == Some(model) || (c.name.is_none() && c.inherit.iter().any(|i| i == model))
+        };
+        let mut classes: Vec<&ModelClass> = self.classes().filter(on_model).collect();
+        classes.sort_by_key(|c| c.name.is_none());
+        for class in &classes {
+            if let Some(found) = class.fields.iter().find(|f| f.name == field) {
+                return Some((class.file.clone(), found.line));
+            }
+        }
+        let parents: Vec<String> = classes
+            .iter()
+            .flat_map(|c| c.inherit.iter().chain(c.delegates.iter()))
+            .filter(|p| *p != model)
+            .cloned()
+            .collect();
+        parents
+            .iter()
+            .find_map(|parent| self.field_location_in(parent, field, seen))
+    }
+
+    /// Where the XML id `id` (`module.name`) is defined in a data file.
+    pub fn xml_id_location(&self, id: &str) -> Option<(PathBuf, usize)> {
+        self.modules.iter().find_map(|m| m.xml_id_lines.get(id).cloned())
+    }
     }
 
     /// Whether a module of the closure defines `model` (with `_name`).
@@ -474,6 +538,7 @@ impl Closure {
                 kind: String::new(),
                 comodel: None,
                 has_domain: false,
+                line: 0,
             });
         }
         visiting.remove(model);
@@ -568,8 +633,16 @@ static PYTHON_XML_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
 
 /// The XML ids a module creates, by full name (`module.name`): its own and
 /// those it creates in another module's namespace (`base.demo_company_ae`).
-fn xml_ids(module: &str, path: &Path, files: &[DataFile], classes: &[ModelClass]) -> HashMap<String, Position> {
+type XmlIdLines = HashMap<String, (PathBuf, usize)>;
+
+fn xml_ids(
+    module: &str,
+    path: &Path,
+    files: &[DataFile],
+    classes: &[ModelClass],
+) -> (HashMap<String, Position>, XmlIdLines) {
     let mut ids: HashMap<String, Position> = HashMap::new();
+    let mut lines: XmlIdLines = HashMap::new();
     let full = |id: &str| {
         if id.contains('.') {
             id.to_string()
@@ -665,6 +738,8 @@ fn xml_ids(module: &str, path: &Path, files: &[DataFile], classes: &[ModelClass]
                         offset: node.range().start,
                     };
                     ids.entry(full(id)).or_insert(position);
+                    let line = text[..node.range().start].matches('\n').count() + 1;
+                    lines.entry(full(id)).or_insert((file.path.clone(), line));
                 }
             }
             Some("csv") => {
@@ -685,12 +760,13 @@ fn xml_ids(module: &str, path: &Path, files: &[DataFile], classes: &[ModelClass]
                         offset: row.line,
                     };
                     ids.entry(full(id)).or_insert(position);
+                    lines.entry(full(id)).or_insert((file.path.clone(), row.line));
                 }
             }
             _ => {}
         }
     }
-    ids
+    (ids, lines)
 }
 
 #[cfg(test)]

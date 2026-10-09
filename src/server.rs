@@ -12,7 +12,7 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{CodeActionRequest, Request as _};
+use lsp_types::request::{CodeActionRequest, GotoDefinition, Request as _};
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability,
     CodeDescription, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -71,6 +71,31 @@ impl Encoding {
             Encoding::Utf32 => text.chars().count(),
         };
         width as u32
+    }
+
+    /// The byte offset of `position` in `text`.
+    fn offset(self, text: &str, position: Position) -> usize {
+        let line_start: usize = text
+            .split_inclusive('\n')
+            .take(position.line as usize)
+            .map(str::len)
+            .sum();
+        let line = text[line_start.min(text.len())..]
+            .split('\n')
+            .next()
+            .unwrap_or_default();
+        let mut width = 0;
+        for (i, c) in line.char_indices() {
+            if width >= position.character {
+                return line_start + i;
+            }
+            width += match self {
+                Encoding::Utf8 => c.len_utf8() as u32,
+                Encoding::Utf16 => c.len_utf16() as u32,
+                Encoding::Utf32 => 1,
+            };
+        }
+        line_start + line.len()
     }
 
     /// The position of byte `offset` in `text`.
@@ -362,11 +387,36 @@ impl Server {
         Ok(())
     }
 
+    /// Where the XML id, model or field at a position is defined.
+    fn definition(&self, params: &lsp_types::TextDocumentPositionParams) -> Option<lsp_types::Location> {
+        let uri = &params.text_document.uri;
+        let path = Self::path(uri)?;
+        let text = match self.documents.get(uri) {
+            Some((text, _)) => text.clone(),
+            None => std::fs::read_to_string(&path).ok()?,
+        };
+        let offset = self.encoding.offset(&text, params.position);
+        let settings = Self::settings(&path)?;
+        let module = linter::modules_of(std::slice::from_ref(&path), &self.sources)
+            .into_iter()
+            .next()?;
+        let found = crate::definition::definition(&module, &settings.addons_path, &path, &text, offset)?;
+        let line = found.line.saturating_sub(1) as u32;
+        Some(lsp_types::Location {
+            uri: Url::from_file_path(&found.path).ok()?,
+            range: Range::new(Position::new(line, 0), Position::new(line, 0)),
+        })
+    }
+
     fn handle_request(&self, request: Request) -> Result<()> {
         let response = match request.method.as_str() {
             CodeActionRequest::METHOD => {
                 let params: CodeActionParams = serde_json::from_value(request.params)?;
                 Response::new_ok(request.id, self.code_actions(&params))
+            }
+            GotoDefinition::METHOD => {
+                let params: lsp_types::GotoDefinitionParams = serde_json::from_value(request.params)?;
+                Response::new_ok(request.id, self.definition(&params.text_document_position_params))
             }
             method => Response::new_err(
                 request.id,
@@ -390,6 +440,7 @@ fn capabilities(encoding: Encoding) -> ServerCapabilities {
             })),
             ..TextDocumentSyncOptions::default()
         })),
+        definition_provider: Some(lsp_types::OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
             code_action_kinds: Some(vec![CodeActionKind::QUICKFIX, CodeActionKind::from(FIX_ALL)]),
             resolve_provider: Some(false),
@@ -474,6 +525,7 @@ mod tests {
                 json!({"capabilities": {"general": {"positionEncodings": encodings}}}),
             );
             assert!(result["capabilities"]["codeActionProvider"].is_object());
+            assert_eq!(result["capabilities"]["definitionProvider"], json!(true));
             client.notify("initialized", json!({}));
             client
         }
@@ -527,6 +579,43 @@ mod tests {
         fs::write(module.join("README.rst"), "LSP\n").unwrap();
         fs::write(dir.join("odoo-lint.toml"), "target-version = \"19.0\"\n").unwrap();
         module.join("models/partner.py")
+    }
+
+    #[test]
+    fn go_to_definition() {
+        let dir = tempfile::tempdir().unwrap();
+        // `base` next to the module: the index finds it without addons-path.
+        let base = dir.path().join("base");
+        fs::create_dir_all(&base).unwrap();
+        fs::write(base.join("__manifest__.py"), "{'name': 'base'}\n").unwrap();
+        fs::write(base.join("__init__.py"), "").unwrap();
+        fs::write(
+            base.join("models.py"),
+            "from odoo import models\n\n\nclass Partner(models.Model):\n    _name = 'res.partner'\n",
+        )
+        .unwrap();
+        let path = addon(dir.path());
+        fs::write(path.parent().unwrap().parent().unwrap().join("__init__.py"), "").unwrap();
+        fs::write(&path, MODEL).unwrap();
+        let uri = Url::from_file_path(&path).unwrap();
+        let mut client = Client::start(&["utf-16"]);
+        // On `res.partner` in `_inherit = "res.partner"` (line 5, 0-based 4).
+        let result = client.request(
+            "textDocument/definition",
+            json!({"textDocument": {"uri": uri}, "position": {"line": 4, "character": 20}}),
+        );
+        assert_eq!(
+            result["uri"],
+            json!(Url::from_file_path(base.join("models.py")).unwrap())
+        );
+        assert_eq!(result["range"]["start"]["line"], json!(3));
+        // Not on anything: no location.
+        let nothing = client.request(
+            "textDocument/definition",
+            json!({"textDocument": {"uri": uri}, "position": {"line": 6, "character": 8}}),
+        );
+        assert!(nothing.is_null(), "{nothing}");
+        client.stop();
     }
 
     #[test]
