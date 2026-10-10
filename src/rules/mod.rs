@@ -199,6 +199,7 @@ pub const ALL: &[Rule] = &[
     upgrade::v19::MANIFEST_OLD_DATA_KEYS,
     upgrade::v19::XML_T_CALL_ELEMENT,
     upgrade::v19::XML_PARTNER_MOBILE,
+    upgrade::v19::IMPLICIT_NAME,
     upgrade::v20::MANIFEST_ACCESS_CSV,
     upgrade::v20::XML_ACCESS_RECORDS,
     upgrade::v20::XML_T_ESC,
