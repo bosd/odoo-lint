@@ -24,7 +24,17 @@ defined:
   forms to their comodel) and data records, and each part of a path in
   `@api.depends`, `related=` and `mapped()`, to the field's definition.
 
-It looks in the module's dependencies, Odoo's included, as listed in
+## Completion
+
+In the same places, completion offers the names that fit, while you type:
+the XML ids of the module and its dependencies (the module's own without
+its name, as it writes them), the models they define, and the fields of
+the model at hand, with their type and comodel. In a path such as
+`related="partner_id.co"` it offers the fields of the model the path has
+reached; in a view, the fields of the embedded list or form the cursor is
+in.
+
+Both look in the module's dependencies, Odoo's included, as listed in
 [`addons-path`](configuration.md#addons-path); the modules next to the
 open one are found without it.
 

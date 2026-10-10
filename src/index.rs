@@ -454,6 +454,11 @@ impl Closure {
     }
 
     /// The module `name` if the closure has it.
+    /// The modules of the closure, the module itself included.
+    pub fn modules(&self) -> &[Arc<ModuleIndex>] {
+        &self.modules
+    }
+
     pub fn module(&self, name: &str) -> Option<&Arc<ModuleIndex>> {
         self.modules.iter().find(|m| m.name == name)
     }

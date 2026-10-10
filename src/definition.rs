@@ -23,7 +23,7 @@ pub struct Definition {
 
 /// What the cursor is on.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Target {
+pub(crate) enum Target {
     XmlId(String),
     Model(String),
     /// A field path (`partner_id.country_id`) on one of `models`, and the
@@ -54,27 +54,30 @@ fn qualify(module: &str, id: &str) -> String {
 }
 
 /// The comma-separated item of `value` (starting at byte `start` of the
-/// text) at `offset`.
-fn item_at(value: &str, start: usize, offset: usize) -> Option<&str> {
+/// text) at `offset`, and where its name starts.
+fn item_at(value: &str, start: usize, offset: usize) -> Option<(&str, usize)> {
     let mut position = start;
     for item in value.split(',') {
         if (position..=position + item.len()).contains(&offset) {
-            return Some(item.trim().trim_start_matches('!'));
+            let name = item.trim_start().trim_start_matches('!').trim_start();
+            return Some((name.trim_end(), position + item.len() - name.len()));
         }
         position += item.len() + 1;
     }
     None
 }
 
-/// The capture 1 of `pattern` in `value` (at `start`) that holds `offset`.
-fn capture_at(pattern: &Regex, value: &str, start: usize, offset: usize) -> Option<String> {
+/// The capture 1 of `pattern` in `value` (at `start`) that holds `offset`,
+/// and where it starts.
+fn capture_at(pattern: &Regex, value: &str, start: usize, offset: usize) -> Option<(String, usize)> {
     pattern.captures_iter(value).find_map(|c| {
         let m = c.get(1)?;
-        (start + m.start() <= offset && offset <= start + m.end()).then(|| m.as_str().to_string())
+        (start + m.start() <= offset && offset <= start + m.end()).then(|| (m.as_str().to_string(), start + m.start()))
     })
 }
 
-fn xml_target(text: &str, offset: usize, module: &str) -> Option<Target> {
+/// What is at `offset` of an XML file, and where the name there starts.
+pub(crate) fn xml_target(text: &str, offset: usize, module: &str) -> Option<(Target, usize)> {
     let doc = roxmltree::Document::parse(text).ok()?;
     for node in doc.descendants() {
         if node.is_text() {
@@ -86,7 +89,9 @@ fn xml_target(text: &str, offset: usize, module: &str) -> Option<Target> {
             let parent = node.parent_element()?;
             let name = parent.attribute("name").unwrap_or_default();
             if parent.has_tag_name("field") && matches!(name, "model" | "res_model" | "src_model" | "binding_model") {
-                return Some(Target::Model(node.text()?.trim().to_string()));
+                let raw = node.text()?;
+                let start = range.start + raw.len() - raw.trim_start().len();
+                return Some((Target::Model(raw.trim().to_string()), start));
             }
             continue;
         }
@@ -100,23 +105,29 @@ fn xml_target(text: &str, offset: usize, module: &str) -> Option<Target> {
             }
             let value = attribute.value();
             let tag = node.tag_name().name();
-            if let Some(id) = capture_at(&ACTION_REF, value, range.start, offset) {
-                return Some(Target::XmlId(qualify(module, &id)));
+            if let Some((id, start)) = capture_at(&ACTION_REF, value, range.start, offset) {
+                return Some((Target::XmlId(qualify(module, &id)), start));
             }
-            return match attribute.name() {
-                "ref" | "inherit_id" => Some(Target::XmlId(qualify(module, value.trim()))),
-                "parent" | "action" if tag == "menuitem" => Some(Target::XmlId(qualify(module, value.trim()))),
-                "groups" => item_at(value, range.start, offset).map(|g| Target::XmlId(qualify(module, g))),
-                "t-call" if value.contains('.') => Some(Target::XmlId(value.trim().to_string())),
+            let start = range.start + value.len() - value.trim_start().len();
+            let target = match attribute.name() {
+                "ref" | "inherit_id" => Target::XmlId(qualify(module, value.trim())),
+                "parent" | "action" if tag == "menuitem" => Target::XmlId(qualify(module, value.trim())),
+                "groups" => {
+                    let (group, start) = item_at(value, range.start, offset)?;
+                    return Some((Target::XmlId(qualify(module, group)), start));
+                }
+                "t-call" => Target::XmlId(qualify(module, value.trim())),
                 "eval" => {
-                    capture_at(&EVAL_REF, value, range.start, offset).map(|id| Target::XmlId(qualify(module, &id)))
+                    let (id, start) = capture_at(&EVAL_REF, value, range.start, offset)?;
+                    return Some((Target::XmlId(qualify(module, &id)), start));
                 }
                 "model" if matches!(tag, "record" | "function" | "report" | "delete") => {
-                    Some(Target::Model(value.trim().to_string()))
+                    Target::Model(value.trim().to_string())
                 }
-                "name" if tag == "field" => view_field(node, value),
-                _ => None,
+                "name" if tag == "field" => view_field(node, value)?,
+                _ => return None,
             };
+            return Some((target, start));
         }
     }
     None
@@ -160,7 +171,8 @@ fn view_field(node: roxmltree::Node, name: &str) -> Option<Target> {
     })
 }
 
-fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
+/// What is at `offset` of a Python file, and where the name there starts.
+pub(crate) fn python_target(text: &str, offset: usize, module: &str) -> Option<(Target, usize)> {
     let parsed = ruff_python_parser::parse_module(text).ok()?;
     let holds = |expr: &Expr| {
         expr.as_string_literal_expr().is_some()
@@ -178,6 +190,11 @@ fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
             .matches('.')
             .count()
     };
+    // Where the segment of a field path at the cursor starts.
+    let segment_start = |expr: &Expr| {
+        let start = content_start(expr);
+        start + text[start..offset.max(start)].rfind('.').map_or(0, |i| i + 1)
+    };
     let mut found = None;
     walk(parsed.suite(), |node, scopes| {
         if found.is_some() {
@@ -193,19 +210,19 @@ fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
                     }
                     let value = string(arg).unwrap_or_default();
                     found = match name {
-                        "ref" => Some(Target::XmlId(qualify(module, &value))),
-                        "has_group" | "has_groups" | "user_has_groups" => {
-                            item_at(&value, content_start(arg), offset).map(|g| Target::XmlId(qualify(module, g)))
-                        }
-                        "depends" | "onchange" | "constrains" | "mapped" | "filtered" | "sorted" => {
-                            Some(Target::Field {
+                        "ref" => Some((Target::XmlId(qualify(module, &value)), content_start(arg))),
+                        "has_group" | "has_groups" | "user_has_groups" => item_at(&value, content_start(arg), offset)
+                            .map(|(g, start)| (Target::XmlId(qualify(module, g)), start)),
+                        "depends" | "onchange" | "constrains" | "mapped" | "filtered" | "sorted" => Some((
+                            Target::Field {
                                 models: class_models(),
                                 path: value,
                                 segment: segment(arg),
-                            })
-                        }
+                            },
+                            segment_start(arg),
+                        )),
                         "Many2one" | "One2many" | "Many2many" if func_lib(&call.func) == "fields" && i == 0 => {
-                            Some(Target::Model(value))
+                            Some((Target::Model(value), content_start(arg)))
                         }
                         _ => None,
                     };
@@ -216,12 +233,15 @@ fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
                     }
                     let value = string(&keyword.value).unwrap_or_default();
                     found = match keyword.arg.as_ref().map(|a| a.as_str()) {
-                        Some("comodel_name") => Some(Target::Model(value)),
-                        Some("related") => Some(Target::Field {
-                            models: class_models(),
-                            path: value,
-                            segment: segment(&keyword.value),
-                        }),
+                        Some("comodel_name") => Some((Target::Model(value), content_start(&keyword.value))),
+                        Some("related") => Some((
+                            Target::Field {
+                                models: class_models(),
+                                path: value,
+                                segment: segment(&keyword.value),
+                            },
+                            segment_start(&keyword.value),
+                        )),
                         _ => None,
                     };
                 }
@@ -231,7 +251,7 @@ fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
                 if matches!(&*subscript.value, Expr::Attribute(a) if a.attr.as_str() == "env")
                     || matches!(&*subscript.value, Expr::Name(n) if n.id.as_str() == "env")
                 {
-                    found = string(&subscript.slice).map(Target::Model);
+                    found = string(&subscript.slice).map(|m| (Target::Model(m), content_start(&subscript.slice)));
                 }
             }
             // `_name`, `_inherit` and `_inherits` in a class body.
@@ -250,7 +270,10 @@ fn python_target(text: &str, offset: usize, module: &str) -> Option<Target> {
                     Expr::Dict(dict) => dict.items.iter().filter_map(|i| i.key.as_ref()).collect(),
                     other => vec![other],
                 };
-                found = items.into_iter().find(|e| holds(e)).and_then(string).map(Target::Model);
+                found = items
+                    .into_iter()
+                    .find(|e| holds(e))
+                    .and_then(|e| Some((Target::Model(string(e)?), content_start(e))));
             }
             _ => {}
         }
@@ -340,8 +363,8 @@ pub fn definition(
 ) -> Option<Definition> {
     let extension = file.extension()?.to_str()?;
     let target = match extension {
-        "xml" => xml_target(text, offset, &module.name)?,
-        "py" => python_target(text, offset, &module.name)?,
+        "xml" => xml_target(text, offset, &module.name)?.0,
+        "py" => python_target(text, offset, &module.name)?.0,
         _ => return None,
     };
     let closure = closure(module, addons_path);
