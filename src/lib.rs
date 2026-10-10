@@ -1,5 +1,6 @@
 pub mod badge;
 pub mod checker;
+pub mod completion;
 pub mod config;
 pub mod definition;
 pub mod diagnostics;

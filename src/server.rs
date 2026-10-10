@@ -12,7 +12,7 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{CodeActionRequest, GotoDefinition, Request as _};
+use lsp_types::request::{CodeActionRequest, Completion, GotoDefinition, Request as _};
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability,
     CodeDescription, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -408,11 +408,53 @@ impl Server {
         })
     }
 
+    /// The XML ids, models or fields that fit at a position.
+    fn completion(&self, params: &lsp_types::CompletionParams) -> Option<lsp_types::CompletionResponse> {
+        let position = &params.text_document_position;
+        let uri = &position.text_document.uri;
+        let path = Self::path(uri)?;
+        let text = match self.documents.get(uri) {
+            Some((text, _)) => text.clone(),
+            None => std::fs::read_to_string(&path).ok()?,
+        };
+        let offset = self.encoding.offset(&text, position.position);
+        let settings = Self::settings(&path)?;
+        let module = linter::modules_of(std::slice::from_ref(&path), &self.sources)
+            .into_iter()
+            .next()?;
+        let found = crate::completion::completion(&module, &settings.addons_path, &path, &text, offset)?;
+        let range = Range::new(self.encoding.position(&text, found.start), position.position);
+        let items = found
+            .candidates
+            .into_iter()
+            .map(|candidate| lsp_types::CompletionItem {
+                kind: Some(match candidate.kind {
+                    crate::completion::Kind::XmlId => lsp_types::CompletionItemKind::REFERENCE,
+                    crate::completion::Kind::Model => lsp_types::CompletionItemKind::CLASS,
+                    crate::completion::Kind::Field => lsp_types::CompletionItemKind::FIELD,
+                }),
+                detail: Some(candidate.detail),
+                text_edit: Some(lsp_types::CompletionTextEdit::Edit(TextEdit::new(
+                    range,
+                    candidate.label.clone(),
+                ))),
+                filter_text: Some(candidate.label.clone()),
+                label: candidate.label,
+                ..lsp_types::CompletionItem::default()
+            })
+            .collect();
+        Some(lsp_types::CompletionResponse::Array(items))
+    }
+
     fn handle_request(&self, request: Request) -> Result<()> {
         let response = match request.method.as_str() {
             CodeActionRequest::METHOD => {
                 let params: CodeActionParams = serde_json::from_value(request.params)?;
                 Response::new_ok(request.id, self.code_actions(&params))
+            }
+            Completion::METHOD => {
+                let params: lsp_types::CompletionParams = serde_json::from_value(request.params)?;
+                Response::new_ok(request.id, self.completion(&params))
             }
             GotoDefinition::METHOD => {
                 let params: lsp_types::GotoDefinitionParams = serde_json::from_value(request.params)?;
@@ -441,6 +483,10 @@ fn capabilities(encoding: Encoding) -> ServerCapabilities {
             ..TextDocumentSyncOptions::default()
         })),
         definition_provider: Some(lsp_types::OneOf::Left(true)),
+        completion_provider: Some(lsp_types::CompletionOptions {
+            trigger_characters: Some(vec!["\"".into(), "'".into(), ".".into(), ",".into()]),
+            ..lsp_types::CompletionOptions::default()
+        }),
         code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
             code_action_kinds: Some(vec![CodeActionKind::QUICKFIX, CodeActionKind::from(FIX_ALL)]),
             resolve_provider: Some(false),
@@ -526,6 +572,7 @@ mod tests {
             );
             assert!(result["capabilities"]["codeActionProvider"].is_object());
             assert_eq!(result["capabilities"]["definitionProvider"], json!(true));
+            assert!(result["capabilities"]["completionProvider"].is_object());
             client.notify("initialized", json!({}));
             client
         }
@@ -621,6 +668,19 @@ mod tests {
             json!({"textDocument": {"uri": uri}, "position": {"line": 6, "character": 8}}),
         );
         assert!(nothing.is_null(), "{nothing}");
+        // Completion of models in the same string, replacing what is typed.
+        let items = client.request(
+            "textDocument/completion",
+            json!({"textDocument": {"uri": uri}, "position": {"line": 4, "character": 20}}),
+        );
+        let item = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["label"] == "res.partner")
+            .expect("res.partner offered");
+        assert_eq!(item["kind"], json!(7)); // Class
+        assert_eq!(item["textEdit"]["range"]["end"], json!({"line": 4, "character": 20}));
         client.stop();
     }
 
