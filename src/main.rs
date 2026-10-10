@@ -84,6 +84,9 @@ enum Commands {
         /// Set the manifest version of modules older than the target to `<target>.1.0.0`
         #[arg(long)]
         bump_version: bool,
+        /// Folders with the addons of the target version (Odoo's included): also check views, fields, XML ids and models against them
+        #[arg(long, value_delimiter = ',')]
+        addons_path: Option<Vec<String>>,
         /// Show the fixes as a diff instead of writing them
         #[arg(long)]
         diff: bool,
@@ -150,6 +153,7 @@ fn main() -> ExitCode {
             fix,
             unsafe_fixes,
             bump_version,
+            addons_path,
             diff,
         } => upgrade_check(UpgradeArgs {
             paths,
@@ -161,6 +165,7 @@ fn main() -> ExitCode {
             fix,
             unsafe_fixes,
             bump_version,
+            addons_path,
             diff,
         }),
         Commands::Badge {
@@ -368,6 +373,7 @@ struct UpgradeArgs {
     fix: bool,
     unsafe_fixes: bool,
     bump_version: bool,
+    addons_path: Option<Vec<String>>,
     diff: bool,
 }
 
@@ -383,13 +389,16 @@ fn upgrade_check(args: UpgradeArgs) -> ExitCode {
         ignore: args.ignore,
         ..CliOverrides::default()
     };
-    let settings = match Settings::load(&args.paths[0], args.config.as_deref(), overrides) {
+    let mut settings = match Settings::load(&args.paths[0], args.config.as_deref(), overrides) {
         Ok(loaded) => loaded.settings,
         Err(err) => {
             eprintln!("error: {err}");
             return ExitCode::from(2);
         }
     };
+    settings.target_addons_path = args
+        .addons_path
+        .map(|paths| odoo_lint::settings::expand_paths(std::path::Path::new("."), &paths));
     let sources = odoo_lint::sources::Sources::default();
     let mut changed: Vec<(PathBuf, String, String)> = Vec::new();
     let mut fixed = 0;
