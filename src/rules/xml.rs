@@ -938,6 +938,15 @@ Reports `<div class="oe_chatter">` in modules for Odoo 18.0 and later.
 
 Odoo 18.0 added the `<chatter/>` tag for form views. See
 [odoo/odoo#156463](https://github.com/odoo/odoo/pull/156463).
+
+## Fix safety
+
+Safe for the standard block: the followers, activities and messages fields
+(`message_follower_ids`, `activity_ids`, `message_ids`), with or without
+their `mail_*` widgets, become `<chatter/>`. Unsafe when the block has only
+some of them, as `<chatter/>` shows what the model supports, or when an
+xpath of the module looks for `oe_chatter`. No fix for a block with options,
+groups or other content.
 "#,
     check: Check::Xml(check_deprecated_oe_chatter),
     min_odoo: Some(OdooVersion::new(18, 0)),
@@ -945,16 +954,77 @@ Odoo 18.0 added the `<chatter/>` tag for form views. See
 };
 
 fn check_deprecated_oe_chatter(ctx: &XmlContext, reporter: &mut XmlReporter) {
+    // An xpath of the module that finds the old chatter would break.
+    let targeted = ctx.files.iter().any(|f| {
+        f.source.contains("hasclass('oe_chatter')")
+            || f.source.contains("@class='oe_chatter'")
+            || f.source.contains("@class=\"oe_chatter\"")
+    });
     for file in ctx.files {
         for div in file.elements().filter(|n| is(*n, "div") && has_class(*n, "oe_chatter")) {
-            reporter.report(
+            let violation = reporter.report(
                 &XML_DEPRECATED_OE_CHATTER,
                 file,
                 at(file, div),
                 "Please replace old style chatters with the new tag <chatter/>.",
             );
+            if let Some(standard) = standard_chatter(div) {
+                let range = div.range();
+                // In the style of the block's own empty tags.
+                let tag = if file.source[range.clone()].contains(" />") {
+                    "<chatter />"
+                } else {
+                    "<chatter/>"
+                };
+                let edits = vec![Edit::replace(range.start, range.end, tag)];
+                violation.fix = Some(if standard && !targeted {
+                    Fix::safe("Use `<chatter/>`", edits)
+                } else {
+                    Fix::unsafe_("Use `<chatter/>`", edits)
+                });
+            }
         }
     }
+}
+
+/// Whether a `<div class="oe_chatter">` is the standard block `<chatter/>`
+/// replaces: the followers, activities and messages fields, with no other
+/// attributes than their `mail_*` widgets. `Some(false)` when it shows only
+/// some of them (`<chatter/>` shows what the model supports); `None` when it
+/// holds anything else.
+fn standard_chatter(div: Node) -> Option<bool> {
+    const FIELDS: [(&str, &str); 3] = [
+        ("message_follower_ids", "mail_followers"),
+        ("activity_ids", "mail_activity"),
+        ("message_ids", "mail_thread"),
+    ];
+    if div.attributes().any(|a| a.name() != "class") || div.attribute("class")?.trim() != "oe_chatter" {
+        return None;
+    }
+    let mut seen = Vec::new();
+    for child in div.children() {
+        if child.is_comment() || (child.is_text() && child.text().is_some_and(|t| t.trim().is_empty())) {
+            continue;
+        }
+        if !is(child, "field") || child.has_children() {
+            return None;
+        }
+        let name = child.attribute("name")?;
+        let (_, widget) = FIELDS.iter().find(|(field, _)| *field == name)?;
+        let attributes_ok = child.attributes().all(|a| match a.name() {
+            "name" => true,
+            "widget" => a.value() == *widget,
+            _ => false,
+        });
+        if !attributes_ok || seen.contains(&name) {
+            return None;
+        }
+        seen.push(name);
+    }
+    if seen.is_empty() {
+        return None;
+    }
+    Some(seen.len() == FIELDS.len())
 }
 
 pub const XML_DEPRECATED_RES_GROUPS_CATEGORY_ID: Rule = Rule {
