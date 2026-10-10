@@ -91,13 +91,17 @@ glob such as `../oca/*` adds every folder it matches. `odl check
 Checks across modules use it to look up what a module's `depends` reach:
 [ODOO004](rules/ODOO004.md) for fields in views,
 [ODOO005](rules/ODOO005.md) for XML ids, [ODOO006](rules/ODOO006.md)
-for models and [ODOO007](rules/ODOO007.md) for fields named in Python. The modules next to
-the checked module are found without it. A module whose dependencies cannot
+for models, [ODOO007](rules/ODOO007.md) for fields named in Python and
+[ODOO008](rules/ODOO008.md) for inheritance specs against the views they
+extend. The modules next to the checked module are found without it. A module whose dependencies cannot
 all be found is not checked by these rules, so without `addons-path` they
 stay silent rather than guess.
 
 Only the dependencies of the checked modules are read: with all of Odoo 18.0
-in the path, checking every core module takes about two seconds.
+in the path, checking every core module takes about three seconds.
+
+Before an upgrade, point `addons-path` at the Odoo of the target version:
+ODOO008 then shows the `<xpath>`s that match nothing in its views.
 
 ### `per-file-ignores`
 

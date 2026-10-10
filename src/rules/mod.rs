@@ -10,6 +10,7 @@ use crate::odoo_version::OdooVersion;
 use po::PoContext;
 
 pub mod e0001_syntax_error;
+pub mod inheritance;
 pub mod manifest;
 pub mod module;
 pub mod odoo001_missing_depends;
@@ -118,6 +119,7 @@ pub const ALL: &[Rule] = &[
     references::XML_ID_NOT_FOUND,
     references::MODEL_NOT_FOUND,
     python_fields::PYTHON_FIELD_NOT_FOUND,
+    inheritance::SPEC_NOT_FOUND,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

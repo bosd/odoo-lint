@@ -24,3 +24,4 @@ pub mod suppression;
 pub mod upgrade;
 pub mod visit;
 pub mod xml;
+pub mod xpath;
