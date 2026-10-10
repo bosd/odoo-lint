@@ -19,6 +19,7 @@ pub mod po_fixes;
 pub mod po_odoo;
 pub mod python;
 pub mod python_fields;
+pub mod records;
 pub mod references;
 pub mod upgrade;
 pub mod views;
@@ -120,6 +121,7 @@ pub const ALL: &[Rule] = &[
     references::MODEL_NOT_FOUND,
     python_fields::PYTHON_FIELD_NOT_FOUND,
     inheritance::SPEC_NOT_FOUND,
+    records::RECORD_FIELD_NOT_FOUND,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

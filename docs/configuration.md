@@ -93,7 +93,7 @@ Checks across modules use it to look up what a module's `depends` reach:
 [ODOO005](rules/ODOO005.md) for XML ids, [ODOO006](rules/ODOO006.md)
 for models, [ODOO007](rules/ODOO007.md) for fields named in Python and
 [ODOO008](rules/ODOO008.md) for inheritance specs against the views they
-extend. The modules next to the checked module are found without it. A module whose dependencies cannot
+extend and [ODOO009](rules/ODOO009.md) for the fields of data records. The modules next to the checked module are found without it. A module whose dependencies cannot
 all be found is not checked by these rules, so without `addons-path` they
 stay silent rather than guess.
 
