@@ -11,6 +11,7 @@ use crate::odoo_version::OdooVersion;
 use crate::pyliteral::repr_str;
 use crate::rules::{Check, Rule};
 use crate::semantic::func_name;
+use crate::suppression::Suppressions;
 use crate::visit::{walk, Node, Scope};
 use ruff_python_ast::{Expr, ExprCall, Operator, Stmt};
 use ruff_text_size::{Ranged, TextSize};
@@ -335,8 +336,9 @@ fails outside methods. See [odoo/odoo#174844](https://github.com/odoo/odoo/pull/
 
 Safe: `_(...)` becomes `self.env._(...)` inside methods of Odoo models
 where `self` is the record. Elsewhere (static methods, functions, a lambda
-with its own `self`) there is no fix. Remove the unused `_` import afterwards
-(Ruff's `F401` does so).
+with its own `self`) there is no fix. When the fixes replace every use of
+`_` in a file, they also remove its import (`from odoo import _, api`
+becomes `from odoo import api`).
 "#,
     check: Check::Python(check_prefer_env),
     min_odoo: Some(OdooVersion::new(18, 0)),
@@ -726,27 +728,100 @@ fn check_positional_used(ctx: &PythonContext, reporter: &mut Reporter) {
 }
 
 fn check_prefer_env(ctx: &PythonContext, reporter: &mut Reporter) {
+    let mut calls: Vec<(&ExprCall, bool)> = Vec::new();
+    let mut names = 0;
     walk(ctx.parsed.suite(), |node, scopes| {
-        let Node::Expr(Expr::Call(call)) = node else { return };
-        if call.arguments.args.is_empty() || !matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "_") {
-            return;
+        let Node::Expr(expr) = node else { return };
+        match expr {
+            Expr::Name(n) if n.id.as_str() == "_" => names += 1,
+            Expr::Call(call)
+                if !call.arguments.args.is_empty() && matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "_") =>
+            {
+                calls.push((call, self_is_a_record(ctx, scopes)));
+            }
+            _ => {}
         }
+    });
+    // When the fixes replace every use of `_`, the last one also drops its
+    // import, unless a suppressed call keeps using it.
+    let import_edit = if names > 0 && names == calls.len() && calls.iter().all(|(_, fixable)| *fixable) {
+        let line_index = ruff_source_file::LineIndex::from_source_text(ctx.source);
+        let suppressions = Suppressions::from_tokens(ctx.source, ctx.parsed.tokens(), &line_index);
+        let suppressed = calls.iter().any(|(call, _)| {
+            let line = line_index.line_index(call.start()).get();
+            suppressions.is_suppressed(line, PREFER_ENV_TRANSLATION.code, PREFER_ENV_TRANSLATION.name)
+        });
+        if suppressed {
+            None
+        } else {
+            remove_translation_import(ctx)
+        }
+    } else {
+        None
+    };
+    let last = calls.len().saturating_sub(1);
+    for (i, (call, fixable)) in calls.into_iter().enumerate() {
         let violation = reporter.report(
             &PREFER_ENV_TRANSLATION,
             call.start(),
             "Better using self.env._ More info at https://github.com/odoo/odoo/pull/174844",
         );
-        if self_is_a_record(ctx, scopes) {
-            violation.fix = Some(Fix::safe(
-                "Use `self.env._`",
-                vec![Edit::replace(
-                    call.func.start().to_usize(),
-                    call.func.end().to_usize(),
-                    "self.env._",
-                )],
-            ));
+        if fixable {
+            let mut edits = vec![Edit::replace(
+                call.func.start().to_usize(),
+                call.func.end().to_usize(),
+                "self.env._",
+            )];
+            if i == last {
+                edits.extend(import_edit.clone());
+            }
+            violation.fix = Some(Fix::safe("Use `self.env._`", edits));
         }
-    });
+    }
+}
+
+/// The edit that removes `_` from `from odoo import _, api` (or from
+/// `odoo.tools.translate`), or the whole statement when `_` is all it
+/// imports. None when `_` is imported in another way or more than once.
+fn remove_translation_import(ctx: &PythonContext) -> Option<Edit> {
+    let mut found = Vec::new();
+    for stmt in ctx.parsed.suite() {
+        let Stmt::ImportFrom(import) = stmt else { continue };
+        let module = import.module.as_ref().map(|m| m.as_str()).unwrap_or_default();
+        for (i, alias) in import.names.iter().enumerate() {
+            let binds = alias.asname.as_ref().unwrap_or(&alias.name).as_str() == "_";
+            if !binds {
+                continue;
+            }
+            let from_odoo = import.level == 0 && matches!(module, "odoo" | "odoo.tools" | "odoo.tools.translate");
+            if alias.asname.is_some() || !from_odoo {
+                return None;
+            }
+            found.push((import, i));
+        }
+    }
+    let [(import, i)] = found.as_slice() else { return None };
+    let names = &import.names;
+    if names.len() == 1 {
+        // The whole statement, with its line break.
+        let start = import.start().to_usize();
+        let mut end = import.end().to_usize();
+        let rest = &ctx.source[end..];
+        let line_end = rest.find('\n').map_or(rest.len(), |n| n + 1);
+        if rest[..line_end].trim().is_empty() {
+            end += line_end;
+        }
+        let line_start = ctx.source[..start].rfind('\n').map_or(0, |n| n + 1);
+        if !ctx.source[line_start..start].trim().is_empty() {
+            return None;
+        }
+        return Some(Edit::replace(line_start, end, ""));
+    }
+    let alias = &names[*i];
+    Some(match names.get(i + 1) {
+        Some(next) => Edit::replace(alias.start().to_usize(), next.start().to_usize(), ""),
+        None => Edit::replace(names[i - 1].end().to_usize(), alias.end().to_usize(), ""),
+    })
 }
 
 /// Whether `self` is a record where the scopes end: inside a method of an
