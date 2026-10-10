@@ -193,6 +193,115 @@ fn check_sql_constraints(ctx: &PythonContext, reporter: &mut Reporter) {
     }
 }
 
+pub const IMPLICIT_NAME: Rule = Rule {
+    code: "U1922",
+    name: "upgrade-implicit-model-name",
+    summary: "A model class has no `_name` and a list `_inherit`; Odoo 19.0 names it after the class.",
+    doc: r#"
+## What it does
+
+Reports Odoo model classes without `_name` whose `_inherit` is a list or a
+tuple.
+
+## Why is this bad?
+
+Up to Odoo 18.0 such a class with one parent, `_inherit = ["account.loan"]`,
+extended that model. Odoo 19.0 only takes the name from an `_inherit`
+string; otherwise it names the model after the class (`AccountLoanExt`
+becomes `account.loan.ext`) and logs "Class AccountLoanExt has no _name,
+please make it explicit". When the class name does not match, the class
+defines a new model instead of extending the old one.
+
+## Fix safety
+
+Safe for a single parent: `_name = "account.loan"` is added above
+`_inherit`, which is what the class meant. With several parents there is
+no fix: Odoo 18.0 named such a model after the bare class name, so set
+`_name` by hand.
+"#,
+    check: Check::Python(check_implicit_name),
+    min_odoo: ODOO_19,
+    max_odoo: None,
+};
+
+/// The name Odoo 19.0 derives from a class name: a `.` before every
+/// capital not preceded by `_`, lower-cased.
+fn derived_model_name(class: &str) -> String {
+    let mut out = String::new();
+    let mut previous: Option<char> = None;
+    for c in class.chars() {
+        if c.is_ascii_uppercase() && previous.is_some_and(|p| p != '_') {
+            out.push('.');
+        }
+        out.push(c.to_ascii_lowercase());
+        previous = Some(c);
+    }
+    out
+}
+
+fn check_implicit_name(ctx: &PythonContext, reporter: &mut Reporter) {
+    for class in classes(ctx.parsed.suite()) {
+        if ctx.semantic.odoo_model_kind(class).is_none() {
+            continue;
+        }
+        let assigned = |name: &str| {
+            class.body.iter().find_map(|stmt| match stmt {
+                Stmt::Assign(a)
+                    if a.targets
+                        .iter()
+                        .any(|t| matches!(t, Expr::Name(n) if n.id.as_str() == name)) =>
+                {
+                    Some((stmt, &*a.value))
+                }
+                Stmt::AnnAssign(a) if matches!(&*a.target, Expr::Name(n) if n.id.as_str() == name) => {
+                    a.value.as_deref().map(|v| (stmt, v))
+                }
+                _ => None,
+            })
+        };
+        if assigned("_name").is_some() {
+            continue;
+        }
+        if assigned("_register").is_some_and(|(_, v)| matches!(v, Expr::BooleanLiteral(b) if !b.value)) {
+            continue;
+        }
+        let Some((stmt, value)) = assigned("_inherit") else {
+            continue;
+        };
+        let parents: &[Expr] = match value {
+            Expr::List(list) => &list.elts,
+            Expr::Tuple(tuple) => &tuple.elts,
+            _ => continue,
+        };
+        let names: Vec<&str> = parents
+            .iter()
+            .filter_map(|p| p.as_string_literal_expr().map(|s| s.value.to_str()))
+            .collect();
+        if names.is_empty() || names.len() != parents.len() {
+            continue;
+        }
+        let class_name = class.name.as_str();
+        let derived = derived_model_name(class_name);
+        let violation = reporter.report(
+            &IMPLICIT_NAME,
+            class.name.start(),
+            format!("Class {class_name} has no `_name`: Odoo 19.0 names it `{derived}`; set `_name` explicitly"),
+        );
+        if names.len() == 1 {
+            let start = stmt.start().to_usize();
+            let line_start = ctx.source[..start].rfind('\n').map_or(0, |i| i + 1);
+            let indent = &ctx.source[line_start..start];
+            if indent.trim().is_empty() {
+                let literal = source_of(ctx.source, &parents[0]);
+                violation.fix = Some(Fix::safe(
+                    format!("Add `_name = {literal}`"),
+                    vec![Edit::insert(start, format!("_name = {literal}\n{indent}"))],
+                ));
+            }
+        }
+    }
+}
+
 pub const API_MODEL_CREATE: Rule = Rule {
     code: "U1903",
     name: "upgrade-api-model-create",

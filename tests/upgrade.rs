@@ -881,3 +881,56 @@ class Wizard(models.TransientModel):
         ]
     );
 }
+
+#[test]
+fn implicit_model_names_for_odoo_19() {
+    const MODELS: &str = r#"from odoo import fields, models
+
+
+class AccountLoan(models.Model):
+    _inherit = ["account.loan"]
+
+    note = fields.Char()
+
+
+class LoanExtension(models.Model):
+    _inherit = ("account.loan", "mail.thread")
+
+
+class Named(models.Model):
+    _name = "acme.named"
+    _inherit = ["mail.thread"]
+
+
+class Plain(models.Model):
+    _inherit = "res.partner"
+
+
+class Hidden(models.AbstractModel):
+    _register = False
+    _inherit = ["mail.thread"]
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let module_path = module(dir.path(), "19.0.1.0.0", &[], MODELS);
+    let v19 = OdooVersion::new(19, 0);
+    assert_eq!(
+        codes(dir.path(), "U1922", v19),
+        vec![("U1922".to_string(), 4), ("U1922".to_string(), 10)]
+    );
+    let file = module_path.join("models/partner.py");
+    assert_eq!(
+        fixed(dir.path(), "U1922", v19, &file, FixMode::Safe),
+        MODELS.replace(
+            "    _inherit = [\"account.loan\"]\n",
+            "    _name = \"account.loan\"\n    _inherit = [\"account.loan\"]\n"
+        )
+    );
+    let messages: Vec<String> = lint_paths(&[dir.path().to_path_buf()], &settings("U1922", v19))
+        .into_iter()
+        .map(|v| v.message)
+        .collect();
+    assert_eq!(
+        messages[1],
+        "Class LoanExtension has no `_name`: Odoo 19.0 names it `loan.extension`; set `_name` explicitly"
+    );
+}
