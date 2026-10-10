@@ -97,11 +97,19 @@ pub struct Report {
     pub modules: Vec<ModuleReport>,
 }
 
+/// The checks across modules, which an upgrade runs against the addons of
+/// the target version when it has them (`--addons-path`).
+const INDEX_RULES: &[&str] = &["ODOO004", "ODOO005", "ODOO006", "ODOO007", "ODOO008", "ODOO009"];
+
 /// The rules an upgrade to `target` brings: those with a first version up
-/// to `target`, minus the ones the configuration ignores.
+/// to `target`, and the checks across modules with the target's addons,
+/// minus the ones the configuration ignores.
 fn upgrade_rules(settings: &Settings, target: OdooVersion) -> Vec<&'static Rule> {
     ALL.iter()
-        .filter(|rule| rule.min_odoo.is_some_and(|min| min <= target))
+        .filter(|rule| {
+            rule.min_odoo.is_some_and(|min| min <= target)
+                || (settings.target_addons_path.is_some() && INDEX_RULES.contains(&rule.code))
+        })
         .filter(|rule| !settings.ignore.iter().any(|s| selector_matches(s, rule)))
         .collect()
 }
@@ -135,6 +143,9 @@ pub fn settings_for(
     settings.target_version = target;
     settings.assume_module_version = Some(target);
     settings.select = upgrade_rules(base, target).iter().map(|r| r.code.to_string()).collect();
+    if let Some(addons_path) = &base.target_addons_path {
+        settings.addons_path = addons_path.clone();
+    }
     let versions: Arc<HashMap<PathBuf, Option<OdooVersion>>> = Arc::new(
         modules
             .iter()
@@ -145,6 +156,11 @@ pub fn settings_for(
         let Some(rule) = rules::find(&violation.code) else {
             return false;
         };
+        // Checks across modules ran on the target's addons: all of it is
+        // the upgrade's.
+        if INDEX_RULES.contains(&rule.code) {
+            return true;
+        }
         let Some(since) = rule.min_odoo else { return false };
         // A module of unknown version gets every step up to the target.
         match module_of(&versions, Path::new(&violation.file_path)) {

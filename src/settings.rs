@@ -47,7 +47,8 @@ pub struct CliOverrides {
 
 /// `paths` relative to `base`, with glob patterns expanded to the folders
 /// they match.
-fn expand_paths(base: &Path, paths: &[String]) -> Vec<PathBuf> {
+/// `paths` relative to `base`, globs expanded.
+pub fn expand_paths(base: &Path, paths: &[String]) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for path in paths {
         let full = base.join(path);
@@ -114,6 +115,9 @@ pub struct Settings {
     pub violation_filter: Option<ViolationFilter>,
     /// Folders with addons, for checks across modules.
     pub addons_path: Vec<PathBuf>,
+    /// For `upgrade-check`: the addons of the target version, against which
+    /// the checks across modules (ODOO004-ODOO009) then run.
+    pub target_addons_path: Option<Vec<PathBuf>>,
     exclude: Vec<PathPattern>,
     per_file_ignores: Vec<(PathPattern, Vec<String>)>,
 }
@@ -130,6 +134,7 @@ impl Default for Settings {
             assume_module_version: None,
             violation_filter: None,
             addons_path: Vec::new(),
+            target_addons_path: None,
             exclude: Vec::new(),
             per_file_ignores: Vec::new(),
         }
@@ -242,6 +247,7 @@ impl Settings {
             assume_module_version: None,
             violation_filter: None,
             addons_path,
+            target_addons_path: None,
             exclude,
             per_file_ignores,
         };
