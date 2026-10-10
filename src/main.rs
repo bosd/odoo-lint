@@ -81,6 +81,9 @@ enum Commands {
         /// Also apply the unsafe fixes
         #[arg(long)]
         unsafe_fixes: bool,
+        /// Set the manifest version of modules older than the target to `<target>.1.0.0`
+        #[arg(long)]
+        bump_version: bool,
         /// Show the fixes as a diff instead of writing them
         #[arg(long)]
         diff: bool,
@@ -146,6 +149,7 @@ fn main() -> ExitCode {
             show_findings,
             fix,
             unsafe_fixes,
+            bump_version,
             diff,
         } => upgrade_check(UpgradeArgs {
             paths,
@@ -156,6 +160,7 @@ fn main() -> ExitCode {
             show_findings,
             fix,
             unsafe_fixes,
+            bump_version,
             diff,
         }),
         Commands::Badge {
@@ -362,6 +367,7 @@ struct UpgradeArgs {
     show_findings: bool,
     fix: bool,
     unsafe_fixes: bool,
+    bump_version: bool,
     diff: bool,
 }
 
@@ -384,43 +390,72 @@ fn upgrade_check(args: UpgradeArgs) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let sources = odoo_lint::sources::Sources::default();
+    let mut changed: Vec<(PathBuf, String, String)> = Vec::new();
+    let mut fixed = 0;
     if args.fix || args.diff {
         let mode = if args.unsafe_fixes {
             FixMode::Unsafe
         } else {
             FixMode::Safe
         };
-        let sources = odoo_lint::sources::Sources::default();
         let (upgrade_settings, _) = odoo_lint::upgrade::settings_for(&settings, &args.paths, target, &sources);
-        let result = fixer::fix_paths(&args.paths, &upgrade_settings, mode);
-        if args.diff {
-            for (path, old, new) in &result.changed {
-                print!("{}", fixer::unified_diff(path, old, new));
+        let result = fixer::fix_paths_with(&args.paths, &upgrade_settings, mode, &sources);
+        fixed = result.fixed;
+        changed = result.changed;
+    }
+    // On top of the fixes; written after the report, which reads the
+    // version the module had.
+    let bumps = if args.bump_version {
+        odoo_lint::upgrade::bump_versions(&settings, &args.paths, target, &sources)
+    } else {
+        Vec::new()
+    };
+    if args.diff {
+        for (path, _, new) in &bumps {
+            match changed.iter_mut().find(|(p, _, _)| p == path) {
+                Some(entry) => entry.2 = new.clone(),
+                None => changed.push((
+                    path.clone(),
+                    sources.read_to_string(path).unwrap_or_default(),
+                    new.clone(),
+                )),
             }
-            eprintln!(
-                "{} fix(es) would change {} file(s).",
-                result.fixed,
-                result.changed.len()
-            );
-            return if result.changed.is_empty() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            };
         }
-        for (path, _, new) in &result.changed {
-            if let Err(err) = std::fs::write(path, new) {
-                eprintln!("error: cannot write {}: {err}", path.display());
-                return ExitCode::from(2);
-            }
+        changed.sort();
+        for (path, old, new) in &changed {
+            print!("{}", fixer::unified_diff(path, old, new));
         }
-        eprintln!("Fixed {} finding(s) in {} file(s).", result.fixed, result.changed.len());
+        eprintln!("{fixed} fix(es) would change {} file(s).", changed.len());
+        return if changed.is_empty() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
+    }
+    for (path, _, new) in &changed {
+        if let Err(err) = std::fs::write(path, new) {
+            eprintln!("error: cannot write {}: {err}", path.display());
+            return ExitCode::from(2);
+        }
+    }
+    if args.fix {
+        eprintln!("Fixed {fixed} finding(s) in {} file(s).", changed.len());
     }
     let report = odoo_lint::upgrade::check(&settings, &args.paths, target);
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report).expect("report serializes"));
     } else {
         print!("{}", odoo_lint::upgrade::render_text(&report, args.show_findings));
+    }
+    for (path, _, new) in &bumps {
+        if let Err(err) = std::fs::write(path, new) {
+            eprintln!("error: cannot write {}: {err}", path.display());
+            return ExitCode::from(2);
+        }
+    }
+    if !bumps.is_empty() {
+        eprintln!("Set the version of {} module(s) to {target}.1.0.0.", bumps.len());
     }
     if report.effort.changes == 0 {
         ExitCode::SUCCESS

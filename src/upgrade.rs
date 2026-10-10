@@ -12,7 +12,8 @@ use crate::odoo_version::OdooVersion;
 use crate::rules::{self, Rule, ALL};
 use crate::settings::{selector_matches, Settings, ViolationFilter};
 use crate::sources::Sources;
-use crate::xml::module_version;
+use crate::xml::{manifest_series, module_version};
+use ruff_text_size::Ranged;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
@@ -162,6 +163,51 @@ pub fn settings_for(
         settings.select = vec!["NONE".to_string()];
     }
     (settings, modules)
+}
+
+/// `--bump-version`: the manifests of modules on a version older than
+/// `target`, with their version set to `<target>.1.0.0` as a migration
+/// does by OCA convention. Path, contents before, new contents.
+pub fn bump_versions(
+    base: &Settings,
+    paths: &[PathBuf],
+    target: OdooVersion,
+    sources: &Sources,
+) -> Vec<(PathBuf, String, String)> {
+    let files = collect_files(paths, base);
+    let mut out = Vec::new();
+    for module in modules_of(&files, sources) {
+        let Some(manifest) = &module.manifest else { continue };
+        let Some(current) = manifest.get_str("version").and_then(manifest_series) else {
+            continue;
+        };
+        if current >= target {
+            continue;
+        }
+        let Some((_, value)) = manifest.entry("version") else {
+            continue;
+        };
+        let Ok(old) = sources.read_to_string(&module.manifest_path) else {
+            continue;
+        };
+        let range = value.range();
+        let literal = &old[range.start().to_usize()..range.end().to_usize()];
+        // Keep the quotes (and a string prefix) the manifest uses.
+        let Some(quote) = literal.find(['"', '\'']) else {
+            continue;
+        };
+        let q = &literal[quote..=quote];
+        let new = format!(
+            "{}{}{}{target}.1.0.0{q}{}",
+            &old[..range.start().to_usize()],
+            &literal[..quote],
+            q,
+            &old[range.end().to_usize()..],
+        );
+        out.push((module.manifest_path.clone(), old, new));
+    }
+    out.sort();
+    out
 }
 
 /// Lints `paths` for an upgrade to `target` and summarises per module.
@@ -318,6 +364,52 @@ mod tests {
             root,
             &format!("{name}/views/a.xml"),
             "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<odoo>\n    <template id=\"t\">\n        <span class=\"ml-2\" t-esc=\"x\"/>\n    </template>\n</odoo>\n",
+        );
+    }
+
+    #[test]
+    fn bump_version_sets_the_target_series() {
+        let dir = tempfile::tempdir().unwrap();
+        module(dir.path(), "acme_old", "16.0.2.3.1");
+        module(dir.path(), "acme_new", "19.0.1.0.0");
+        module(dir.path(), "acme_short", "1.0");
+        write(
+            dir.path(),
+            "acme_dq/__manifest__.py",
+            "{\"name\": \"Dq\", \"version\": \"17.0.1.0.0\"}\n",
+        );
+        let bumps = bump_versions(
+            &Settings::default(),
+            &[dir.path().to_path_buf()],
+            OdooVersion::new(19, 0),
+            &Sources::default(),
+        );
+        let new: Vec<(String, &str)> = bumps
+            .iter()
+            .map(|(path, _, new)| {
+                (
+                    path.parent()
+                        .unwrap()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    new.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            new,
+            vec![
+                (
+                    "acme_dq".to_string(),
+                    "{\"name\": \"Dq\", \"version\": \"19.0.1.0.0\"}\n"
+                ),
+                (
+                    "acme_old".to_string(),
+                    "{'name': 'acme_old', 'version': '19.0.1.0.0', 'license': 'AGPL-3', 'data': ['views/a.xml']}\n"
+                ),
+            ]
         );
     }
 

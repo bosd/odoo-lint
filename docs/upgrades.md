@@ -73,7 +73,20 @@ odl upgrade-check --target 19.0 --fix --unsafe-fixes   # and the part to review
 ```
 
 The fixes are those of the upgrade steps only; `odl check` remains the place
-for everything else.
+for everything else. They do not format the code: a renamed call can make a
+line longer than your limit, so run your formatter (Ruff, prettier)
+afterwards, as a pre-commit run does.
+
+`--bump-version` also sets the manifest version of each module older than the
+target to `<target>.1.0.0`, as OCA migrations start:
+
+```bash
+odl upgrade-check --target 19.0 --fix --bump-version
+```
+
+It is opt-in, as tools such as odoo-module-migrator bump the version too.
+The report above it still counts from the module's old version; later runs
+count from the new one, where only the `U` rules of the target remain.
 
 ## Options
 
@@ -86,6 +99,10 @@ for everything else.
 `--output-format json`
 : The report as JSON: per module the counts, per rule the step and counts,
 and the findings.
+
+`--bump-version`
+: Set the manifest version of modules older than the target to
+`<target>.1.0.0`.
 
 `--ignore RULES`
 : Leave rules out of the report, on top of `ignore` from the configuration.
