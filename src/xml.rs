@@ -177,15 +177,20 @@ static NUMERIC_VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+(\.\
 /// one, with the current series, so those get `fallback`. `None` for a
 /// malformed version (`8_0.1.0.0`): the version-gated checks then skip the
 /// module, as OCA's do.
+/// The Odoo series of a manifest version such as `17.0.1.0.0`.
+pub fn manifest_series(version: &str) -> Option<OdooVersion> {
+    let captures = MANIFEST_SERIES.captures(version.trim())?;
+    Some(OdooVersion::new(captures[1].parse().ok()?, captures[2].parse().ok()?))
+}
+
 pub fn module_version(module: &ModuleInfo, fallback: OdooVersion) -> Option<OdooVersion> {
     let Some(version) = module.manifest.as_ref().and_then(|m| m.get_str("version")) else {
         return Some(fallback);
     };
-    let version = version.trim();
-    if let Some(captures) = MANIFEST_SERIES.captures(version) {
-        return Some(OdooVersion::new(captures[1].parse().ok()?, captures[2].parse().ok()?));
+    if MANIFEST_SERIES.is_match(version.trim()) {
+        return manifest_series(version);
     }
-    NUMERIC_VERSION.is_match(version).then_some(fallback)
+    NUMERIC_VERSION.is_match(version.trim()).then_some(fallback)
 }
 
 /// A parsed XML file as the checks see it.
