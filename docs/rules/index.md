@@ -62,6 +62,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO006](ODOO006.md) | `model-not-found` | A model that no module of `depends` defines. |
 | [ODOO007](ODOO007.md) | `python-field-not-found` | Python code names a field the model does not have. |
 | [ODOO008](ODOO008.md) | `view-spec-not-found` | An inheritance spec (`<xpath>`, `<field position=...>`) finds nothing in the view it extends. |
+| [ODOO009](ODOO009.md) | `record-field-not-found` | A data record sets a field that does not exist on its model. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -139,6 +140,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1919](U1919.md) | `upgrade-manifest-old-data-keys` | The manifest lists files under `update_xml` or `demo_xml`, ignored since Odoo 19.0. |
 | [U1920](U1920.md) | `upgrade-t-call-element` | `t-call` on an element other than `<t>`, rejected in Odoo 19.0. |
 | [U1921](U1921.md) | `upgrade-partner-mobile-title` | A partner or company view uses `mobile` or `title`, removed in Odoo 19.0. |
+| [U1922](U1922.md) | `upgrade-implicit-model-name` | A model class has no `_name` and a list `_inherit`; Odoo 19.0 names it after the class. |
 | [U2001](U2001.md) | `upgrade-ir-model-access-csv` | The manifest loads `ir.model.access.csv`, a model replaced by `ir.access` in Odoo 20.0. |
 | [U2002](U2002.md) | `upgrade-ir-access-records` | `ir.rule` or `ir.model.access` records, models replaced by `ir.access` in Odoo 20.0. |
 | [U2003](U2003.md) | `upgrade-t-esc-t-raw` | `t-esc` or `t-raw`, removed from QWeb in Odoo 20.0. |
@@ -281,6 +283,7 @@ ODOO005
 ODOO006
 ODOO007
 ODOO008
+ODOO009
 PO001
 PO002
 PO003
@@ -358,6 +361,7 @@ U1918
 U1919
 U1920
 U1921
+U1922
 U2001
 U2002
 U2003
