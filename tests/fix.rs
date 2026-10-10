@@ -180,3 +180,43 @@ fn po_fixes() {
     assert!(again.changed.is_empty(), "{:?}", again.changed);
     assert!(again.remaining.is_empty(), "{:?}", again.remaining);
 }
+
+#[test]
+fn env_translation_drops_the_unused_import() {
+    let cases = [
+        // Every use fixed: `_` leaves the import.
+        (
+            "from odoo import _, api, models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"A\") + _(\"B\")\n",
+            "from odoo import api, models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return self.env._(\"A\") + self.env._(\"B\")\n",
+        ),
+        // `_` last in a parenthesized list.
+        (
+            "from odoo import (\n    models,\n    _,\n)\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"A\")\n",
+            "from odoo import (\n    models,\n)\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return self.env._(\"A\")\n",
+        ),
+        // `_` alone in its statement.
+        (
+            "from odoo.tools.translate import _\nfrom odoo import models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"A\")\n",
+            "from odoo import models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return self.env._(\"A\")\n",
+        ),
+        // A use without a fix, or a suppressed one, keeps the import.
+        (
+            "from odoo import _, models\n\n\ndef label():\n    return _(\"A\")\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"B\")\n",
+            "from odoo import _, models\n\n\ndef label():\n    return _(\"A\")\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return self.env._(\"B\")\n",
+        ),
+        (
+            "from odoo import _, models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"A\") + _(\"B\")  # noqa: W8161\n",
+            "from odoo import _, models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n    def a(self):\n        return _(\"A\") + _(\"B\")  # noqa: W8161\n",
+        ),
+    ];
+    for (source, expected) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        module(dir.path());
+        let path = write(dir.path(), "acme_fix/models/partner.py", source);
+        assert_eq!(
+            fixed(dir.path(), &["W8161"], FixMode::Safe, &path),
+            expected,
+            "{source}"
+        );
+    }
+}
