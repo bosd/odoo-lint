@@ -88,6 +88,26 @@ It is opt-in, as tools such as odoo-module-migrator bump the version too.
 The report above it still counts from the module's old version; later runs
 count from the new one, where only the `U` rules of the target remain.
 
+## Against the target's sources
+
+The upgrade rules know what Odoo changed in general; the target's own code
+knows every field it renamed. With the addons of the target version,
+`odl upgrade-check` also runs the checks across modules against them:
+
+```bash
+odl upgrade-check --target 19.0 --addons-path ../odoo19/odoo/addons,../odoo19/addons,../oca19/*
+```
+
+Fields in views ([ODOO004](rules/ODOO004.md)) and in Python
+([ODOO007](rules/ODOO007.md)), XML ids ([ODOO005](rules/ODOO005.md)),
+models ([ODOO006](rules/ODOO006.md)), inheritance specs
+([ODOO008](rules/ODOO008.md)) and the fields of data records
+(ODOO009) then count as changes of the target version:
+`tax_id` on a sale order line that 19.0 renamed `tax_ids`, an `<xpath>` on
+an element its view no longer has. A module whose dependencies are not all
+in the path is not checked by them; `addons-path` from the configuration is
+not used here, as it points at the current version.
+
 ## Options
 
 `--target VERSION`
@@ -99,6 +119,10 @@ count from the new one, where only the `U` rules of the target remain.
 `--output-format json`
 : The report as JSON: per module the counts, per rule the step and counts,
 and the findings.
+
+`--addons-path PATHS`
+: Folders with the addons of the target version, Odoo's included; see
+[Against the target's sources](#against-the-targets-sources).
 
 `--bump-version`
 : Set the manifest version of modules older than the target to

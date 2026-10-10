@@ -881,3 +881,51 @@ class Wizard(models.TransientModel):
         ]
     );
 }
+
+#[test]
+fn checks_across_modules_against_the_target_addons() {
+    let dir = tempfile::tempdir().unwrap();
+    // The target version's Odoo: `res.partner` lost `mobile`.
+    let core = dir.path().join("odoo19");
+    write(&core, "base/__manifest__.py", "{'name': 'base', 'depends': []}\n");
+    write(&core, "base/__init__.py", "from . import models\n");
+    write(
+        &core,
+        "base/models.py",
+        "from odoo import fields, models\n\n\nclass Partner(models.Model):\n    _name = 'res.partner'\n\n    name = fields.Char()\n    phone = fields.Char()\n",
+    );
+    let addons = dir.path().join("addons");
+    let view = r#"<odoo>
+    <record id="partner_form" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form><field name="name"/><field name="mobile"/></form>
+        </field>
+    </record>
+</odoo>
+"#;
+    write(
+        &addons,
+        "acme_up/__manifest__.py",
+        "{'name': 'Up', 'version': '18.0.1.0.0', 'license': 'AGPL-3', 'depends': ['base'], 'data': ['views/partner.xml']}\n",
+    );
+    write(&addons, "acme_up/__init__.py", "");
+    write(&addons, "acme_up/views/partner.xml", view);
+    let target = OdooVersion::new(19, 0);
+    let rules = |settings: &Settings| -> Vec<String> {
+        odoo_lint::upgrade::check(settings, std::slice::from_ref(&addons), target).modules[0]
+            .rules
+            .iter()
+            .map(|r| format!("{} {}", r.code, r.since))
+            .collect()
+    };
+    // Without the target's addons, nothing across modules is checked.
+    assert!(!rules(&Settings::default()).iter().any(|r| r.starts_with("ODOO")));
+    let mut settings = Settings::default();
+    settings.target_addons_path = Some(vec![core]);
+    assert!(
+        rules(&settings).contains(&"ODOO004 19.0".to_string()),
+        "{:?}",
+        rules(&settings)
+    );
+}

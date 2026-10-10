@@ -142,7 +142,8 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "paths": {"type": "array", "items": {"type": "string"}, "description": "Addon directories; default: the current directory"},
-                    "target": {"type": "string", "description": "Odoo version to upgrade to, e.g. 19.0"}
+                    "target": {"type": "string", "description": "Odoo version to upgrade to, e.g. 19.0"},
+                    "addons_path": {"type": "array", "items": {"type": "string"}, "description": "Folders with the addons of the target version, Odoo's included: also check views, fields, XML ids and models against them"}
                 },
                 "required": ["target"]
             },
@@ -239,7 +240,11 @@ fn upgrade_check(arguments: &Value) -> Result<String, String> {
         .and_then(Value::as_str)
         .ok_or("`target` is required, e.g. \"19.0\"")?
         .parse()?;
-    let (paths, settings) = settings(&json!({"paths": arguments.get("paths").cloned().unwrap_or(Value::Null)}))?;
+    let (paths, mut settings) = settings(&json!({"paths": arguments.get("paths").cloned().unwrap_or(Value::Null)}))?;
+    if let Some(addons_path) = arguments.get("addons_path").and_then(Value::as_array) {
+        let addons_path: Vec<String> = addons_path.iter().filter_map(Value::as_str).map(String::from).collect();
+        settings.target_addons_path = Some(crate::settings::expand_paths(std::path::Path::new("."), &addons_path));
+    }
     let report = crate::upgrade::check(&settings, &paths, target);
     Ok(format!(
         "{}\nApply the automatic changes with `odl upgrade-check --target {} --fix` (add `--unsafe-fixes` for the ones to review).",
