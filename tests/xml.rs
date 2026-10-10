@@ -240,3 +240,62 @@ fn only_requested_files_are_reported() {
         "{files:?}"
     );
 }
+
+const CHATTERS: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="standard" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids" widget="mail_followers" />
+                    <field name="activity_ids" widget="mail_activity" />
+                    <field name="message_ids" widget="mail_thread" />
+                </div>
+            </form>
+        </field>
+    </record>
+    <record id="partial" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form>
+                <div class="oe_chatter"><field name="message_follower_ids"/><field name="message_ids"/></div>
+            </form>
+        </field>
+    </record>
+    <record id="options" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form>
+                <div class="oe_chatter">
+                    <field name="message_ids" options="{'post_refresh': 'recipients'}"/>
+                </div>
+            </form>
+        </field>
+    </record>
+</odoo>
+"#;
+
+#[test]
+fn standard_chatters_become_the_chatter_tag() {
+    let dir = tempfile::tempdir().unwrap();
+    let module_path = module(dir.path(), "18.0.1.0.0", &[("views/chatter.xml", CHATTERS)]);
+    let file = module_path.join("views/chatter.xml");
+    let mut settings = settings(&["XML015"]);
+    settings.target_version = OdooVersion::new(18, 0);
+    let standard = CHATTERS.replace(
+        "<div class=\"oe_chatter\">\n                    <field name=\"message_follower_ids\" widget=\"mail_followers\" />\n                    <field name=\"activity_ids\" widget=\"mail_activity\" />\n                    <field name=\"message_ids\" widget=\"mail_thread\" />\n                </div>",
+        "<chatter />",
+    );
+    let partial = standard.replace(
+        "<div class=\"oe_chatter\"><field name=\"message_follower_ids\"/><field name=\"message_ids\"/></div>",
+        "<chatter/>",
+    );
+    for (mode, expected) in [(FixMode::Safe, &standard), (FixMode::Unsafe, &partial)] {
+        let result = fix_paths(&[dir.path().to_path_buf()], &settings, mode);
+        let (_, _, fixed) = result.changed.iter().find(|(p, _, _)| p == &file).unwrap();
+        assert_eq!(fixed, expected);
+        // The block with options stays, to do by hand.
+        assert_eq!(result.remaining.len(), if mode == FixMode::Safe { 2 } else { 1 });
+    }
+}
