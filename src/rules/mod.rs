@@ -12,6 +12,7 @@ use po::PoContext;
 pub mod e0001_syntax_error;
 pub mod inheritance;
 pub mod manifest;
+pub mod model_methods;
 pub mod module;
 pub mod odoo001_missing_depends;
 pub mod po;
@@ -122,6 +123,8 @@ pub const ALL: &[Rule] = &[
     python_fields::PYTHON_FIELD_NOT_FOUND,
     inheritance::SPEC_NOT_FOUND,
     records::RECORD_FIELD_NOT_FOUND,
+    model_methods::FIELD_METHOD_NOT_FOUND,
+    model_methods::BUTTON_METHOD_NOT_FOUND,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

@@ -55,6 +55,11 @@ pub struct ModelClass {
     /// `_inherits` parents.
     pub delegates: Vec<String>,
     pub fields: Vec<Field>,
+    /// The methods defined in the class body, and other names it assigns.
+    pub methods: Vec<String>,
+    /// Whether the class has bases other than Odoo's model classes (a
+    /// Python mixin), whose methods the index does not know.
+    pub foreign_bases: bool,
 }
 
 #[derive(Debug)]
@@ -263,6 +268,25 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
             delegates.push(comodel);
         }
     }
+    let methods = class
+        .body
+        .iter()
+        .flat_map(|stmt| match stmt {
+            Stmt::FunctionDef(function) => vec![function.name.to_string()],
+            Stmt::Assign(assign) => assign
+                .targets
+                .iter()
+                .filter_map(|t| t.as_name_expr().map(|n| n.id.to_string()))
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    let foreign_bases = class.arguments.as_ref().is_some_and(|a| {
+        a.args.iter().any(|b| {
+            !crate::semantic::dotted_name(b)
+                .is_some_and(|d| d.ends_with("Model") || d.ends_with("AbstractModel") || d.ends_with("TransientModel"))
+        })
+    });
     let abstract_model = class.arguments.as_ref().is_some_and(|a| {
         a.args
             .iter()
@@ -276,6 +300,8 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         inherit,
         delegates,
         fields,
+        methods,
+        foreign_bases,
     })
 }
 
@@ -370,9 +396,71 @@ pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
 
 /// The modules a module can rely on: itself and everything its `depends`
 /// reach, with the fields of their models.
+/// The method names of a model.
+pub type MethodSet = HashSet<String>;
+
 pub struct Closure {
     modules: Vec<Arc<ModuleIndex>>,
     fields: Mutex<HashMap<String, Option<Arc<FieldMap>>>>,
+    methods: Mutex<HashMap<String, Option<Arc<MethodSet>>>>,
+}
+
+/// The methods of Odoo's model classes (`BaseModel`, `Model`, ...), from
+/// the Odoo source around `base` (`odoo/addons/base`): `odoo/models.py`, or
+/// the files of `odoo/orm` from 19.0.
+fn base_model_methods(base: &Path) -> Option<Arc<HashSet<String>>> {
+    type Methods = Option<Arc<HashSet<String>>>;
+    static CACHE: LazyLock<Mutex<HashMap<PathBuf, Methods>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+    let odoo = base.canonicalize().ok()?.parent()?.parent()?.to_path_buf();
+    if let Some(found) = CACHE.lock().expect("base methods cache").get(&odoo) {
+        return found.clone();
+    }
+    let mut files = vec![odoo.join("models.py")];
+    if let Ok(entries) = std::fs::read_dir(odoo.join("orm")) {
+        files.extend(
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "py")),
+        );
+    }
+    let mut methods = HashSet::new();
+    let mut found = false;
+    for file in files {
+        let Ok(source) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let Ok(parsed) = parse_module(&source) else { continue };
+        for stmt in parsed.suite() {
+            let Stmt::ClassDef(class) = stmt else { continue };
+            if !matches!(
+                class.name.as_str(),
+                "BaseModel" | "Model" | "AbstractModel" | "TransientModel"
+            ) {
+                continue;
+            }
+            found = true;
+            for item in &class.body {
+                match item {
+                    Stmt::FunctionDef(function) => {
+                        methods.insert(function.name.to_string());
+                    }
+                    Stmt::Assign(assign) => {
+                        methods.extend(
+                            assign
+                                .targets
+                                .iter()
+                                .filter_map(|t| t.as_name_expr().map(|n| n.id.to_string())),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let result = found.then(|| Arc::new(methods));
+    CACHE.lock().expect("base methods cache").insert(odoo, result.clone());
+    result
 }
 
 /// The closure of `module`, looking up dependencies next to it and in
@@ -403,6 +491,7 @@ pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> 
     Some(Closure {
         modules,
         fields: Mutex::new(HashMap::new()),
+        methods: Mutex::new(HashMap::new()),
     })
 }
 
@@ -547,6 +636,54 @@ impl Closure {
 
     fn classes(&self) -> impl Iterator<Item = &ModelClass> {
         self.modules.iter().flat_map(|m| m.classes.iter())
+    }
+
+    /// The methods of `model` in this closure, those of Odoo's `BaseModel`
+    /// included; `None` when some are unknown: a model, a parent or a
+    /// Python mixin outside the index, or no Odoo source next to `base`.
+    pub fn methods(&self, model: &str) -> Option<Arc<HashSet<String>>> {
+        if let Some(found) = self.methods.lock().expect("methods cache").get(model) {
+            return found.clone();
+        }
+        let computed = self.compute_methods(model, &mut HashSet::new()).map(Arc::new);
+        self.methods
+            .lock()
+            .expect("methods cache")
+            .insert(model.to_string(), computed.clone());
+        computed
+    }
+
+    fn compute_methods(&self, model: &str, visiting: &mut HashSet<String>) -> Option<HashSet<String>> {
+        if !visiting.insert(model.to_string()) {
+            return Some(HashSet::new());
+        }
+        let mut methods: HashSet<String> = HashSet::new();
+        if model == "base" {
+            let base = self.module("base")?;
+            methods.extend(base_model_methods(&base.path)?.iter().cloned());
+        } else if !self.classes().any(|c| c.name.as_deref() == Some(model)) {
+            return None;
+        }
+        let mut parents: Vec<String> = Vec::new();
+        for class in self.classes() {
+            let defines = class.name.as_deref() == Some(model);
+            let extends = class.name.is_none() && class.inherit.iter().any(|i| i == model);
+            if !defines && !extends {
+                continue;
+            }
+            if class.foreign_bases {
+                return None;
+            }
+            methods.extend(class.methods.iter().cloned());
+            parents.extend(class.inherit.iter().filter(|i| *i != model).cloned());
+        }
+        if model != "base" {
+            parents.push("base".into());
+        }
+        for parent in parents {
+            methods.extend(self.compute_methods(&parent, visiting)?);
+        }
+        Some(methods)
     }
 
     fn compute(&self, model: &str, visiting: &mut HashSet<String>) -> Option<HashMap<String, Field>> {

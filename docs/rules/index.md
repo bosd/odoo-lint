@@ -63,6 +63,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO007](ODOO007.md) | `python-field-not-found` | Python code names a field the model does not have. |
 | [ODOO008](ODOO008.md) | `view-spec-not-found` | An inheritance spec (`<xpath>`, `<field position=...>`) finds nothing in the view it extends. |
 | [ODOO009](ODOO009.md) | `record-field-not-found` | A data record sets a field that does not exist on its model. |
+| [ODOO010](ODOO010.md) | `field-method-not-found` | A field names a method (`compute=`, `inverse=`, ...) that its model does not have. |
+| [ODOO011](ODOO011.md) | `button-method-not-found` | A view's `<button type="object">` calls a method its model does not have. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -284,6 +286,8 @@ ODOO006
 ODOO007
 ODOO008
 ODOO009
+ODOO010
+ODOO011
 PO001
 PO002
 PO003
