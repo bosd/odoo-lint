@@ -1,4 +1,4 @@
-//! odoo-lint for Zed: runs `odl server` for Python files.
+//! odoo-lint for Zed: runs `odl server` for Python, XML and PO files.
 //!
 //! The binary is, in order: `lsp.odoo-lint.binary.path` from the settings,
 //! `odl` on the project's PATH (e.g. an activated virtualenv), or the latest
