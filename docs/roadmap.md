@@ -3,12 +3,11 @@
 Ideas that are planned but not built yet. Suggestions are welcome as
 [issues](https://github.com/bosd/odoo-lint/issues).
 
-## A model of the whole addons path
+## Attribute access in find references
 
-The index of models, fields and XML ids across the addons path is there
-(see `addons-path`), with its checks (ODOO004-ODOO009) and go to definition
-in the language server. Next on top of it: find references (where a field
-or an XML id is used) and completion of model, field and XML id names.
+Find references follows names in XML and in Python strings. Attribute
+access (`order.partner_id`) needs the type of `order`: from `self` in a
+model's method it is known, elsewhere it takes some inference.
 
 ## Editor extensions
 

@@ -379,7 +379,12 @@ pub struct Closure {
 /// `addons_path`. `None` when a dependency cannot be found: the checks then
 /// know too little to report anything.
 pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> {
-    let mut dirs: Vec<PathBuf> = module.path.parent().map(Path::to_path_buf).into_iter().collect();
+    closure_at(&module.path, addons_path)
+}
+
+/// [`closure`] of the module in the folder `path`.
+pub fn closure_at(path: &Path, addons_path: &[PathBuf]) -> Option<Closure> {
+    let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
     dirs.extend(addons_path.iter().cloned());
     let find = |name: &str| {
         dirs.iter()
@@ -387,7 +392,7 @@ pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> 
             .find(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
             .and_then(|path| module_index(&path))
     };
-    let root = module_index(&module.path)?;
+    let root = module_index(path)?;
     let mut seen: HashSet<String> = HashSet::from([root.name.clone()]);
     let mut queue: Vec<String> = root.depends.clone();
     queue.push("base".into());

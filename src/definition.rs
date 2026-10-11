@@ -79,6 +79,11 @@ fn capture_at(pattern: &Regex, value: &str, start: usize, offset: usize) -> Opti
 /// What is at `offset` of an XML file, and where the name there starts.
 pub(crate) fn xml_target(text: &str, offset: usize, module: &str) -> Option<(Target, usize)> {
     let doc = roxmltree::Document::parse(text).ok()?;
+    xml_target_in(&doc, offset, module)
+}
+
+/// [`xml_target`] in a parsed document.
+pub(crate) fn xml_target_in(doc: &roxmltree::Document, offset: usize, module: &str) -> Option<(Target, usize)> {
     for node in doc.descendants() {
         if node.is_text() {
             let range = node.range();
@@ -174,6 +179,16 @@ fn view_field(node: roxmltree::Node, name: &str) -> Option<Target> {
 /// What is at `offset` of a Python file, and where the name there starts.
 pub(crate) fn python_target(text: &str, offset: usize, module: &str) -> Option<(Target, usize)> {
     let parsed = ruff_python_parser::parse_module(text).ok()?;
+    python_target_in(&parsed, text, offset, module)
+}
+
+/// [`python_target`] in a parsed module.
+pub(crate) fn python_target_in(
+    parsed: &ruff_python_parser::Parsed<ruff_python_ast::ModModule>,
+    text: &str,
+    offset: usize,
+    module: &str,
+) -> Option<(Target, usize)> {
     let holds = |expr: &Expr| {
         expr.as_string_literal_expr().is_some()
             && expr.range().start().to_usize() <= offset
@@ -305,7 +320,7 @@ fn at((path, line): (PathBuf, usize)) -> Definition {
     }
 }
 
-fn resolve(closure: Option<&Closure>, dirs: &[PathBuf], target: Target) -> Option<Definition> {
+pub(crate) fn resolve(closure: Option<&Closure>, dirs: &[PathBuf], target: Target) -> Option<Definition> {
     match target {
         Target::XmlId(id) => {
             if let Some(found) = closure.and_then(|c| c.xml_id_location(&id)) {
