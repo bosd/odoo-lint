@@ -12,7 +12,7 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{CodeActionRequest, Completion, GotoDefinition, Request as _};
+use lsp_types::request::{CodeActionRequest, Completion, GotoDefinition, References, Request as _};
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability,
     CodeDescription, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -446,6 +446,53 @@ impl Server {
         Some(lsp_types::CompletionResponse::Array(items))
     }
 
+    /// Where the XML id, model or field at a position is used.
+    fn references(&self, params: &lsp_types::ReferenceParams) -> Option<Vec<lsp_types::Location>> {
+        let position = &params.text_document_position;
+        let uri = &position.text_document.uri;
+        let path = Self::path(uri)?;
+        let text = match self.documents.get(uri) {
+            Some((text, _)) => text.clone(),
+            None => std::fs::read_to_string(&path).ok()?,
+        };
+        let offset = self.encoding.offset(&text, position.position);
+        let settings = Self::settings(&path)?;
+        let module = linter::modules_of(std::slice::from_ref(&path), &self.sources)
+            .into_iter()
+            .next()?;
+        let usages = crate::usages::references(
+            &module,
+            &settings.addons_path,
+            &path,
+            &text,
+            offset,
+            params.context.include_declaration,
+        );
+        let mut contents: HashMap<PathBuf, String> = HashMap::new();
+        let locations = usages
+            .into_iter()
+            .filter_map(|usage| {
+                let uri = Url::from_file_path(&usage.path).ok()?;
+                let content = match self.documents.get(&uri) {
+                    Some((text, _)) => text.clone(),
+                    None => contents
+                        .entry(usage.path.clone())
+                        .or_insert_with(|| std::fs::read_to_string(&usage.path).unwrap_or_default())
+                        .clone(),
+                };
+                if usage.end > content.len() {
+                    return None;
+                }
+                let range = Range::new(
+                    self.encoding.position(&content, usage.start),
+                    self.encoding.position(&content, usage.end),
+                );
+                Some(lsp_types::Location { uri, range })
+            })
+            .collect();
+        Some(locations)
+    }
+
     fn handle_request(&self, request: Request) -> Result<()> {
         let response = match request.method.as_str() {
             CodeActionRequest::METHOD => {
@@ -455,6 +502,10 @@ impl Server {
             Completion::METHOD => {
                 let params: lsp_types::CompletionParams = serde_json::from_value(request.params)?;
                 Response::new_ok(request.id, self.completion(&params))
+            }
+            References::METHOD => {
+                let params: lsp_types::ReferenceParams = serde_json::from_value(request.params)?;
+                Response::new_ok(request.id, self.references(&params))
             }
             GotoDefinition::METHOD => {
                 let params: lsp_types::GotoDefinitionParams = serde_json::from_value(request.params)?;
@@ -483,6 +534,7 @@ fn capabilities(encoding: Encoding) -> ServerCapabilities {
             ..TextDocumentSyncOptions::default()
         })),
         definition_provider: Some(lsp_types::OneOf::Left(true)),
+        references_provider: Some(lsp_types::OneOf::Left(true)),
         completion_provider: Some(lsp_types::CompletionOptions {
             trigger_characters: Some(vec!["\"".into(), "'".into(), ".".into(), ",".into()]),
             ..lsp_types::CompletionOptions::default()
@@ -573,6 +625,7 @@ mod tests {
             assert!(result["capabilities"]["codeActionProvider"].is_object());
             assert_eq!(result["capabilities"]["definitionProvider"], json!(true));
             assert!(result["capabilities"]["completionProvider"].is_object());
+            assert_eq!(result["capabilities"]["referencesProvider"], json!(true));
             client.notify("initialized", json!({}));
             client
         }
@@ -681,6 +734,26 @@ mod tests {
             .expect("res.partner offered");
         assert_eq!(item["kind"], json!(7)); // Class
         assert_eq!(item["textEdit"]["range"]["end"], json!({"line": 4, "character": 20}));
+        // References of `res.partner`: the open file, and its definition.
+        let locations = client.request(
+            "textDocument/references",
+            json!({"textDocument": {"uri": uri}, "position": {"line": 4, "character": 20},
+                   "context": {"includeDeclaration": true}}),
+        );
+        let lines: Vec<(bool, u64)> = locations
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                let file = Url::parse(l["uri"].as_str().unwrap()).unwrap().to_file_path().unwrap();
+                (
+                    file.canonicalize().unwrap() == base.join("models.py").canonicalize().unwrap(),
+                    l["range"]["start"]["line"].as_u64().unwrap(),
+                )
+            })
+            .collect();
+        assert!(lines.contains(&(true, 4)), "{locations}");
+        assert!(lines.contains(&(false, 4)), "{locations}");
         client.stop();
     }
 

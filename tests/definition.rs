@@ -188,3 +188,66 @@ fn from_python() {
     // Nothing to go to.
     assert_eq!(go(&core, &python, "_compute_x", 2), None);
 }
+
+/// The uses of the first occurrence of `needle` in `file` (cursor `inside`
+/// characters into it), as `path:line`.
+fn uses(core: &Path, file: &Path, needle: &str, inside: usize, declaration: bool) -> Vec<String> {
+    let text = fs::read_to_string(file).unwrap();
+    let offset = text.find(needle).unwrap() + inside;
+    let module = modules_of(&[file.to_path_buf()], &Sources::default())
+        .into_iter()
+        .next()
+        .unwrap();
+    let root = core.parent().unwrap().canonicalize().unwrap();
+    odoo_lint::usages::references(&module, &[core.to_path_buf()], file, &text, offset, declaration)
+        .into_iter()
+        .map(|usage| {
+            let content = fs::read_to_string(&usage.path).unwrap();
+            assert!(content[usage.start..usage.end]
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_'));
+            let line = content[..usage.start].matches('\n').count() + 1;
+            let relative = usage.path.canonicalize().unwrap();
+            let relative = relative
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            format!("{relative}:{line}")
+        })
+        .collect()
+}
+
+#[test]
+fn references_of_fields_and_xml_ids() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, python, views) = setup(dir.path());
+    // `partner_id` of `sale.order`, from a view of acme.
+    assert_eq!(
+        uses(&core, &views, "\"partner_id\" groups", 1, true),
+        vec![
+            "addons/acme/models.py:7",
+            "addons/acme/models.py:9",
+            "addons/acme/views/views.xml:7",
+            "core/sale/models.py:7",
+        ]
+    );
+    // `country_id` of `res.partner`, from a path in Python: the record
+    // field of partner_x is one too.
+    assert_eq!(
+        uses(&core, &python, "country_id.code", 1, false),
+        vec![
+            "addons/acme/models.py:7",
+            "addons/acme/models.py:9",
+            "addons/acme/views/views.xml:15",
+        ]
+    );
+    assert_eq!(
+        uses(&core, &python, "base.group_user", 6, false),
+        vec![
+            "addons/acme/models.py:11",
+            "addons/acme/views/views.xml:7",
+            "addons/acme/views/views.xml:15",
+        ]
+    );
+}

@@ -34,7 +34,18 @@ the model at hand, with their type and comodel. In a path such as
 reached; in a view, the fields of the embedded list or form the cursor is
 in.
 
-Both look in the module's dependencies, Odoo's included, as listed in
+## Find references
+
+_Find references_ lists where the XML id, model or field at the cursor is
+used: in views and data files (`ref`, `inherit_id`, `groups`, `model`,
+`<field name>`), and in the strings of Python (`env.ref`, `env["..."]`,
+`related=`, `@api.depends`, `mapped()`, comodels). It looks in the modules
+next to the open one and on the addons path, and keeps only the mentions
+whose definition is the same: `name` on `sale.order` is not `name` on
+`res.partner`. Attribute access in Python (`order.partner_id`) is not
+searched.
+
+All three look in the module's dependencies, Odoo's included, as listed in
 [`addons-path`](configuration.md#addons-path); the modules next to the
 open one are found without it.
 
