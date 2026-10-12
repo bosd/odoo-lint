@@ -2,67 +2,66 @@
 //!
 //! The binary is, in order: `lsp.odoo-lint.binary.path` from the settings,
 //! `odl` on the project's PATH (e.g. an activated virtualenv), or the latest
-//! `odoo-linter` wheel from PyPI, downloaded once.
+//! release of odoo-lint on GitHub, downloaded once.
 
 use std::fs;
-use zed_extension_api::http_client::{HttpMethod, HttpRequest, RedirectPolicy};
 use zed_extension_api::settings::LspSettings;
 use zed_extension_api::{self as zed, LanguageServerId, LanguageServerInstallationStatus, Result};
 
 const SERVER: &str = "odoo-lint";
+const REPO: &str = "bosd/odoo-lint";
 
 struct OdooLint {
     cached: Option<String>,
 }
 
-/// The wheel tag fragments that run on this platform.
-fn wheel_tags() -> Result<&'static [&'static str]> {
+/// The release asset for this platform, how it is packed, and `odl` in it.
+fn asset() -> Result<(&'static str, zed::DownloadedFileType, &'static str)> {
     let (os, arch) = zed::current_platform();
+    let tar = zed::DownloadedFileType::GzipTar;
     Ok(match (os, arch) {
-        (zed::Os::Linux, zed::Architecture::X8664) => &["manylinux", "x86_64"],
-        (zed::Os::Linux, zed::Architecture::Aarch64) => &["manylinux", "aarch64"],
-        (zed::Os::Mac, zed::Architecture::Aarch64) => &["macosx", "arm64"],
-        (zed::Os::Mac, zed::Architecture::X8664) => &["macosx", "x86_64"],
-        (zed::Os::Windows, zed::Architecture::X8664) => &["win_amd64"],
+        (zed::Os::Linux, zed::Architecture::X8664) => ("odl-x86_64-unknown-linux-gnu.tar.gz", tar, "odl"),
+        (zed::Os::Linux, zed::Architecture::Aarch64) => ("odl-aarch64-unknown-linux-gnu.tar.gz", tar, "odl"),
+        (zed::Os::Mac, zed::Architecture::X8664) => ("odl-x86_64-apple-darwin.tar.gz", tar, "odl"),
+        (zed::Os::Mac, zed::Architecture::Aarch64) => ("odl-aarch64-apple-darwin.tar.gz", tar, "odl"),
+        (zed::Os::Windows, zed::Architecture::X8664) => (
+            "odl-x86_64-pc-windows-msvc.zip",
+            zed::DownloadedFileType::Zip,
+            "odl.exe",
+        ),
         _ => return Err("odoo-lint: no build for this platform; install odl and put it on PATH".into()),
     })
 }
 
 impl OdooLint {
-    /// Downloads the latest wheel from PyPI and returns the path of `odl` in it.
+    /// Downloads `odl` from the latest GitHub release and returns its path.
     fn download(&mut self, id: &LanguageServerId) -> Result<String> {
         zed::set_language_server_installation_status(id, &LanguageServerInstallationStatus::CheckingForUpdate);
-        let response = HttpRequest::builder()
-            .method(HttpMethod::Get)
-            .url("https://pypi.org/pypi/odoo-linter/json")
-            .redirect_policy(RedirectPolicy::FollowAll)
-            .build()?
-            .fetch()?;
-        let index: serde_json::Value = serde_json::from_slice(&response.body).map_err(|e| format!("PyPI: {e}"))?;
-        let version = index["info"]["version"].as_str().ok_or("PyPI: no version")?.to_string();
-        let tags = wheel_tags()?;
-        let wheel = index["urls"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|file| {
-                let name = file["filename"].as_str().unwrap_or_default();
-                name.ends_with(".whl") && tags.iter().all(|tag| name.contains(tag))
-            })
-            .ok_or_else(|| format!("odoo-linter {version} has no wheel for this platform"))?;
-        let url = wheel["url"].as_str().ok_or("PyPI: no wheel URL")?;
+        let release = zed::latest_github_release(
+            REPO,
+            zed::GithubReleaseOptions {
+                require_assets: true,
+                // odoo-lint is in alpha: every release is a pre-release.
+                pre_release: true,
+            },
+        )?;
+        let (name, file_type, exe) = asset()?;
+        let asset = release
+            .assets
+            .iter()
+            .find(|asset| asset.name == name)
+            .ok_or_else(|| format!("odoo-lint {} has no {name}", release.version))?;
 
-        let dir = format!("odoo-linter-{version}");
-        let exe = if tags == ["win_amd64"] { "odl.exe" } else { "odl" };
-        let binary = format!("{dir}/odoo_linter-{version}.data/scripts/{exe}");
+        let dir = format!("odl-{}", release.version);
+        let binary = format!("{dir}/{exe}");
         if !fs::metadata(&binary).is_ok_and(|m| m.is_file()) {
             zed::set_language_server_installation_status(id, &LanguageServerInstallationStatus::Downloading);
-            zed::download_file(url, &dir, zed::DownloadedFileType::Zip)?;
+            zed::download_file(&asset.download_url, &dir, file_type)?;
             zed::make_file_executable(&binary)?;
             // Older downloads are not needed any more.
             for entry in fs::read_dir(".").into_iter().flatten().flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with("odoo-linter-") && name != dir {
+                if (name.starts_with("odl-") || name.starts_with("odoo-linter-")) && name != dir {
                     fs::remove_dir_all(entry.path()).ok();
                 }
             }

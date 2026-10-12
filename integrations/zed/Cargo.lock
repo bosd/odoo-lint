@@ -764,9 +764,8 @@ dependencies = [
 
 [[package]]
 name = "zed_odoo_lint"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "serde_json",
  "zed_extension_api",
 ]
 
