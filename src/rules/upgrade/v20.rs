@@ -1199,10 +1199,15 @@ Odoo 20.0 replaced both by `ir.access`: `env["ir.rule"]` raises
 };
 
 fn check_access_models(ctx: &PythonContext, reporter: &mut Reporter) {
+    // `if "ir.access" in self.env:` supports both versions.
+    let guards = super::version_guards(ctx.parsed.suite(), &["ir.model.access", "ir.rule", "ir.access"]);
     walk(ctx.parsed.suite(), |node, _| {
         let Node::Expr(expr @ Expr::StringLiteral(literal)) = node else {
             return;
         };
+        if guards.iter().any(|g| g.contains_range(expr.range())) {
+            return;
+        }
         let model = literal.value.to_str();
         if matches!(model, "ir.model.access" | "ir.rule") {
             reporter.report(

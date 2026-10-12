@@ -20,6 +20,52 @@ use crate::xml::XmlFile;
 use regex::Regex;
 use roxmltree::Node;
 
+/// The code that tells Odoo versions apart by a name: `if`s and
+/// conditional expressions whose test asks whether a model has a field or
+/// a registry a model (`"group_ids" in env["res.users"]._fields`,
+/// `hasattr(record, "group_ids")`) for one of `names`. A module that
+/// supports several versions writes the old name there on purpose.
+pub(crate) fn version_guards(suite: &[ruff_python_ast::Stmt], names: &[&str]) -> Vec<ruff_text_size::TextRange> {
+    use ruff_python_ast::{CmpOp, Expr, Stmt};
+    use ruff_text_size::Ranged;
+    let named = |expr: &Expr| {
+        expr.as_string_literal_expr()
+            .is_some_and(|s| names.contains(&s.value.to_str()))
+    };
+    let asks = |test: &Expr| {
+        let mut found = false;
+        // The test is a statement of its own to the walk.
+        let statement = [Stmt::Expr(ruff_python_ast::StmtExpr {
+            value: Box::new(test.clone()),
+            range: test.range(),
+            node_index: Default::default(),
+        })];
+        crate::visit::walk(&statement, |node, _| match node {
+            crate::visit::Node::Expr(Expr::Compare(compare))
+                if compare.ops.iter().any(|op| matches!(op, CmpOp::In | CmpOp::NotIn))
+                    && compare.operands.iter().any(named) =>
+            {
+                found = true;
+            }
+            crate::visit::Node::Expr(Expr::Call(call))
+                if crate::semantic::func_name(&call.func) == "hasattr"
+                    && call.arguments.args.get(1).is_some_and(named) =>
+            {
+                found = true;
+            }
+            _ => {}
+        });
+        found
+    };
+    let mut guards = Vec::new();
+    crate::visit::walk(suite, |node, _| match node {
+        crate::visit::Node::Stmt(Stmt::If(stmt)) if asks(&stmt.test) => guards.push(stmt.range()),
+        crate::visit::Node::Expr(Expr::If(expr)) if asks(&expr.test) => guards.push(expr.range()),
+        _ => {}
+    });
+    guards
+}
+
 /// Elements `names` in a data file. Odoo loads `<odoo>`, `<openerp>` and
 /// `<data>` as the root element.
 pub(crate) fn data_elements<'a, 'input>(
