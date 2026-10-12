@@ -59,7 +59,9 @@ uv run nox -s parity -- --write
    the Claude Code plugin (`plugin.json`) and the dsh bundle (`package.json`),
    and pin it in their `bin/odl` (`odoo-linter==0.1.0a5` for
    `0.1.0-alpha.5`); `tests/integrations.rs` checks this.
-2. Publish the GitHub release drafted by Release Drafter, with tag
+2. Wait for the push of step 1 to put the release assets into the draft
+   (the _Put the assets into the draft release_ job, about ten minutes),
+   then publish the GitHub release drafted by Release Drafter, with tag
    `v<version>`.
 3. Once the release is on PyPI, tag the Claude Code plugin and push the tag:
    `claude plugin tag --push integrations/claude-code` creates
@@ -67,6 +69,13 @@ uv run nox -s parity -- --write
    developer portal ([claude.ai/directory/manage](https://claude.ai/directory/manage)).
    A tag does not move, so later merges to `main` do not invalidate the
    submission.
+
+Releases are immutable once published, so their assets are added before:
+while the version in `Cargo.toml` has no release yet, every push to `main`
+builds `odl` for each platform and puts it into the draft release, as
+`odl-<target>.tar.gz` (`.zip` on Windows; `scripts/release_asset.py` has the
+list). The Zed extension downloads these. When the release is published, a job
+reports any asset that is missing.
 
 The release workflow checks that the tag matches `Cargo.toml`, builds wheels
 for Linux, macOS and Windows, signs them with Sigstore, attaches the

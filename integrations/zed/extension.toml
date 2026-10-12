@@ -1,7 +1,7 @@
 id = "odoo-lint-lsp"
 name = "odoo-lint"
 description = "Odoo linting: pylint-odoo and OCA checks as you type, with quick fixes"
-version = "0.1.0"
+version = "0.1.1"
 schema_version = 1
 authors = ["bosd"]
 repository = "https://github.com/bosd/odoo-lint"

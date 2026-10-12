@@ -30,6 +30,149 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Release assets for editors (the Zed extension downloads them through
+  # Zed's API). Releases are immutable once published, so the assets go into
+  # the draft while the version in Cargo.toml has no release yet; each push
+  # replaces them.
+  asset-plan:
+    if: github.event_name == 'push'
+    needs: release-drafter
+    name: Check whether the draft needs assets
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Is the version released?
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${version}" --silent 2>/dev/null; then
+            echo "v${version} is released; no assets to build"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${version} has no release yet; building its assets"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build_assets:
+    needs: asset-plan
+    if: needs.asset-plan.outputs.build == 'true'
+    name: Build asset ${{ matrix.asset }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {
+              runs-on: ubuntu-latest,
+              target: x86_64,
+              manylinux: auto,
+              asset: odl-x86_64-unknown-linux-gnu.tar.gz,
+            }
+          - {
+              runs-on: ubuntu-24.04-arm,
+              target: aarch64,
+              manylinux: auto,
+              asset: odl-aarch64-unknown-linux-gnu.tar.gz,
+            }
+          - {
+              runs-on: ubuntu-latest,
+              target: x86_64-unknown-linux-musl,
+              manylinux: musllinux_1_2,
+              asset: odl-x86_64-unknown-linux-musl.tar.gz,
+            }
+          - {
+              runs-on: ubuntu-24.04-arm,
+              target: aarch64-unknown-linux-musl,
+              manylinux: musllinux_1_2,
+              asset: odl-aarch64-unknown-linux-musl.tar.gz,
+            }
+          - {
+              runs-on: windows-latest,
+              target: x86_64,
+              manylinux: "off",
+              asset: odl-x86_64-pc-windows-msvc.zip,
+            }
+          - {
+              runs-on: macos-15-intel,
+              target: x86_64,
+              manylinux: "off",
+              asset: odl-x86_64-apple-darwin.tar.gz,
+            }
+          - {
+              runs-on: macos-latest,
+              target: aarch64,
+              manylinux: "off",
+              asset: odl-aarch64-apple-darwin.tar.gz,
+            }
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          rust-toolchain: stable
+          args: --release --locked --out dist
+          sccache: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.13"
+      - name: Pack odl from the wheel
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: python scripts/release_asset.py pack dist/*.whl "$ASSET"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: asset-${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  upload_assets:
+    needs: build_assets
+    name: Put the assets into the draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: asset-*
+          path: assets
+          merge-multiple: true
+      - name: Replace the draft's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --jq '[.[] | select(.draft)][0].id // empty')"
+          if [ -z "$draft" ]; then
+            echo "::error::No draft release to put the assets into"
+            exit 1
+          fi
+          for file in assets/*; do
+            name="$(basename "$file")"
+            old="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${draft}/assets" --jq ".[] | select(.name == \"${name}\") | .id")"
+            if [ -n "$old" ]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${old}"
+            fi
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@${file}" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${draft}/assets?name=${name}" > /dev/null
+            echo "uploaded ${name}"
+          done
+
   check-version:
     if: github.event_name == 'release' && github.event.action == 'published'
     name: Check tag matches Cargo.toml version
@@ -46,6 +189,27 @@ jobs:
           version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
           if [ "${TAG_NAME#v}" != "$version" ]; then
             echo "::error::Release tag $TAG_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+
+  verify_assets:
+    needs: check-version
+    name: Check the release has its assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Compare with the expected assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          missing="$(comm -23 <(python3 scripts/release_asset.py names | sort) \
+            <(gh release view "$TAG_NAME" --json assets --jq '.assets[].name' | sort))"
+          if [ -n "$missing" ]; then
+            echo "::error::$TAG_NAME was published without these assets (immutable now): $missing"
             exit 1
           fi
 
