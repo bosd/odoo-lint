@@ -100,7 +100,7 @@ pub struct Report {
 /// The checks across modules, which an upgrade runs against the addons of
 /// the target version when it has them (`--addons-path`).
 const INDEX_RULES: &[&str] = &[
-    "ODOO004", "ODOO005", "ODOO006", "ODOO007", "ODOO008", "ODOO009", "ODOO010", "ODOO011",
+    "ODOO004", "ODOO005", "ODOO006", "ODOO007", "ODOO008", "ODOO009", "ODOO010", "ODOO011", "ODOO013",
 ];
 
 /// The rules an upgrade to `target` brings: those with a first version up

@@ -116,7 +116,7 @@ pub struct Settings {
     /// Folders with addons, for checks across modules.
     pub addons_path: Vec<PathBuf>,
     /// For `upgrade-check`: the addons of the target version, against which
-    /// the checks across modules (ODOO004-ODOO009) then run.
+    /// the checks across modules (ODOO004-ODOO013) then run.
     pub target_addons_path: Option<Vec<PathBuf>>,
     exclude: Vec<PathPattern>,
     per_file_ignores: Vec<(PathPattern, Vec<String>)>,
