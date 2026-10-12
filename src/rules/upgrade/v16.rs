@@ -290,10 +290,15 @@ gone and `env["ir.translation"]` raises `KeyError`. Read and write with
 };
 
 fn check_ir_translation(ctx: &PythonContext, reporter: &mut Reporter) {
+    // `if "ir.translation" in self.env:` supports both versions.
+    let guards = super::version_guards(ctx.parsed.suite(), &["ir.translation"]);
     walk(ctx.parsed.suite(), |node, _| {
         let Node::Expr(expr @ Expr::StringLiteral(literal)) = node else {
             return;
         };
+        if guards.iter().any(|g| g.contains_range(expr.range())) {
+            return;
+        }
         if literal.value.to_str() == "ir.translation" {
             reporter.report(
                 &IR_TRANSLATION,

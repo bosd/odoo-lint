@@ -982,3 +982,30 @@ class Hidden(models.AbstractModel):
         "Class LoanExtension has no `_name`: Odoo 19.0 names it `loan.extension`; set `_name` explicitly"
     );
 }
+
+const PYTHON_BOTH_VERSIONS: &str = r#"from odoo import models
+
+
+def group_field(env):
+    return "group_ids" if "group_ids" in env["res.users"]._fields else "groups_id"
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    def action_groups(self):
+        if hasattr(self.env.user, "group_ids"):
+            groups = self.env.user.group_ids
+        else:
+            groups = self.env.user.groups_id
+        self.env.user.write({"groups_id": [(4, groups[:1].id)]})
+        return groups
+"#;
+
+#[test]
+fn code_for_both_versions_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "19.0.1.0.0", &[], PYTHON_BOTH_VERSIONS);
+    // Only the `write` outside the guards.
+    assert_eq!(codes(dir.path(), "U1907", V19), vec![("U1907".to_string(), 16)]);
+}

@@ -1,7 +1,7 @@
 //! Changes of Odoo 19.0 (`odoo/upgrade_code/18.*` and the 18.0 -> 19.0
 //! differences of views, schemas and models).
 
-use super::{arch_elements, record_field, replace_in, view_archs};
+use super::{arch_elements, record_field, replace_in, version_guards, view_archs};
 use crate::checker::{ManifestContext, PythonContext, Reporter};
 use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
@@ -497,7 +497,9 @@ pub const PYTHON_GROUPS_ID: Rule = Rule {
 ## What it does
 
 Reports `.groups_id` and the string `"groups_id"` (in values for `create` and
-`write`, domains and `mapped`), and `.users` of groups.
+`write`, domains and `mapped`), and `.users` of groups. Code that picks the
+name by version is left alone: an `if` or conditional expression that asks
+`"group_ids" in env["res.users"]._fields` or `hasattr(user, "group_ids")`.
 
 ## Why is this bad?
 
@@ -515,8 +517,12 @@ wrong for a custom model that has its own `groups_id` field.
 };
 
 fn check_python_groups_id(ctx: &PythonContext, reporter: &mut Reporter) {
+    let guards = version_guards(ctx.parsed.suite(), &["groups_id", "group_ids"]);
     walk(ctx.parsed.suite(), |node, _| {
         let Node::Expr(expr) = node else { return };
+        if guards.iter().any(|g| g.contains_range(expr.range())) {
+            return;
+        }
         let edit = match expr {
             Expr::Attribute(attribute) if attribute.attr.as_str() == "groups_id" => {
                 rename(attribute.attr.range(), "group_ids")
