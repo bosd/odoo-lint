@@ -75,7 +75,7 @@ see is not checked.
 };
 
 /// The closure of `module` when the checks across modules can run.
-fn closure_for(module: &ModuleInfo, settings: &Settings) -> Option<Closure> {
+pub(crate) fn closure_for(module: &ModuleInfo, settings: &Settings) -> Option<Closure> {
     let local_base = module
         .path
         .parent()
@@ -149,7 +149,7 @@ fn check_field_methods(ctx: &PythonContext, reporter: &mut Reporter) {
 
 /// The model the buttons under `node` act on: the view's model, through
 /// the relational fields whose sub-views (or `<groupby>`) `node` is in.
-fn button_model(closure: &Closure, arch: Node, node: Node, model: &str) -> Option<String> {
+pub(crate) fn node_model(closure: &Closure, arch: Node, node: Node, model: &str) -> Option<String> {
     let mut via: Vec<&str> = node
         .ancestors()
         .skip(1)
@@ -169,7 +169,7 @@ fn button_model(closure: &Closure, arch: Node, node: Node, model: &str) -> Optio
 /// Whether `button`, in the arch of an extension, may end up in a field's
 /// sub-view: under a field or a `<groupby>`, or inserted by a spec that
 /// points into a field, a list or a nested form.
-fn lands_in_field(arch: Node, button: Node) -> bool {
+pub(crate) fn lands_in_field(arch: Node, button: Node) -> bool {
     button.ancestors().skip(1).take_while(|a| *a != arch).any(|a| {
         if is(a, "field") || is(a, "groupby") {
             return true;
@@ -213,7 +213,7 @@ fn check_button_methods(ctx: &XmlContext, reporter: &mut XmlReporter) {
                 if extension && lands_in_field(arch, button) {
                     continue;
                 }
-                let Some(target) = button_model(&closure, arch, button, model) else {
+                let Some(target) = node_model(&closure, arch, button, model) else {
                     continue;
                 };
                 let Some(methods) = closure.methods(&target) else {
