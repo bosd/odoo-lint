@@ -103,7 +103,9 @@ Fields in views ([ODOO004](rules/ODOO004.md)) and in Python
 models ([ODOO006](rules/ODOO006.md)), inheritance specs
 ([ODOO008](rules/ODOO008.md)), the fields of data records
 ([ODOO009](rules/ODOO009.md)) and the methods of fields and buttons
-([ODOO010](rules/ODOO010.md), [ODOO011](rules/ODOO011.md)) then count as changes of the target version:
+([ODOO010](rules/ODOO010.md), [ODOO011](rules/ODOO011.md)) and fields
+whose comodel only administrators may read ([ODOO013](rules/ODOO013.md))
+then count as changes of the target version:
 `tax_id` on a sale order line that 19.0 renamed `tax_ids`, an `<xpath>` on
 an element its view no longer has. A module whose dependencies are not all
 in the path is not checked by them; `addons-path` from the configuration is

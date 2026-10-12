@@ -70,11 +70,14 @@ fn suggestion(closure: &Closure, model: &str, field: Node) -> Option<&'static st
     }
 }
 
-const VIEW_TAGS: &[&str] = &["form", "list", "tree", "search", "kanban", "graph", "pivot", "calendar"];
+pub(crate) const VIEW_TAGS: &[&str] = &["form", "list", "tree", "search", "kanban", "graph", "pivot", "calendar"];
 
 /// The type of the view `id` (its arch's root tag), following the views it
 /// extends.
-fn view_type(views: &std::collections::HashMap<String, (&crate::index::View, usize)>, id: &str) -> Option<String> {
+pub(crate) fn view_type(
+    views: &std::collections::HashMap<String, (&crate::index::View, usize)>,
+    id: &str,
+) -> Option<String> {
     let mut current = id.to_string();
     for _ in 0..16 {
         let (view, _) = views.get(&current)?;

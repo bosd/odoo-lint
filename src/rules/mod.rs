@@ -9,6 +9,7 @@ use crate::checker::{ManifestContext, PythonContext, Reporter};
 use crate::odoo_version::OdooVersion;
 use po::PoContext;
 
+pub mod access;
 pub mod e0001_syntax_error;
 pub mod inheritance;
 pub mod manifest;
@@ -127,6 +128,7 @@ pub const ALL: &[Rule] = &[
     model_methods::FIELD_METHOD_NOT_FOUND,
     model_methods::BUTTON_METHOD_NOT_FOUND,
     widgets::FIELD_WITHOUT_WIDGET,
+    access::RESTRICTED_COMODEL,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,

@@ -29,6 +29,8 @@ pub struct Field {
     pub comodel: Option<String>,
     /// Whether the definition sets a `domain`.
     pub has_domain: bool,
+    /// The `groups` the field is restricted to, when it is a literal.
+    pub groups: Option<String>,
     /// The line of its definition in its class's file (0 when unknown).
     pub line: usize,
 }
@@ -77,6 +79,20 @@ pub struct ModuleIndex {
     pub path: PathBuf,
     pub depends: Vec<String>,
     pub classes: Vec<ModelClass>,
+    /// The access rights (`ir.model.access`) of its data files.
+    pub access: Vec<Access>,
+    /// The groups each group of its data files implies (`implied_ids`), by
+    /// full XML id.
+    pub implied: Vec<(String, Vec<String>)>,
+}
+
+/// An access right: the model's XML id (`base.model_res_partner`), the
+/// group's (none for everyone), and whether it grants reading.
+#[derive(Debug, Clone)]
+pub struct Access {
+    pub model: String,
+    pub group: Option<String>,
+    pub read: bool,
 }
 
 /// Folders of a module that Odoo does not import as models.
@@ -242,11 +258,18 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
                 .keywords
                 .iter()
                 .any(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "domain"));
+            let groups = call
+                .arguments
+                .keywords
+                .iter()
+                .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "groups"))
+                .and_then(|k| string(&k.value));
             Some(Field {
                 name: target.id.to_string(),
                 kind,
                 comodel,
                 has_domain,
+                groups,
                 // A byte offset until `parse` turns it into a line.
                 line: target.start().to_usize(),
             })
@@ -347,6 +370,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     kind: String::new(),
                     comodel: None,
                     has_domain: false,
+                    groups: None,
                     line: 0,
                 });
             }
@@ -356,6 +380,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
     let data_files = data_files(path, &manifest);
     let (xml_ids, xml_id_lines) = xml_ids(&name, path, &data_files, &model_classes);
     let views = views(&name, &data_files);
+    let (access, implied) = security(&name, &data_files);
     Some(ModuleIndex {
         xml_ids,
         xml_id_lines,
@@ -365,6 +390,8 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
         path: path.to_path_buf(),
         depends,
         classes: model_classes,
+        access,
+        implied,
     })
 }
 
@@ -403,6 +430,7 @@ pub struct Closure {
     modules: Vec<Arc<ModuleIndex>>,
     fields: Mutex<HashMap<String, Option<Arc<FieldMap>>>>,
     methods: Mutex<HashMap<String, Option<Arc<MethodSet>>>>,
+    implied: std::sync::OnceLock<HashMap<String, HashSet<String>>>,
 }
 
 /// The methods of Odoo's model classes (`BaseModel`, `Model`, ...), from
@@ -497,10 +525,80 @@ pub fn closure_at(path: &Path, addons_path: &[PathBuf]) -> Option<Closure> {
         modules,
         fields: Mutex::new(HashMap::new()),
         methods: Mutex::new(HashMap::new()),
+        implied: std::sync::OnceLock::new(),
     })
 }
 
 impl Closure {
+    /// The groups each group implies, directly or not, itself included.
+    fn implied_groups(&self) -> &HashMap<String, HashSet<String>> {
+        self.implied.get_or_init(|| {
+            let mut direct: HashMap<&str, Vec<&str>> = HashMap::new();
+            for module in &self.modules {
+                for (group, groups) in &module.implied {
+                    direct
+                        .entry(group.as_str())
+                        .or_default()
+                        .extend(groups.iter().map(String::as_str));
+                }
+            }
+            let mut all: HashSet<&str> = direct.keys().copied().collect();
+            all.extend(direct.values().flatten().copied());
+            all.insert("base.group_user");
+            all.into_iter()
+                .map(|group| {
+                    let mut found = HashSet::new();
+                    let mut queue = vec![group];
+                    while let Some(current) = queue.pop() {
+                        if found.insert(current.to_string()) {
+                            queue.extend(direct.get(current).into_iter().flatten());
+                        }
+                    }
+                    (group.to_string(), found)
+                })
+                .collect()
+        })
+    }
+
+    /// The read grants of `model` in the access rights of the closure: the
+    /// group of each (none for everyone).
+    fn read_grants(&self, model: &str) -> Option<Vec<Option<&str>>> {
+        let id = format!("model_{}", model.replace('.', "_"));
+        let mut known = false;
+        let mut grants = Vec::new();
+        for access in self.modules.iter().flat_map(|m| m.access.iter()) {
+            if access.model.rsplit('.').next() != Some(id.as_str()) {
+                continue;
+            }
+            known = true;
+            if access.read {
+                grants.push(access.group.as_deref());
+            }
+        }
+        known.then_some(grants)
+    }
+
+    /// Whether every internal user may read `model`; `None` when no access
+    /// right mentions it.
+    pub fn users_can_read(&self, model: &str) -> Option<bool> {
+        let implied = self.implied_groups();
+        let users = implied.get("base.group_user")?;
+        let grants = self.read_grants(model)?;
+        Some(grants.iter().any(|g| g.is_none_or(|g| users.contains(g))))
+    }
+
+    /// Whether only administrators may read `model`: every group its access
+    /// rights let read it implies Access Rights (`base.group_erp_manager`).
+    pub fn only_admins_read(&self, model: &str) -> bool {
+        let implied = self.implied_groups();
+        self.read_grants(model).is_some_and(|grants| {
+            grants.iter().all(|g| {
+                g.and_then(|g| implied.get(g))
+                    .is_some_and(|i| i.contains("base.group_erp_manager"))
+            })
+        })
+    }
+
     /// Every view of the closure, by full XML id; for an id defined twice,
     /// the definition loaded last.
     pub fn views(&self) -> HashMap<String, (&View, usize)> {
@@ -709,7 +807,12 @@ impl Closure {
                 continue;
             }
             for field in &class.fields {
-                fields.insert(field.name.clone(), field.clone());
+                let mut field = field.clone();
+                // A redefinition keeps the attributes it does not set.
+                if field.groups.is_none() {
+                    field.groups = fields.get(&field.name).and_then(|f| f.groups.clone());
+                }
+                fields.insert(field.name.clone(), field);
             }
             parents.extend(class.inherit.iter().filter(|i| *i != model).cloned());
             parents.extend(class.delegates.iter().cloned());
@@ -734,6 +837,7 @@ impl Closure {
                 kind: String::new(),
                 comodel: None,
                 has_domain: false,
+                groups: None,
                 line: 0,
             });
         }
@@ -963,6 +1067,96 @@ fn xml_ids(
         }
     }
     (ids, lines)
+}
+
+static REF: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r#"ref\(\s*['"]([\w.]+)['"]\s*\)"#).unwrap());
+
+/// The access rights and implied groups of a module's data files.
+type Security = (Vec<Access>, Vec<(String, Vec<String>)>);
+
+fn security(module: &str, files: &[DataFile]) -> Security {
+    let (mut access, mut implied) = (Vec::new(), Vec::new());
+    let yes = |value: &str| matches!(value.trim(), "1" | "True" | "true");
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let name = file
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if name.ends_with(".csv") {
+            if !name.starts_with("ir.model.access") && !name.starts_with("ir_model_access") {
+                continue;
+            }
+            let Ok(records) = crate::rules::module::read_csv(&text) else {
+                continue;
+            };
+            let mut rows = records.into_iter();
+            let Some(header) = rows.next() else { continue };
+            let column = |names: &[&str]| header.fields.iter().position(|f| names.contains(&f.trim()));
+            let (Some(model), Some(read)) = (column(&["model_id:id", "model_id/id"]), column(&["perm_read"])) else {
+                continue;
+            };
+            let group = column(&["group_id:id", "group_id/id"]);
+            for row in rows {
+                let Some(model) = row.fields.get(model).filter(|m| !m.trim().is_empty()) else {
+                    continue;
+                };
+                access.push(Access {
+                    model: qualify(module, model.trim()),
+                    group: group
+                        .and_then(|g| row.fields.get(g))
+                        .map(|g| g.trim())
+                        .filter(|g| !g.is_empty())
+                        .map(|g| qualify(module, g)),
+                    read: row.fields.get(read).is_some_and(|r| yes(r)),
+                });
+            }
+            continue;
+        }
+        if !name.ends_with(".xml") {
+            continue;
+        }
+        let Ok(doc) = roxmltree::Document::parse(&text) else {
+            continue;
+        };
+        for record in doc.descendants().filter(|n| n.has_tag_name("record")) {
+            let field = |name: &str| {
+                record
+                    .children()
+                    .find(|c| c.has_tag_name("field") && c.attribute("name") == Some(name))
+            };
+            match record.attribute("model") {
+                Some("ir.model.access") => {
+                    let Some(model) = field("model_id").and_then(|f| f.attribute("ref")) else {
+                        continue;
+                    };
+                    let read = field("perm_read").and_then(|f| f.attribute("eval").or_else(|| f.text()));
+                    access.push(Access {
+                        model: qualify(module, model),
+                        group: field("group_id")
+                            .and_then(|f| f.attribute("ref"))
+                            .map(|g| qualify(module, g)),
+                        read: read.is_some_and(yes),
+                    });
+                }
+                Some("res.groups") => {
+                    let (Some(id), Some(eval)) = (
+                        record.attribute("id"),
+                        field("implied_ids").and_then(|f| f.attribute("eval")),
+                    ) else {
+                        continue;
+                    };
+                    let groups = REF.captures_iter(eval).map(|c| qualify(module, &c[1])).collect();
+                    implied.push((qualify(module, id), groups));
+                }
+                _ => {}
+            }
+        }
+    }
+    (access, implied)
 }
 
 /// A view as a data file defines it.

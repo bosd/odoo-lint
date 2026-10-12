@@ -66,6 +66,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO010](ODOO010.md) | `field-method-not-found` | A field names a method (`compute=`, `inverse=`, ...) that its model does not have. |
 | [ODOO011](ODOO011.md) | `button-method-not-found` | A view's `<button type="object">` calls a method its model does not have. |
 | [ODOO012](ODOO012.md) | `view-field-without-widget` | A view shows a field without the widget that suits it. |
+| [ODOO013](ODOO013.md) | `view-field-restricted-comodel` | A view shows a one2many or many2many field whose comodel only administrators may read, without `groups`. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -290,6 +291,7 @@ ODOO009
 ODOO010
 ODOO011
 ODOO012
+ODOO013
 PO001
 PO002
 PO003

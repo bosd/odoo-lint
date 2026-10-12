@@ -87,6 +87,9 @@ pub struct RulesConfig {
     pub module_unwanted_file: Option<ExtensionsConfig>,
     /// ODOO003: size limit of a file in a module.
     pub module_large_file: Option<MaxSizeConfig>,
+    /// ODOO013: models only privileged groups may read, besides those the
+    /// access rights show.
+    pub view_field_restricted_comodel: Option<RestrictedModelsConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -115,6 +118,7 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     no_search_all: None,
     module_unwanted_file: None,
     module_large_file: None,
+    view_field_restricted_comodel: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -127,6 +131,12 @@ pub struct KeysConfig {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SuperfluousKeyConfig {
     pub keys_values_true: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct RestrictedModelsConfig {
+    pub models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
