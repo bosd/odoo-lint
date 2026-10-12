@@ -301,6 +301,15 @@ impl Rule {
         self.min_odoo.is_none_or(|min| version >= min) && self.max_odoo.is_none_or(|max| version <= max)
     }
 
+    /// [`Rule::applies_to`] for a module's version; with an unknown version,
+    /// only rules for every version apply.
+    pub fn applies_in(&self, version: Option<OdooVersion>) -> bool {
+        match version {
+            Some(version) => self.applies_to(version),
+            None => self.min_odoo.is_none() && self.max_odoo.is_none(),
+        }
+    }
+
     /// Human-readable Odoo version range, if the rule is version-specific.
     pub fn version_range(&self) -> Option<String> {
         match (self.min_odoo, self.max_odoo) {

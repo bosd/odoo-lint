@@ -157,7 +157,7 @@ fn findings_for_odoo_18() {
 fn modules_still_on_17_are_left_alone() {
     let dir = tempfile::tempdir().unwrap();
     module(dir.path(), "17.0.1.0.0", &[("views/partner.xml", VIEWS_17)], PYTHON_17);
-    // XML rules follow the module's version; Python rules the target.
+    // Rules for some versions follow the module's version.
     let found = codes(dir.path(), "U18", OdooVersion::new(17, 0));
     assert!(found.is_empty(), "{found:?}");
 }

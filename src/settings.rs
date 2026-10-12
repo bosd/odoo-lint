@@ -1,8 +1,9 @@
 //! Effective settings: the configuration file merged with CLI options.
 
+use crate::checker::ModuleInfo;
 use crate::config::OdooLintConfig;
 use crate::odoo_version::{OdooVersion, DEFAULT_ODOO_VERSION};
-use crate::rules::{Check, Rule, ALL};
+use crate::rules::{Rule, ALL};
 use globset::{Glob, GlobMatcher};
 use std::path::{Path, PathBuf};
 
@@ -102,6 +103,9 @@ impl PathPattern {
 pub struct Settings {
     pub config: OdooLintConfig,
     pub target_version: OdooVersion,
+    /// Whether the target version was given (config or command line) rather
+    /// than the default: it then wins over the modules' own versions.
+    pub target_explicit: bool,
     pub select: Vec<String>,
     pub ignore: Vec<String>,
     /// Paths in `exclude` and `per-file-ignores` are relative to this.
@@ -127,6 +131,7 @@ impl Default for Settings {
         Self {
             config: OdooLintConfig::default(),
             target_version: DEFAULT_ODOO_VERSION,
+            target_explicit: false,
             select: vec!["ALL".to_string()],
             ignore: Vec::new(),
             project_root: PathBuf::from("."),
@@ -199,6 +204,7 @@ impl Settings {
         cli: CliOverrides,
     ) -> Result<(Self, Vec<String>), String> {
         let version_str = cli.target_version.clone().or_else(|| config.target_version.clone());
+        let target_explicit = version_str.is_some();
         let target_version = match version_str {
             Some(v) => v.parse()?,
             None => DEFAULT_ODOO_VERSION,
@@ -240,6 +246,7 @@ impl Settings {
         let settings = Self {
             config,
             target_version,
+            target_explicit,
             select,
             ignore,
             project_root,
@@ -254,13 +261,31 @@ impl Settings {
         Ok((settings, warnings))
     }
 
-    /// Rules that are selected, not ignored and apply to the target version.
+    /// Rules that are selected and not ignored. Rules for some Odoo versions
+    /// only are gated per module, on [`Settings::version_of`].
     pub fn enabled_rules(&self) -> Vec<&'static Rule> {
-        ALL.iter()
-            .filter(|rule| self.is_selected(rule))
-            // XML rules are gated per module, on its manifest's version.
-            .filter(|rule| matches!(rule.check, Check::Xml(_)) || rule.applies_to(self.target_version))
-            .collect()
+        ALL.iter().filter(|rule| self.is_selected(rule)).collect()
+    }
+
+    /// The Odoo version a module is checked for: the target version when
+    /// it was given, as pylint-odoo's `valid-odoo-versions`; otherwise the
+    /// module's own, from its manifest. `None` for a version odoo-lint
+    /// cannot read: only rules for every version apply.
+    pub fn version_of(&self, module: Option<&ModuleInfo>) -> Option<OdooVersion> {
+        if self.target_explicit && self.assume_module_version.is_none() {
+            return Some(self.target_version);
+        }
+        self.manifest_version_of(module)
+    }
+
+    /// The Odoo version of a module from its manifest (`18.0.1.0.0`), or the
+    /// target version when the manifest gives none. XML rules always follow
+    /// it, as oca-checks-odoo-module does.
+    pub fn manifest_version_of(&self, module: Option<&ModuleInfo>) -> Option<OdooVersion> {
+        self.assume_module_version.or_else(|| match module {
+            Some(module) => crate::xml::module_version(module, self.target_version),
+            None => Some(self.target_version),
+        })
     }
 
     /// Whether `select` and `ignore` enable `rule`.
@@ -350,9 +375,12 @@ mod tests {
             codes.iter().all(|c| c.starts_with('C') || c.starts_with("ODOO")),
             "{codes:?}"
         );
-        // ODOO001 is ignored by name; C8120 only applies from Odoo 20.0.
+        // ODOO001 is ignored by name; C8120 is selected, but only applies to
+        // modules for Odoo 20.0.
         assert!(!codes.contains(&"ODOO001"));
-        assert!(!codes.contains(&"C8120"));
+        let c8120 = crate::rules::find("C8120").unwrap();
+        assert!(codes.contains(&"C8120"));
+        assert!(!c8120.applies_in(settings.version_of(None)));
         assert!(warnings.is_empty());
     }
 

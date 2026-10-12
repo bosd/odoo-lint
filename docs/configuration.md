@@ -55,8 +55,16 @@ authors = ["Odoo Community Association (OCA)"]
 
 ### `target-version`
 
-Odoo version the code targets, as a string such as `"16.0"`. Rules that only
-apply to some Odoo versions are skipped for other versions. Default: `"17.0"`.
+Odoo version the code targets, as a string such as `"16.0"`. Default:
+`"17.0"`.
+
+Rules that only apply to some Odoo versions (the upgrade rules `U1801`,
+...) follow `target-version` when it is set, here or with `odl check -v`, as
+pylint-odoo's `valid-odoo-versions` does. Without it, they follow each
+module's own version, from its manifest (`19.0.1.0.0` is 19.0), and the
+default for modules whose manifest version has no Odoo series (`1.0.0`).
+XML rules always follow the module's version, as oca-checks-odoo-module
+does.
 
 ### `select` and `ignore`
 
