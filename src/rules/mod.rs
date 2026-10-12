@@ -24,6 +24,7 @@ pub mod records;
 pub mod references;
 pub mod upgrade;
 pub mod views;
+pub mod widgets;
 pub mod xml;
 
 use manifest::{author, files, keys, values};
@@ -125,6 +126,7 @@ pub const ALL: &[Rule] = &[
     records::RECORD_FIELD_NOT_FOUND,
     model_methods::FIELD_METHOD_NOT_FOUND,
     model_methods::BUTTON_METHOD_NOT_FOUND,
+    widgets::FIELD_WITHOUT_WIDGET,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,
