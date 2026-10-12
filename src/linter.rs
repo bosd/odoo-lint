@@ -118,7 +118,11 @@ fn lint_modules(
         .collect();
     module_list
         .par_iter()
-        .flat_map_iter(|module| rules::module::lint_module(module, &module_rules, settings, sources))
+        .flat_map_iter(|module| {
+            let version = settings.version_of(Some(module));
+            let rules: Vec<&Rule> = module_rules.iter().copied().filter(|r| r.applies_in(version)).collect();
+            rules::module::lint_module(module, &rules, settings, sources)
+        })
         .filter(|v| rules::find(&v.code).is_none_or(|rule| !settings.is_ignored_in_file(Path::new(&v.file_path), rule)))
         .collect()
 }
@@ -245,8 +249,11 @@ fn lint_file(
     settings: &Settings,
     sources: &Sources,
 ) -> (Vec<Violation>, Vec<InheritFact>) {
+    // Rules for some Odoo versions apply on the module's version.
+    let version = settings.version_of(module);
+    let rules: Vec<&'static Rule> = rules.iter().copied().filter(|rule| rule.applies_in(version)).collect();
     if path.extension().is_some_and(is_po_extension) {
-        return (lint_po_file(path, rules, settings, sources), Vec::new());
+        return (lint_po_file(path, &rules, settings, sources), Vec::new());
     }
     if path.extension().is_some_and(|e| e == "xml") {
         // Linted per module, in `lint_xml`.

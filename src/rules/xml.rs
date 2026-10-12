@@ -61,9 +61,7 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
             Err(error) => XmlFile::parse(&entry.path, &entry.section, None, Some(error.clone())),
         })
         .collect();
-    let version = settings
-        .assume_module_version
-        .or_else(|| xml::module_version(module, settings.target_version));
+    let version = settings.manifest_version_of(Some(module));
     let ctx = XmlContext {
         module,
         files: &files,
@@ -75,12 +73,7 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
     for rule in rules {
         if let Check::Xml(check) = rule.check {
             let key = check as usize;
-            let gated = rule.min_odoo.is_some() || rule.max_odoo.is_some();
-            let applies = match version {
-                Some(version) => rule.applies_to(version),
-                None => !gated,
-            };
-            if applies && !done.contains(&key) {
+            if rule.applies_in(version) && !done.contains(&key) {
                 done.push(key);
                 check(&ctx, &mut reporter);
             }
