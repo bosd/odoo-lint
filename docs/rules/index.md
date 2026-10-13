@@ -123,6 +123,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1808](U1808.md) | `upgrade-user-has-groups` | `user_has_groups()`, removed in Odoo 18.0, is called. |
 | [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
 | [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
+| [U1811](U1811.md) | `upgrade-http-routing-helpers` | `slug`, `slugify`, `unslug` or `url_for` is imported from `http_routing`, removed in Odoo 18.0. |
 | [U1901](U1901.md) | `upgrade-env-shortcuts` | `._uid`, `._context` or `request.cr/uid/context`, deprecated in Odoo 19.0. |
 | [U1902](U1902.md) | `upgrade-sql-constraints` | `_sql_constraints`, silently ignored since Odoo 19.0. |
 | [U1903](U1903.md) | `upgrade-api-model-create` | `create` is decorated with `@api.model`, which makes it a batch create in Odoo 19.0. |
@@ -349,6 +350,7 @@ U1807
 U1808
 U1809
 U1810
+U1811
 U1901
 U1902
 U1903

@@ -1070,3 +1070,77 @@ fn superuser_id_is_opt_in() {
     module(dir.path(), "19.0.1.0.0", &[], PYTHON_SUPERUSER);
     assert!(codes(dir.path(), "ALL", V19).iter().all(|(c, _)| c != "U1923"));
 }
+
+const PYTHON_SLUG: &str = r#"from odoo import http, models
+from odoo.addons.http_routing.models.ir_http import slug, slugify as make_slug
+from odoo.http import request
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    def _compute_url(self):
+        for partner in self:
+            partner.website_url = "/partners/%s" % slug(partner)
+
+
+class Controller(http.Controller):
+    @http.route("/p/<string:name>", auth="public")
+    def page(self, name):
+        return request.render("acme_up.page", {"key": make_slug(name)})
+"#;
+
+#[test]
+fn http_routing_helpers_become_ir_http_methods() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "18.0.1.0.0", &[], PYTHON_SLUG);
+    assert_eq!(
+        codes(dir.path(), "U1811", V18),
+        vec![("U1811".to_string(), 2), ("U1811".to_string(), 2)]
+    );
+    let python = fixed(
+        dir.path(),
+        "U1811",
+        V18,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    let expected = PYTHON_SLUG
+        .replace(
+            "from odoo.addons.http_routing.models.ir_http import slug, slugify as make_slug\n",
+            "",
+        )
+        .replace("% slug(partner)", "% self.env[\"ir.http\"]._slug(partner)")
+        .replace("make_slug(name)", "request.env[\"ir.http\"]._slugify(name)");
+    assert_eq!(python, expected);
+}
+
+#[test]
+fn http_routing_helpers_behind_an_import_guard_are_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "18.0.1.0.0",
+        &[],
+        "try:\n    from odoo.addons.http_routing.models.ir_http import slug\nexcept ImportError:\n    slug = None\n",
+    );
+    assert!(codes(dir.path(), "U1811", V18).is_empty());
+}
+
+#[test]
+fn http_routing_helpers_in_a_test_case() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "18.0.1.0.0", &[], "from odoo.addons.http_routing.models.ir_http import slug\nfrom odoo.tests import HttpCase\n\n\nclass TestShop(HttpCase):\n    def setUp(self):\n        super().setUp()\n        self.product = self.env[\"product.product\"].create({\"name\": \"P\"})\n\n    def test_page(self):\n        self.url_open(f\"/shop/{slug(self.product)}\")\n");
+    let python = fixed(
+        dir.path(),
+        "U1811",
+        V18,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    assert!(python.starts_with("from odoo.tests import HttpCase\n"), "{python}");
+    assert!(
+        python.contains("/shop/{self.env['ir.http']._slug(self.product)}"),
+        "{python}"
+    );
+}

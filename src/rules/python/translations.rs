@@ -827,7 +827,7 @@ fn remove_translation_import(ctx: &PythonContext) -> Option<Edit> {
 /// Whether `self` is a record where the scopes end: inside a method of an
 /// Odoo model whose first parameter is `self`, not rebound by an inner
 /// function or lambda.
-fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope]) -> bool {
+pub(crate) fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope]) -> bool {
     let Some(method) = scopes.windows(2).rposition(|pair| {
         matches!(pair, [Scope::Class(class), Scope::Function(_)] if ctx.semantic.odoo_model_kind(class).is_some())
     }) else {
