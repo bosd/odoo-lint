@@ -74,9 +74,11 @@ does.
 Which rules run. Each entry is one of:
 
 - `ALL`, every rule except the opt-in ones ([MOD008](rules/MOD008.md),
-  which removes copyright headers, and [ODOO012](rules/ODOO012.md), which
-  suggests widgets for fields in views, as a review would; a code prefix
-  such as `ODOO` selects them too);
+  which removes copyright headers, [ODOO012](rules/ODOO012.md), which
+  suggests widgets for fields in views, as a review would, and
+  [U1923](rules/U1923.md), which moves `SUPERUSER_ID` imports to
+  `odoo.api`; a code prefix such as `ODOO` selects them too, and
+  `upgrade-check` runs U1923 only when `select` names it);
 - a code such as `C8101`, or a name such as `manifest-required-author`;
 - a code prefix such as `C81`, `E` or `ODOO`.
 

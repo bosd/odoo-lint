@@ -1009,3 +1009,64 @@ fn code_for_both_versions_is_left_alone() {
     // Only the `write` outside the guards.
     assert_eq!(codes(dir.path(), "U1907", V19), vec![("U1907".to_string(), 16)]);
 }
+
+const PYTHON_SUPERUSER: &str = r#"import odoo
+from odoo import SUPERUSER_ID as SU
+from odoo import api, fields, models, SUPERUSER_ID, _
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    def action_root(self):
+        from odoo import (
+            Command,
+            SUPERUSER_ID,
+        )
+        return self.with_user(odoo.SUPERUSER_ID), SU, SUPERUSER_ID, Command, api, fields, _
+"#;
+
+#[test]
+fn superuser_id_moves_to_odoo_api() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "19.0.1.0.0", &[], PYTHON_SUPERUSER);
+    assert_eq!(
+        codes(dir.path(), "U1923", V19),
+        [("U1923", 2), ("U1923", 3), ("U1923", 12), ("U1923", 14)]
+            .map(|(c, l)| (c.to_string(), l))
+            .to_vec()
+    );
+    let python = fixed(
+        dir.path(),
+        "U1923",
+        V19,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    assert_eq!(
+        python,
+        r#"import odoo
+from odoo.api import SUPERUSER_ID as SU
+from odoo import api, fields, models, _
+from odoo.api import SUPERUSER_ID
+
+
+class Partner(models.Model):
+    _inherit = "res.partner"
+
+    def action_root(self):
+        from odoo import (
+            Command,
+        )
+        from odoo.api import SUPERUSER_ID
+        return self.with_user(odoo.api.SUPERUSER_ID), SU, SUPERUSER_ID, Command, api, fields, _
+"#
+    );
+}
+
+#[test]
+fn superuser_id_is_opt_in() {
+    let dir = tempfile::tempdir().unwrap();
+    module(dir.path(), "19.0.1.0.0", &[], PYTHON_SUPERUSER);
+    assert!(codes(dir.path(), "ALL", V19).iter().all(|(c, _)| c != "U1923"));
+}

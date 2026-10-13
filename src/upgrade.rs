@@ -10,7 +10,7 @@ use crate::fix::Applicability;
 use crate::linter::{collect_files, lint_files_with, modules_of};
 use crate::odoo_version::OdooVersion;
 use crate::rules::{self, Rule, ALL};
-use crate::settings::{selector_matches, Settings, ViolationFilter};
+use crate::settings::{selector_matches, Settings, ViolationFilter, OPT_IN};
 use crate::sources::Sources;
 use crate::xml::{manifest_series, module_version};
 use ruff_text_size::Ranged;
@@ -105,12 +105,20 @@ const INDEX_RULES: &[&str] = &[
 
 /// The rules an upgrade to `target` brings: those with a first version up
 /// to `target`, and the checks across modules with the target's addons,
-/// minus the ones the configuration ignores.
+/// minus the ones the configuration ignores. Opt-in rules only when the
+/// configuration selects them by more than `ALL`.
 fn upgrade_rules(settings: &Settings, target: OdooVersion) -> Vec<&'static Rule> {
     ALL.iter()
         .filter(|rule| {
             rule.min_odoo.is_some_and(|min| min <= target)
                 || (settings.target_addons_path.is_some() && INDEX_RULES.contains(&rule.code))
+        })
+        .filter(|rule| {
+            !OPT_IN.contains(&rule.code)
+                || settings
+                    .select
+                    .iter()
+                    .any(|s| !s.eq_ignore_ascii_case("all") && selector_matches(s, rule))
         })
         .filter(|rule| !settings.ignore.iter().any(|s| selector_matches(s, rule)))
         .collect()
@@ -503,5 +511,24 @@ mod tests {
         );
         let codes: Vec<&str> = report.modules[0].rules.iter().map(|r| r.code.as_str()).collect();
         assert_eq!(codes, vec!["U1917"]);
+    }
+
+    #[test]
+    fn opt_in_upgrade_rules_need_their_own_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "acme_su/__manifest__.py",
+            "{'name': 'Su', 'version': '18.0.1.0.0', 'license': 'AGPL-3'}\n",
+        );
+        write(dir.path(), "acme_su/__init__.py", "from odoo import SUPERUSER_ID\n");
+        let codes = |settings: &Settings| -> Vec<String> {
+            let report = check(settings, &[dir.path().to_path_buf()], OdooVersion::new(19, 0));
+            report.modules[0].rules.iter().map(|r| r.code.clone()).collect()
+        };
+        assert!(codes(&Settings::default()).is_empty());
+        let mut settings = Settings::default();
+        settings.select = vec!["ALL".to_string(), "U1923".to_string()];
+        assert_eq!(codes(&settings), vec!["U1923"]);
     }
 }
