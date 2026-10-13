@@ -23,7 +23,15 @@ defined:
 - **fields**: `<field name="...">` in views (through embedded lists and
   forms to their comodel) and data records, each part of a path in
   `@api.depends`, `related=` and `mapped()`, and attribute access in Python
-  (`order.partner_id.country_id`), to the field's definition.
+  (`order.partner_id.country_id`), to the field's definition;
+- **methods**: calls on records (`order.action_confirm()`,
+  `super().write(vals)`), the methods a field names (`compute=`,
+  `inverse=`, `search=`, `selection=`, `group_expand=`) and
+  `<button type="object" name="...">`, to the method's definition: in the
+  class that defines the model, else in an extension or a parent model. On
+  an override (`def action_confirm`), it goes to the method it overrides.
+  Methods of Odoo's `BaseModel` (`write`, `create`, ...) have no definition
+  in an addon.
 
 For attribute access, odoo-lint reads the model of the records from the
 code: `self` in a model's method, `self.env["sale.order"]`, `env.user` and
@@ -49,8 +57,8 @@ _Find references_ lists where the XML id, model or field at the cursor is
 used: in views and data files (`ref`, `inherit_id`, `groups`, `model`,
 `<field name>`), in the strings of Python (`env.ref`, `env["..."]`,
 `related=`, `@api.depends`, `mapped()`, comodels), and in attribute access
-(`order.partner_id`). It starts from a use or from the field's definition
-in Python, looks in the modules next to the open one and on the addons path,
+(`order.partner_id`), and for methods their calls, overrides and buttons.
+It starts from a use or from the definition in Python, looks in the modules next to the open one and on the addons path,
 and keeps only the mentions whose definition is the same: `name` on
 `sale.order` is not `name` on `res.partner`. Finding every use of
 `sale.order`'s `partner_id` in all of Odoo 18.0 takes about four seconds.

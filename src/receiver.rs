@@ -146,6 +146,10 @@ impl<'a> Receivers<'a> {
                 records.path.push(attribute.attr.to_string());
                 Some(records)
             }
+            // `super()` in a model's method: the same records.
+            Expr::Call(call) if matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "super") => {
+                self.name("self", call.range(), scopes, depth + 1)
+            }
             Expr::Call(call) => {
                 let Expr::Attribute(func) = &*call.func else {
                     return None;

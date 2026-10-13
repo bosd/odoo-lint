@@ -185,8 +185,10 @@ fn from_python() {
         go(&core, &python, "partner_id.country_id.code", 24),
         at("core/base/models.py", 14)
     );
+    // A method defined in acme only: its own definition.
+    assert_eq!(go(&core, &python, "_compute_x", 2), at("addons/acme/models.py", 10));
     // Nothing to go to.
-    assert_eq!(go(&core, &python, "_compute_x", 2), None);
+    assert_eq!(go(&core, &python, "return self", 2), None);
 }
 
 /// The uses of the first occurrence of `needle` in `file` (cursor `inside`
