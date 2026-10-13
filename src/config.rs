@@ -33,6 +33,10 @@ pub struct OdooLintConfig {
     /// root; globs such as `../oca/*` are expanded. Checks across modules,
     /// such as fields in views, look up dependencies there.
     pub addons_path: Option<Vec<String>>,
+    /// The Odoo version of the project's `pyproject.toml` classifiers
+    /// (`Framework :: Odoo :: 19.0`): the default target version.
+    #[serde(skip)]
+    pub classifier_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -281,6 +285,33 @@ impl std::error::Error for ConfigError {}
 #[derive(Deserialize)]
 struct PyProject {
     tool: Option<PyProjectTool>,
+    project: Option<PyProjectProject>,
+}
+
+#[derive(Deserialize)]
+struct PyProjectProject {
+    classifiers: Option<Vec<String>>,
+}
+
+/// The newest Odoo version among the `Framework :: Odoo :: X` classifiers of
+/// a `pyproject.toml`.
+fn classifier_version(content: &str) -> Option<String> {
+    let pyproject: PyProject = toml::from_str(content).ok()?;
+    pyproject
+        .project?
+        .classifiers?
+        .iter()
+        .filter_map(|c| c.strip_prefix("Framework :: Odoo :: "))
+        .filter_map(|v| {
+            let version = v.trim();
+            let (major, minor) = version.split_once('.')?;
+            Some((
+                (major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?),
+                version.to_string(),
+            ))
+        })
+        .max()
+        .map(|(_, version)| version)
 }
 
 #[derive(Deserialize)]
@@ -314,7 +345,15 @@ impl OdooLintConfig {
         } else {
             Self::from_odoo_lint_toml(&content)
         };
-        parsed.map_err(|e| ConfigError::Parse(path.to_path_buf(), e))
+        let mut config = parsed.map_err(|e| ConfigError::Parse(path.to_path_buf(), e))?;
+        config.classifier_version = if is_pyproject {
+            classifier_version(&content)
+        } else {
+            path.parent()
+                .and_then(|dir| std::fs::read_to_string(dir.join("pyproject.toml")).ok())
+                .and_then(|c| classifier_version(&c))
+        };
+        Ok(config)
     }
 
     /// Finds the nearest config for `start` (a file or directory).
@@ -327,22 +366,42 @@ impl OdooLintConfig {
             start.parent()
         };
 
+        // The nearest `pyproject.toml` names the project's Odoo version, even
+        // without a `[tool.odoo-lint]` table.
+        let mut classifier: Option<String> = None;
         for dir in first_dir.into_iter().flat_map(Path::ancestors) {
+            let pyproject = dir.join("pyproject.toml");
+            let content = if pyproject.is_file() {
+                let content = std::fs::read_to_string(&pyproject).map_err(|e| ConfigError::Io(pyproject.clone(), e))?;
+                classifier = classifier.or_else(|| classifier_version(&content));
+                Some(content)
+            } else {
+                None
+            };
             let standalone = dir.join("odoo-lint.toml");
             if standalone.is_file() {
-                return Ok((Self::from_file(&standalone)?, Some(standalone)));
+                let mut config = Self::from_file(&standalone)?;
+                config.classifier_version = classifier;
+                return Ok((config, Some(standalone)));
             }
-            let pyproject = dir.join("pyproject.toml");
-            if pyproject.is_file() {
-                let content = std::fs::read_to_string(&pyproject).map_err(|e| ConfigError::Io(pyproject.clone(), e))?;
+            if let Some(content) = content {
                 match Self::from_pyproject_toml(&content) {
-                    Ok(Some(config)) => return Ok((config, Some(pyproject))),
+                    Ok(Some(mut config)) => {
+                        config.classifier_version = classifier;
+                        return Ok((config, Some(pyproject)));
+                    }
                     Ok(None) => {}
                     Err(e) => return Err(ConfigError::Parse(pyproject, e)),
                 }
             }
         }
-        Ok((Self::default(), None))
+        Ok((
+            Self {
+                classifier_version: classifier,
+                ..Self::default()
+            },
+            None,
+        ))
     }
 
     /// Per-rule settings, empty when none are configured.
@@ -516,5 +575,26 @@ valid-odoo-versions = ["17.0"]
         // snake_case typo is rejected instead of silently ignored
         assert!(OdooLintConfig::from_odoo_lint_toml("[rules.manifest_author]\ndefault = \"Acme\"\n").is_err());
         assert!(OdooLintConfig::from_odoo_lint_toml("selekt = [\"ALL\"]\n").is_err());
+    }
+
+    #[test]
+    fn odoo_version_from_the_classifiers() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = "[project]\nname = \"x\"\nclassifiers = [\n  \"Framework :: Odoo\",\n  \"Framework :: Odoo :: 18.0\",\n  \"Framework :: Odoo :: 19.0\",\n]\n";
+        std::fs::write(dir.path().join("pyproject.toml"), project).unwrap();
+        let modules = dir.path().join("modules");
+        std::fs::create_dir(&modules).unwrap();
+        // Without a `[tool.odoo-lint]` table: the default config, with the
+        // newest classifier.
+        let (c, path) = OdooLintConfig::discover(&modules).unwrap();
+        assert!(path.is_none());
+        assert_eq!(c.classifier_version.as_deref(), Some("19.0"));
+        assert_eq!(c.target_version, None);
+
+        // With an `odoo-lint.toml` next to it.
+        std::fs::write(dir.path().join("odoo-lint.toml"), "select = [\"ALL\"]\n").unwrap();
+        let (c, path) = OdooLintConfig::discover(&modules).unwrap();
+        assert!(path.is_some());
+        assert_eq!(c.classifier_version.as_deref(), Some("19.0"));
     }
 }

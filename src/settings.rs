@@ -205,6 +205,9 @@ impl Settings {
     ) -> Result<(Self, Vec<String>), String> {
         let version_str = cli.target_version.clone().or_else(|| config.target_version.clone());
         let target_explicit = version_str.is_some();
+        // Without one, the Odoo version of the project's classifiers is the
+        // default; the modules' own versions still win.
+        let version_str = version_str.or_else(|| config.classifier_version.clone());
         let target_version = match version_str {
             Some(v) => v.parse()?,
             None => DEFAULT_ODOO_VERSION,
@@ -459,5 +462,24 @@ exclude = ["setup", "addons/legacy_*"]
         let (settings, _) = Settings::new(config, Some(&config_path), CliOverrides::default()).unwrap();
         assert!(settings.is_excluded(&link.join("addons/legacy_sale")));
         assert!(!settings.is_excluded(&link.join("addons")));
+    }
+
+    #[test]
+    fn classifier_version_is_a_default_only() {
+        let config = OdooLintConfig {
+            classifier_version: Some("19.0".into()),
+            ..Default::default()
+        };
+        let (settings, _) = Settings::new(config.clone(), None, CliOverrides::default()).unwrap();
+        assert_eq!(settings.target_version, OdooVersion::new(19, 0));
+        assert!(!settings.target_explicit);
+
+        let config = OdooLintConfig {
+            target_version: Some("18.0".into()),
+            ..config
+        };
+        let (settings, _) = Settings::new(config, None, CliOverrides::default()).unwrap();
+        assert_eq!(settings.target_version, OdooVersion::new(18, 0));
+        assert!(settings.target_explicit);
     }
 }
