@@ -55,8 +55,11 @@ authors = ["Odoo Community Association (OCA)"]
 
 ### `target-version`
 
-Odoo version the code targets, as a string such as `"16.0"`. Default:
-`"17.0"`.
+Odoo version the code targets, as a string such as `"16.0"`. Default: the
+newest `Framework :: Odoo :: X` classifier in the `[project]` table of the
+nearest `pyproject.toml` (even without a `[tool.odoo-lint]` table), or
+`"17.0"`. A version from the classifiers is a default only: unlike
+`target-version`, it does not win over the modules' own versions.
 
 Rules that only apply to some Odoo versions (the upgrade rules `U1801`,
 ...) follow `target-version` when it is set, here or with `odl check -v`, as
