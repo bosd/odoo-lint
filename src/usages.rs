@@ -158,6 +158,13 @@ pub fn references(
                     _ => None,
                 };
                 let Some((target, _)) = target else { continue };
+                // The definition itself (`partner_id = fields...`) only as the declaration.
+                let line = content[..start].matches('\n').count() + 1;
+                let declaration =
+                    line == definition.line && path.canonicalize().ok() == definition.path.canonicalize().ok();
+                if declaration && !include_declaration {
+                    continue;
+                }
                 if resolve(closure, &dirs, target).is_some_and(|d| same(&d, &definition)) {
                     found.push(Usage {
                         path: path.clone(),

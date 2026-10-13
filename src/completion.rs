@@ -48,11 +48,17 @@ fn repairs(text: &str, offset: usize, extension: &str) -> Vec<String> {
             // or without what follows on the line.
             let closers = open_brackets(before);
             let line_end = text[offset..].find('\n').map_or(text.len(), |i| offset + i);
-            vec![
+            let mut repaired = vec![
                 insert(&quote.to_string()),
                 insert(&format!("{quote}{closers}")),
                 format!("{before}{quote}{closers}{}", &text[line_end..]),
-            ]
+            ];
+            // `order.` before the field is typed: an attribute to complete.
+            if before.ends_with('.') {
+                repaired.push(insert("_"));
+                repaired.push(format!("{before}_{closers}{}", &text[line_end..]));
+            }
+            repaired
         }
     }
 }

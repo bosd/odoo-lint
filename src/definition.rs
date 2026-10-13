@@ -210,6 +210,7 @@ pub(crate) fn python_target_in(
         let start = content_start(expr);
         start + text[start..offset.max(start)].rfind('.').map_or(0, |i| i + 1)
     };
+    let receivers = crate::receiver::Receivers::new(parsed.suite());
     let mut found = None;
     walk(parsed.suite(), |node, scopes| {
         if found.is_some() {
@@ -261,6 +262,25 @@ pub(crate) fn python_target_in(
                     };
                 }
             }
+            // `order.partner_id`, with the model of `order` as the code shows it.
+            Node::Expr(Expr::Attribute(attribute))
+                if attribute.attr.range().start().to_usize() <= offset
+                    && offset <= attribute.attr.range().end().to_usize() =>
+            {
+                found = receivers.records(&attribute.value, scopes).map(|records| {
+                    let segment = records.path.len();
+                    let mut path = records.path;
+                    path.push(attribute.attr.to_string());
+                    (
+                        Target::Field {
+                            models: records.models,
+                            path: path.join("."),
+                            segment,
+                        },
+                        attribute.attr.range().start().to_usize(),
+                    )
+                });
+            }
             // `self.env["sale.order"]`
             Node::Expr(Expr::Subscript(subscript)) if holds(&subscript.slice) => {
                 if matches!(&*subscript.value, Expr::Attribute(a) if a.attr.as_str() == "env")
@@ -268,6 +288,23 @@ pub(crate) fn python_target_in(
                 {
                     found = string(&subscript.slice).map(|m| (Target::Model(m), content_start(&subscript.slice)));
                 }
+            }
+            // A field's own definition: `partner_id = fields.Many2one(...)`.
+            Node::Stmt(Stmt::Assign(assign))
+                if matches!(assign.targets.as_slice(), [Expr::Name(n)]
+                    if n.range().start().to_usize() <= offset && offset <= n.range().end().to_usize())
+                    && matches!(&*assign.value, Expr::Call(call) if func_lib(&call.func) == "fields")
+                    && matches!(scopes.last(), Some(crate::visit::Scope::Class(_))) =>
+            {
+                let name = &assign.targets[0];
+                found = Some((
+                    Target::Field {
+                        models: class_models(),
+                        path: name.as_name_expr().map(|n| n.id.to_string()).unwrap_or_default(),
+                        segment: 0,
+                    },
+                    name.range().start().to_usize(),
+                ));
             }
             // `_name`, `_inherit` and `_inherits` in a class body.
             Node::Stmt(Stmt::Assign(assign)) => {

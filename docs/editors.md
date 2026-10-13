@@ -21,8 +21,17 @@ defined:
   `_inherits`, `env["..."]` and the comodel of a relational field, to the
   model's class;
 - **fields**: `<field name="...">` in views (through embedded lists and
-  forms to their comodel) and data records, and each part of a path in
-  `@api.depends`, `related=` and `mapped()`, to the field's definition.
+  forms to their comodel) and data records, each part of a path in
+  `@api.depends`, `related=` and `mapped()`, and attribute access in Python
+  (`order.partner_id.country_id`), to the field's definition.
+
+For attribute access, odoo-lint reads the model of the records from the
+code: `self` in a model's method, `self.env["sale.order"]`, `env.user` and
+`env.company`, a variable assigned or looped from those, the parameter of a
+lambda in `filtered()`, `sorted()` or `mapped()`, a comprehension, and the
+recordset methods that keep the model (`search`, `browse`, `sudo`,
+`with_context`, `filtered`, ...) or follow a path (`mapped("partner_id")`).
+A parameter of a plain function has no known model.
 
 ## Completion
 
@@ -31,19 +40,20 @@ the XML ids of the module and its dependencies (the module's own without
 its name, as it writes them), the models they define, and the fields of
 the model at hand, with their type and comodel. In a path such as
 `related="partner_id.co"` it offers the fields of the model the path has
-reached; in a view, the fields of the embedded list or form the cursor is
-in.
+reached; after `order.` in Python, the fields of the records `order` holds;
+in a view, the fields of the embedded list or form the cursor is in.
 
 ## Find references
 
 _Find references_ lists where the XML id, model or field at the cursor is
 used: in views and data files (`ref`, `inherit_id`, `groups`, `model`,
-`<field name>`), and in the strings of Python (`env.ref`, `env["..."]`,
-`related=`, `@api.depends`, `mapped()`, comodels). It looks in the modules
-next to the open one and on the addons path, and keeps only the mentions
-whose definition is the same: `name` on `sale.order` is not `name` on
-`res.partner`. Attribute access in Python (`order.partner_id`) is not
-searched.
+`<field name>`), in the strings of Python (`env.ref`, `env["..."]`,
+`related=`, `@api.depends`, `mapped()`, comodels), and in attribute access
+(`order.partner_id`). It starts from a use or from the field's definition
+in Python, looks in the modules next to the open one and on the addons path,
+and keeps only the mentions whose definition is the same: `name` on
+`sale.order` is not `name` on `res.partner`. Finding every use of
+`sale.order`'s `partner_id` in all of Odoo 18.0 takes about four seconds.
 
 All three look in the module's dependencies, Odoo's included, as listed in
 [`addons-path`](configuration.md#addons-path); the modules next to the

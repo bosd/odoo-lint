@@ -141,3 +141,25 @@ fn xml_ids_and_models_in_xml() {
     );
     assert!(names(&found).contains(&"res.country"));
 }
+
+#[test]
+fn fields_of_records_after_a_dot() {
+    let dir = tempfile::tempdir().unwrap();
+    let (found, typed) = complete(
+        dir.path(),
+        "models.py",
+        "from odoo import models\n\n\nclass Order(models.Model):\n    _inherit = 'sale.order'\n\n    def action_x(self):\n        for order in self:\n            order.|\n",
+    );
+    assert_eq!(typed, "");
+    assert!(names(&found).contains(&"partner_id"), "{found:?}");
+    assert!(names(&found).contains(&"order_line"));
+
+    let (found, typed) = complete(
+        dir.path(),
+        "models.py",
+        "from odoo import models\n\n\nclass Order(models.Model):\n    _inherit = 'sale.order'\n\n    def action_x(self):\n        return self.partner_id.co|\n",
+    );
+    assert_eq!(typed, "co");
+    assert!(names(&found).contains(&"country_id"), "{found:?}");
+    assert!(!names(&found).contains(&"order_line"));
+}

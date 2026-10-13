@@ -3,12 +3,6 @@
 Ideas that are planned but not built yet. Suggestions are welcome as
 [issues](https://github.com/bosd/odoo-lint/issues).
 
-## Attribute access in find references
-
-Find references follows names in XML and in Python strings. Attribute
-access (`order.partner_id`) needs the type of `order`: from `self` in a
-model's method it is known, elsewhere it takes some inference.
-
 ## Editor extensions
 
 `odl server` works in every editor with a language server client; VS Code
