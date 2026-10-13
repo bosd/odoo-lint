@@ -1070,3 +1070,81 @@ fn superuser_id_is_opt_in() {
     module(dir.path(), "19.0.1.0.0", &[], PYTHON_SUPERUSER);
     assert!(codes(dir.path(), "ALL", V19).iter().all(|(c, _)| c != "U1923"));
 }
+
+const PYTHON_RENAMED_MODELS: &str = r#"from odoo import fields, models
+
+
+class Combo(models.Model):
+    _inherit = "pos.combo"
+
+    """Mentions pos.combo in a docstring."""
+
+    line_ids = fields.One2many("pos.combo.line", "combo_id")
+    shortcode_id = fields.Many2one("mail.shortcode")
+
+    def _lines(self):
+        if "pos.combo.line" in self.env:
+            return self.env["pos.combo.line"]
+        return self.env["product.combo.item"]
+"#;
+
+#[test]
+fn renamed_models_get_their_new_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(
+        dir.path(),
+        "18.0.1.0.0",
+        &[(
+            "views/combo.xml",
+            "<odoo>\n    <record id=\"view_combo\" model=\"ir.ui.view\">\n        <field name=\"model\">pos.combo</field>\n        <field name=\"arch\" type=\"xml\"><form/></field>\n    </record>\n</odoo>\n",
+        )],
+        PYTHON_RENAMED_MODELS,
+    );
+    let mut found = codes(dir.path(), "U1890", V18);
+    found.sort();
+    let expected: Vec<(String, usize)> = [("U1890", 3), ("U1890", 5), ("U1890", 9), ("U1890", 10)]
+        .into_iter()
+        .map(|(c, l)| (c.to_string(), l))
+        .collect();
+    assert_eq!(found, expected);
+    let python = fixed(
+        dir.path(),
+        "U1890",
+        V18,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    assert_eq!(
+        python,
+        PYTHON_RENAMED_MODELS
+            .replace("_inherit = \"pos.combo\"", "_inherit = \"product.combo\"")
+            .replace("One2many(\"pos.combo.line\"", "One2many(\"product.combo.item\"")
+            .replace("Many2one(\"mail.shortcode\")", "Many2one(\"mail.canned.response\")")
+    );
+    let xml = fixed(dir.path(), "U1890", V18, &module.join("views/combo.xml"), FixMode::Safe);
+    assert!(xml.contains("<field name=\"model\">product.combo</field>"), "{xml}");
+}
+
+#[test]
+fn removed_models_are_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[],
+        "from odoo import models\n\n\nclass Title(models.Model):\n    _inherit = \"res.partner.title\"\n",
+    );
+    assert_eq!(codes(dir.path(), "U1991", V19), vec![("U1991".to_string(), 5)]);
+}
+
+#[test]
+fn a_module_defining_the_old_model_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[],
+        "from odoo import models\n\n\nclass Title(models.Model):\n    _name = \"res.partner.title\"\n\n\nclass Partner(models.Model):\n    _inherit = \"res.partner\"\n\n    def titles(self):\n        return self.env[\"res.partner.title\"]\n",
+    );
+    assert!(codes(dir.path(), "U1991", V19).is_empty());
+}
