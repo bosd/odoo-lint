@@ -1233,3 +1233,93 @@ fn cron_notify_progress_is_reported() {
     );
     assert_eq!(codes(dir.path(), "U1924", V19), vec![("U1924".to_string(), 9)]);
 }
+
+const PYTHON_RENAMED_FIELDS: &str = r#"from odoo import api, fields, models
+
+
+class SaleOrderLine(models.Model):
+    _inherit = "sale.order.line"
+
+    uom_name = fields.Char(related="product_uom.name")
+
+    @api.depends("tax_id")
+    def _compute_taxed(self):
+        for line in self:
+            line.taxed = bool(line.tax_id)
+
+    def _lines(self):
+        lines = self.env["sale.order.line"].search([("product_uom", "=", 1)])
+        lines.write({"tax_id": False})
+        return lines.mapped("product_uom.name")
+"#;
+
+const VIEWS_RENAMED_FIELDS: &str = r#"<odoo>
+    <record id="view_line_form" model="ir.ui.view">
+        <field name="model">sale.order.line</field>
+        <field name="inherit_id" ref="sale.view_order_line_form"/>
+        <field name="arch" type="xml">
+            <field name="product_uom" position="after">
+                <field name="tax_id"/>
+            </field>
+            <xpath expr="//field[@name='tax_id']" position="attributes"/>
+        </field>
+    </record>
+    <record id="filter_mine" model="ir.filters">
+        <field name="name">Mine</field>
+        <field name="user_id" ref="base.user_admin"/>
+    </record>
+</odoo>
+"#;
+
+#[test]
+fn renamed_fields_get_their_new_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[("views/line.xml", VIEWS_RENAMED_FIELDS)],
+        PYTHON_RENAMED_FIELDS,
+    );
+    let mut found = codes(dir.path(), "U1990", V19);
+    found.sort();
+    let lines: Vec<usize> = found.iter().map(|(_, l)| *l).collect();
+    assert_eq!(lines, vec![6, 7, 7, 9, 9, 12, 15, 16, 17]);
+    let python = fixed(
+        dir.path(),
+        "U1990",
+        V19,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    assert_eq!(
+        python,
+        PYTHON_RENAMED_FIELDS
+            .replace("product_uom", "product_uom_id")
+            .replace("tax_id", "tax_ids")
+    );
+    let xml = fixed(dir.path(), "U1990", V19, &module.join("views/line.xml"), FixMode::Safe);
+    assert_eq!(
+        xml,
+        VIEWS_RENAMED_FIELDS
+            .replace("\"product_uom\"", "\"product_uom_id\"")
+            .replace("\"tax_id\"", "\"tax_ids\"")
+            .replace("'tax_id'", "'tax_ids'")
+    );
+    assert_eq!(
+        codes(dir.path(), "U1991", V19),
+        vec![("U1991".to_string(), 14)],
+        "ir.filters.user_id was removed"
+    );
+}
+
+#[test]
+fn a_removed_field_the_module_defines_again_is_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[],
+        "from odoo import fields, models\n\n\nclass Filter(models.Model):\n    _inherit = \"ir.filters\"\n\n    user_id = fields.Many2one(\"res.users\")\n\n    def mine(self):\n        return self.search([(\"user_id\", \"=\", self.env.uid)])\n",
+    );
+    assert!(codes(dir.path(), "U1991", V19).is_empty());
+}
