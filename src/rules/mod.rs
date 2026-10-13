@@ -10,6 +10,7 @@ use crate::odoo_version::OdooVersion;
 use po::PoContext;
 
 pub mod access;
+pub mod action_read;
 pub mod e0001_syntax_error;
 pub mod inheritance;
 pub mod manifest;
@@ -129,6 +130,7 @@ pub const ALL: &[Rule] = &[
     model_methods::BUTTON_METHOD_NOT_FOUND,
     widgets::FIELD_WITHOUT_WIDGET,
     access::RESTRICTED_COMODEL,
+    action_read::ACTION_READ,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,
