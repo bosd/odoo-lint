@@ -77,6 +77,15 @@ for everything else. They do not format the code: a renamed call can make a
 line longer than your limit, so run your formatter (Ruff, prettier)
 afterwards, as a pre-commit run does.
 
+[U1923](rules/U1923.md), which imports `SUPERUSER_ID` from `odoo.api`, is
+opt-in: Odoo 19.0 still accepts the old import. Select it in the
+configuration to have the upgrade apply it:
+
+```toml
+[tool.odoo-lint]
+select = ["ALL", "U1923"]
+```
+
 `--bump-version` also sets the manifest version of each module older than the
 target to `<target>.1.0.0`, as OCA migrations start:
 

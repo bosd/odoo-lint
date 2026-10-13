@@ -582,6 +582,105 @@ fn check_osv_expression(ctx: &PythonContext, reporter: &mut Reporter) {
     });
 }
 
+pub const SUPERUSER_ID_IMPORT: Rule = Rule {
+    code: "U1923",
+    name: "upgrade-superuser-id",
+    summary: "`SUPERUSER_ID` is imported from `odoo`, moved to `odoo.api` in Odoo 19.0.",
+    doc: r#"
+## What it does
+
+Reports `from odoo import SUPERUSER_ID` and `odoo.SUPERUSER_ID`.
+
+## Why is this bad?
+
+Odoo 19.0 moved `SUPERUSER_ID` to `odoo.api`, a step towards an `odoo`
+package without variables. `odoo.SUPERUSER_ID` still works in 19.0, and
+Odoo's own addons still use it in many places, so this is a matter of
+keeping up rather than a break.
+
+Opt-in: select it (`select = ["ALL", "U1923"]`).
+
+## Fix
+
+Imports it from `odoo.api` (`from odoo.api import SUPERUSER_ID`, on a line
+of its own when the `odoo` import has other names), and turns
+`odoo.SUPERUSER_ID` into `odoo.api.SUPERUSER_ID`. Both also work on Odoo
+18.0.
+"#,
+    check: Check::Python(check_superuser_id),
+    min_odoo: ODOO_19,
+    max_odoo: None,
+};
+
+fn check_superuser_id(ctx: &PythonContext, reporter: &mut Reporter) {
+    let source = ctx.source;
+    let mut imports_odoo = false;
+    walk(ctx.parsed.suite(), |node, _| {
+        if let Node::Stmt(Stmt::Import(import)) = node {
+            imports_odoo |= import
+                .names
+                .iter()
+                .any(|alias| alias.name.as_str() == "odoo" && alias.asname.is_none());
+        }
+    });
+    walk(ctx.parsed.suite(), |node, _| match node {
+        Node::Stmt(Stmt::ImportFrom(import)) => {
+            let module = import.module.as_ref().filter(|m| m.as_str() == "odoo");
+            let Some(module) = module.filter(|_| import.level == 0) else {
+                return;
+            };
+            let names = &import.names;
+            let Some(i) = names.iter().position(|a| a.name.as_str() == "SUPERUSER_ID") else {
+                return;
+            };
+            let violation = reporter.report(
+                &SUPERUSER_ID_IMPORT,
+                names[i].start(),
+                "`SUPERUSER_ID` moved to `odoo.api` in Odoo 19.0; import it from there",
+            );
+            let edits = if names.len() == 1 {
+                vec![rename(module.range(), "odoo.api")]
+            } else {
+                // A line of its own after the statement, at its indentation.
+                let start = import.start().to_usize();
+                let line_start = source[..start].rfind('\n').map_or(0, |n| n + 1);
+                let indent = &source[line_start..start];
+                if !indent.trim().is_empty() {
+                    return;
+                }
+                let end = import.end().to_usize();
+                let line_end = source[end..].find('\n').map_or(source.len(), |n| end + n + 1);
+                let alias = &source[names[i].start().to_usize()..names[i].end().to_usize()];
+                let mut line = format!("{indent}from odoo.api import {alias}\n");
+                if !source[..line_end].ends_with('\n') {
+                    line.insert(0, '\n');
+                }
+                let remove = match names.get(i + 1) {
+                    Some(next) => Edit::delete(names[i].start().to_usize(), next.start().to_usize()),
+                    None => Edit::delete(names[i - 1].end().to_usize(), names[i].end().to_usize()),
+                };
+                vec![remove, Edit::insert(line_end, line)]
+            };
+            violation.fix = Some(Fix::safe("Import `SUPERUSER_ID` from `odoo.api`", edits));
+        }
+        Node::Expr(Expr::Attribute(attr)) if imports_odoo && attr.attr.as_str() == "SUPERUSER_ID" => {
+            if !matches!(&*attr.value, Expr::Name(name) if name.id.as_str() == "odoo") {
+                return;
+            }
+            let violation = reporter.report(
+                &SUPERUSER_ID_IMPORT,
+                attr.start(),
+                "`odoo.SUPERUSER_ID` moved to `odoo.api` in Odoo 19.0; use `odoo.api.SUPERUSER_ID`",
+            );
+            violation.fix = Some(Fix::safe(
+                "Use `odoo.api.SUPERUSER_ID`",
+                vec![Edit::insert(attr.attr.start().to_usize(), "api.")],
+            ));
+        }
+        _ => {}
+    });
+}
+
 pub const AUTO_JOIN: Rule = Rule {
     code: "U1909",
     name: "upgrade-auto-join",
