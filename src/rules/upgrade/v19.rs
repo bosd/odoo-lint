@@ -829,6 +829,47 @@ fn check_clear_caches(ctx: &PythonContext, reporter: &mut Reporter) {
     });
 }
 
+pub const CRON_NOTIFY_PROGRESS: Rule = Rule {
+    code: "U1924",
+    name: "upgrade-cron-notify-progress",
+    summary: "`_notify_progress()`, deprecated in Odoo 19.0 for `_commit_progress()`.",
+    doc: r#"
+## What it does
+
+Reports calls to `._notify_progress()`.
+
+## Why is this bad?
+
+Odoo 19.0 deprecated `ir.cron._notify_progress(done=, remaining=)` in
+favour of `_commit_progress(processed, remaining=)`. The new method differs
+in two ways, which is why there is no automatic fix:
+
+- `processed` is the number of records of this batch, added to the count
+  so far, where `done` was the total;
+- it commits the transaction, so a `self.env.cr.commit()` after it goes.
+  Its return value is the time left for the run, to stop a loop in time.
+"#,
+    check: Check::Python(check_cron_notify_progress),
+    min_odoo: ODOO_19,
+    max_odoo: None,
+};
+
+fn check_cron_notify_progress(ctx: &PythonContext, reporter: &mut Reporter) {
+    walk(ctx.parsed.suite(), |node, _| {
+        let Node::Expr(Expr::Call(call)) = node else { return };
+        let Expr::Attribute(attribute) = &*call.func else {
+            return;
+        };
+        if attribute.attr.as_str() == "_notify_progress" {
+            reporter.report(
+                &CRON_NOTIFY_PROGRESS,
+                call.start(),
+                "`_notify_progress()` is deprecated since Odoo 19.0; use `_commit_progress()`, which counts this batch and commits",
+            );
+        }
+    });
+}
+
 pub const REMOVED_HELPERS: Rule = Rule {
     code: "U1912",
     name: "upgrade-removed-helpers",

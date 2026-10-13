@@ -208,6 +208,7 @@ pub const ALL: &[Rule] = &[
     upgrade::v19::XML_PARTNER_MOBILE,
     upgrade::v19::IMPLICIT_NAME,
     upgrade::v19::SUPERUSER_ID_IMPORT,
+    upgrade::v19::CRON_NOTIFY_PROGRESS,
     upgrade::v20::MANIFEST_ACCESS_CSV,
     upgrade::v20::XML_ACCESS_RECORDS,
     upgrade::v20::XML_T_ESC,
