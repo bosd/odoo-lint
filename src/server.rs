@@ -715,10 +715,10 @@ mod tests {
             base.join("models.py").canonicalize().unwrap()
         );
         assert_eq!(result["range"]["start"]["line"], json!(3));
-        // Not on anything: no location.
+        // Not on anything (`self`): no location.
         let nothing = client.request(
             "textDocument/definition",
-            json!({"textDocument": {"uri": uri}, "position": {"line": 6, "character": 8}}),
+            json!({"textDocument": {"uri": uri}, "position": {"line": 7, "character": 9}}),
         );
         assert!(nothing.is_null(), "{nothing}");
         // Completion of models in the same string, replacing what is typed.

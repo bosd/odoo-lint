@@ -40,6 +40,13 @@ pub(crate) enum Target {
         via: Vec<String>,
         name: String,
     },
+    /// A method `name` of the records reached from one of `models` through
+    /// the fields `path` (dotted, empty for the model itself).
+    Method {
+        models: Vec<String>,
+        path: String,
+        name: String,
+    },
 }
 
 static EVAL_REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\bref\(\s*['"]([\w.]+)['"]"#).unwrap());
@@ -130,6 +137,17 @@ pub(crate) fn xml_target_in(doc: &roxmltree::Document, offset: usize, module: &s
                     Target::Model(value.trim().to_string())
                 }
                 "name" if tag == "field" => view_field(node, value)?,
+                // `<button type="object" name="action_confirm">`
+                "name" if tag == "button" && node.attribute("type") == Some("object") => {
+                    match view_field(node, value)? {
+                        Target::ViewField { model, via, name } => Target::Method {
+                            models: vec![model],
+                            path: via.join("."),
+                            name,
+                        },
+                        _ => return None,
+                    }
+                }
                 _ => return None,
             };
             return Some((target, start));
@@ -218,6 +236,25 @@ pub(crate) fn python_target_in(
         }
         let class_models = || enclosing_class(scopes).map(class_models).unwrap_or_default();
         match node {
+            // `order.action_confirm()`
+            Node::Expr(Expr::Call(call))
+                if matches!(&*call.func, Expr::Attribute(a)
+                    if a.attr.range().start().to_usize() <= offset && offset <= a.attr.range().end().to_usize()) =>
+            {
+                let Expr::Attribute(attribute) = &*call.func else {
+                    return;
+                };
+                found = receivers.records(&attribute.value, scopes).map(|records| {
+                    (
+                        Target::Method {
+                            models: records.models,
+                            path: records.path.join("."),
+                            name: attribute.attr.to_string(),
+                        },
+                        attribute.attr.range().start().to_usize(),
+                    )
+                });
+            }
             Node::Expr(Expr::Call(call)) => {
                 let name = func_name(&call.func);
                 for (i, arg) in call.arguments.args.iter().enumerate() {
@@ -250,6 +287,19 @@ pub(crate) fn python_target_in(
                     let value = string(&keyword.value).unwrap_or_default();
                     found = match keyword.arg.as_ref().map(|a| a.as_str()) {
                         Some("comodel_name") => Some((Target::Model(value), content_start(&keyword.value))),
+                        // `compute="_compute_total"` and the other methods a field names.
+                        Some("compute" | "inverse" | "search" | "selection" | "group_expand")
+                            if func_lib(&call.func) == "fields" =>
+                        {
+                            Some((
+                                Target::Method {
+                                    models: class_models(),
+                                    path: String::new(),
+                                    name: value,
+                                },
+                                content_start(&keyword.value),
+                            ))
+                        }
                         Some("related") => Some((
                             Target::Field {
                                 models: class_models(),
@@ -287,6 +337,24 @@ pub(crate) fn python_target_in(
                     || matches!(&*subscript.value, Expr::Name(n) if n.id.as_str() == "env")
                 {
                     found = string(&subscript.slice).map(|m| (Target::Model(m), content_start(&subscript.slice)));
+                }
+            }
+            // A method's definition, or an override of it.
+            Node::Stmt(Stmt::FunctionDef(function))
+                if function.name.range().start().to_usize() <= offset
+                    && offset <= function.name.range().end().to_usize()
+                    && matches!(scopes.last(), Some(crate::visit::Scope::Class(_))) =>
+            {
+                let models = class_models();
+                if !models.is_empty() {
+                    found = Some((
+                        Target::Method {
+                            models,
+                            path: String::new(),
+                            name: function.name.to_string(),
+                        },
+                        function.name.range().start().to_usize(),
+                    ));
                 }
             }
             // A field's own definition: `partner_id = fields.Many2one(...)`.
@@ -400,6 +468,16 @@ pub(crate) fn resolve(closure: Option<&Closure>, dirs: &[PathBuf], target: Targe
                 current = closure.fields(&current)?.get(step)?.comodel.clone()?;
             }
             closure.field_location(&current, &name).map(at)
+        }
+        Target::Method { models, path, name } => {
+            let closure = closure?;
+            models.iter().find_map(|model| {
+                let mut current = model.clone();
+                for step in path.split('.').filter(|s| !s.is_empty()) {
+                    current = closure.fields(&current)?.get(step)?.comodel.clone()?;
+                }
+                closure.method_location(&current, &name).map(at)
+            })
         }
     }
 }

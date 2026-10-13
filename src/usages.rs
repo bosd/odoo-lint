@@ -28,6 +28,7 @@ fn needle(target: &Target) -> Option<String> {
         Target::Model(model) => model.clone(),
         Target::Field { path, segment, .. } => path.split('.').nth(*segment)?.to_string(),
         Target::ViewField { name, .. } => name.clone(),
+        Target::Method { name, .. } => name.clone(),
     };
     (!name.is_empty()).then_some(name)
 }

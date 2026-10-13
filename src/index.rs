@@ -59,6 +59,8 @@ pub struct ModelClass {
     pub fields: Vec<Field>,
     /// The methods defined in the class body, and other names it assigns.
     pub methods: Vec<String>,
+    /// The line of each method (`def`) in the class's file.
+    pub method_lines: Vec<(String, usize)>,
     /// Whether the class has bases other than Odoo's model classes (a
     /// Python mixin), whose methods the index does not know.
     pub foreign_bases: bool,
@@ -304,6 +306,15 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
             _ => Vec::new(),
         })
         .collect();
+    // Byte offsets until `parse` turns them into lines.
+    let method_lines = class
+        .body
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::FunctionDef(function) => Some((function.name.to_string(), function.name.start().to_usize())),
+            _ => None,
+        })
+        .collect();
     let foreign_bases = class.arguments.as_ref().is_some_and(|a| {
         a.args.iter().any(|b| {
             !crate::semantic::dotted_name(b)
@@ -324,6 +335,7 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         delegates,
         fields,
         methods,
+        method_lines,
         foreign_bases,
     })
 }
@@ -348,6 +360,9 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                 model.line = line_of(class.name.start().to_usize());
                 for field in &mut model.fields {
                     field.line = line_of(field.line);
+                }
+                for (_, line) in &mut model.method_lines {
+                    *line = line_of(*line);
                 }
                 Some((class.name.to_string(), model))
             })
@@ -711,6 +726,37 @@ impl Closure {
         parents
             .iter()
             .find_map(|parent| self.field_location_in(parent, field, seen))
+    }
+
+    /// Where the method `method` of `model` is defined: in the class that
+    /// defines the model, else in an extension, else in a parent model.
+    pub fn method_location(&self, model: &str, method: &str) -> Option<(PathBuf, usize)> {
+        self.method_location_in(model, method, &mut HashSet::new())
+    }
+
+    fn method_location_in(&self, model: &str, method: &str, seen: &mut HashSet<String>) -> Option<(PathBuf, usize)> {
+        if !seen.insert(model.to_string()) {
+            return None;
+        }
+        let on_model = |c: &&ModelClass| {
+            c.name.as_deref() == Some(model) || (c.name.is_none() && c.inherit.iter().any(|i| i == model))
+        };
+        let mut classes: Vec<&ModelClass> = self.classes().filter(on_model).collect();
+        classes.sort_by_key(|c| c.name.is_none());
+        for class in &classes {
+            if let Some((_, line)) = class.method_lines.iter().find(|(name, _)| name == method) {
+                return Some((class.file.clone(), *line));
+            }
+        }
+        let parents: Vec<String> = classes
+            .iter()
+            .flat_map(|c| c.inherit.iter().chain(c.delegates.iter()))
+            .filter(|p| *p != model)
+            .cloned()
+            .collect();
+        parents
+            .iter()
+            .find_map(|parent| self.method_location_in(parent, method, seen))
     }
 
     /// Where the XML id `id` (`module.name`) is defined in a data file.

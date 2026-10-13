@@ -203,6 +203,8 @@ pub fn completion(
                 .map(|current| fields(&closure, &current))
                 .unwrap_or_default()
         }
+        // Methods are not offered (yet).
+        Target::Method { .. } => Vec::new(),
     };
     Some(Completion { start, candidates })
 }
