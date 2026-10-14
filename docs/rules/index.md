@@ -69,6 +69,9 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO012](ODOO012.md) | `view-field-without-widget` | A view shows a field without the widget that suits it. |
 | [ODOO013](ODOO013.md) | `view-field-restricted-comodel` | A view shows a one2many or many2many field whose comodel only administrators may read, without `groups`. |
 | [ODOO014](ODOO014.md) | `action-read` | An action is read with `env.ref(...).read()`, which only administrators may do. |
+| [OWL001](OWL001.md) | `owl-foreach-without-key` | A `t-foreach` in an OWL template has no `t-key`. |
+| [OWL002](OWL002.md) | `owl-t-raw` | An OWL template uses `t-raw`, deprecated in OWL 2 for `t-out`. |
+| [OWL003](OWL003.md) | `owl-handler-not-a-function` | A `t-on-*` handler in an OWL template is a statement or a call, not a function. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -309,6 +312,9 @@ ODOO011
 ODOO012
 ODOO013
 ODOO014
+OWL001
+OWL002
+OWL003
 PO001
 PO002
 PO003

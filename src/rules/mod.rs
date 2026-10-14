@@ -17,6 +17,7 @@ pub mod manifest;
 pub mod model_methods;
 pub mod module;
 pub mod odoo001_missing_depends;
+pub mod owl;
 pub mod po;
 pub mod po_fixes;
 pub mod po_odoo;
@@ -155,6 +156,9 @@ pub const ALL: &[Rule] = &[
     widgets::FIELD_WITHOUT_WIDGET,
     access::RESTRICTED_COMODEL,
     action_read::ACTION_READ,
+    owl::FOREACH_WITHOUT_KEY,
+    owl::T_RAW,
+    owl::HANDLER_NOT_A_FUNCTION,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,
