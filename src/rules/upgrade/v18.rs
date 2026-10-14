@@ -5,12 +5,13 @@ use super::{arch_elements, record_field, rename_tag, replace_in, text_range};
 use crate::checker::{PythonContext, Reporter};
 use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
+use crate::rules::python::translations::self_is_a_record;
 use crate::rules::python::{classes, field_definitions, methods};
 use crate::rules::xml::{at, delete_element, is, XmlContext, XmlReporter};
 use crate::rules::{Check, Rule};
-use crate::visit::{walk, Node};
+use crate::visit::{walk, Node, Scope};
 use regex::Regex;
-use ruff_python_ast::{Expr, StringLiteralValue};
+use ruff_python_ast::{Expr, ExprContext, Stmt, StringLiteralValue};
 use ruff_text_size::Ranged;
 use std::sync::LazyLock;
 
@@ -604,4 +605,211 @@ fn check_name_search_override(ctx: &PythonContext, reporter: &mut Reporter) {
             );
         }
     }
+}
+
+pub const HTTP_ROUTING_HELPERS: Rule = Rule {
+    code: "U1811",
+    name: "upgrade-http-routing-helpers",
+    summary: "`slug`, `slugify`, `unslug` or `url_for` is imported from `http_routing`, removed in Odoo 18.0.",
+    doc: r#"
+## What it does
+
+Reports imports of `slug`, `unslug`, `unslug_url`, `slugify`,
+`slugify_one`, `url_for`, `url_lang` and `is_multilang_url` from
+`odoo.addons.http_routing.models.ir_http`.
+
+## Why is this bad?
+
+Odoo 18.0 turned these functions into class methods of `ir.http`
+(`env["ir.http"]._slug(record)`, `._slugify(text)`, ...): the import fails
+and the module does not load. In QWeb templates `slug` is still there.
+
+## Fix safety
+
+Safe: each use becomes `self.env["ir.http"]._slug` inside a method of a
+model, or `request.env["ir.http"]._slug` where `request` comes from
+`odoo.http`, and the import goes. There is no fix when a use is elsewhere,
+or when the import is not at the top of the file.
+"#,
+    check: Check::Python(check_http_routing_helpers),
+    min_odoo: ODOO_18,
+    max_odoo: None,
+};
+
+const HTTP_ROUTING: &str = "odoo.addons.http_routing.models.ir_http";
+const HTTP_ROUTING_REMOVED: &[&str] = &[
+    "slug",
+    "unslug",
+    "unslug_url",
+    "slugify",
+    "slugify_one",
+    "url_for",
+    "url_lang",
+    "is_multilang_url",
+];
+
+fn check_http_routing_helpers(ctx: &PythonContext, reporter: &mut Reporter) {
+    let suite = ctx.parsed.suite();
+    // `try: from ... import slug` / `except ImportError:` supports both
+    // versions on purpose.
+    let mut compat = Vec::new();
+    walk(suite, |node, _| {
+        if let Node::Stmt(Stmt::Try(stmt)) = node {
+            let catches_import = stmt.handlers.iter().any(|h| {
+                let ruff_python_ast::ExceptHandler::ExceptHandler(h) = h;
+                h.type_.as_deref().is_none_or(|t| {
+                    let mut names = Vec::new();
+                    match t {
+                        Expr::Tuple(tuple) => names.extend(tuple.elts.iter()),
+                        other => names.push(other),
+                    }
+                    names
+                        .iter()
+                        .any(|n| matches!(crate::semantic::func_name(n), "ImportError" | "ModuleNotFoundError"))
+                })
+            });
+            if catches_import {
+                compat.extend(stmt.body.iter().map(Ranged::range));
+            }
+        }
+    });
+    let request_imported = suite.iter().any(|stmt| {
+        matches!(stmt, Stmt::ImportFrom(import) if import.level == 0
+            && import.module.as_ref().is_some_and(|m| m.as_str() == "odoo.http")
+            && import.names.iter().any(|a| a.name.as_str() == "request" && a.asname.is_none()))
+    });
+    walk(suite, |node, scopes| {
+        let Node::Stmt(Stmt::ImportFrom(import)) = node else {
+            return;
+        };
+        if import.level != 0 || import.module.as_ref().is_none_or(|m| m.as_str() != HTTP_ROUTING) {
+            return;
+        }
+        if compat.iter().any(|r| r.contains_range(import.range())) {
+            return;
+        }
+        let removed: Vec<_> = import
+            .names
+            .iter()
+            .filter(|a| HTTP_ROUTING_REMOVED.contains(&a.name.as_str()))
+            .collect();
+        let Some(last) = removed.last() else { return };
+        let fix = scopes
+            .is_empty()
+            .then(|| fix_http_routing(ctx, import, &removed, request_imported))
+            .flatten();
+        for alias in &removed {
+            let name = alias.name.as_str();
+            let violation = reporter.report(
+                &HTTP_ROUTING_HELPERS,
+                alias.start(),
+                format!("`{name}` was removed from `http_routing` in Odoo 18.0; use `env[\"ir.http\"]._{name}`"),
+            );
+            if std::ptr::eq(*alias, *last) {
+                violation.fix = fix.clone();
+            }
+        }
+    });
+}
+
+/// Whether the use is in a method, on `self`, of a test case (a base named
+/// `...Case`) or of a class whose methods use `self.env` or `cls.env`.
+fn self_has_env(ctx: &PythonContext, scopes: &[Scope]) -> bool {
+    let [.., Scope::Class(class), Scope::Function(function)] = scopes else {
+        return false;
+    };
+    let first = function
+        .parameters
+        .posonlyargs
+        .iter()
+        .chain(&function.parameters.args)
+        .next();
+    let body = &ctx.source[class.start().to_usize()..class.end().to_usize()];
+    let test_case = class
+        .bases()
+        .iter()
+        .any(|base| crate::semantic::func_name(base).ends_with("Case"));
+    first.is_some_and(|p| p.parameter.name.as_str() == "self")
+        && (test_case || body.contains("self.env") || body.contains("cls.env"))
+}
+
+/// Every use of the removed names through `env["ir.http"]`, and the import
+/// without them. None when a use has no environment at hand.
+fn fix_http_routing(
+    ctx: &PythonContext,
+    import: &ruff_python_ast::StmtImportFrom,
+    removed: &[&ruff_python_ast::Alias],
+    request_imported: bool,
+) -> Option<Fix> {
+    let bound = |alias: &ruff_python_ast::Alias| alias.asname.as_ref().unwrap_or(&alias.name).to_string();
+    let names: Vec<(String, &str)> = removed.iter().map(|a| (bound(a), a.name.as_str())).collect();
+    let source = ctx.source;
+    // Before Python 3.12 an f-string cannot hold its own quote.
+    let mut fstrings = Vec::new();
+    walk(ctx.parsed.suite(), |node, _| {
+        if let Node::Expr(Expr::FString(f)) = node {
+            let text = &source[f.start().to_usize()..f.end().to_usize()];
+            let quote = text
+                .trim_start_matches(|c: char| c.is_ascii_alphabetic())
+                .chars()
+                .next();
+            fstrings.push((f.range(), quote));
+        }
+    });
+    let mut edits = Vec::new();
+    let mut ok = true;
+    walk(ctx.parsed.suite(), |node, scopes| {
+        let Node::Expr(Expr::Name(name)) = node else { return };
+        let Some((_, original)) = names.iter().find(|(b, _)| b == name.id.as_str()) else {
+            return;
+        };
+        if !matches!(name.ctx, ExprContext::Load) {
+            ok = false;
+            return;
+        }
+        let env = if self_is_a_record(ctx, scopes) || self_has_env(ctx, scopes) {
+            "self.env"
+        } else if request_imported {
+            "request.env"
+        } else {
+            ok = false;
+            return;
+        };
+        let in_double = fstrings
+            .iter()
+            .any(|(range, quote)| *quote == Some('"') && range.contains_range(name.range()));
+        let model = if in_double { "'ir.http'" } else { "\"ir.http\"" };
+        edits.push(Edit::replace(
+            name.start().to_usize(),
+            name.end().to_usize(),
+            format!("{env}[{model}]._{original}"),
+        ));
+    });
+    if !ok {
+        return None;
+    }
+    let kept: Vec<&str> = import
+        .names
+        .iter()
+        .filter(|a| !removed.iter().any(|r| std::ptr::eq(*r, *a)))
+        .map(|a| &source[a.start().to_usize()..a.end().to_usize()])
+        .collect();
+    let (start, end) = (import.start().to_usize(), import.end().to_usize());
+    if kept.is_empty() {
+        let line_start = source[..start].rfind('\n').map_or(0, |n| n + 1);
+        let rest = &source[end..];
+        let after = rest.trim_start_matches([' ', '\t']);
+        if !source[line_start..start].trim().is_empty() || !(after.starts_with('\n') || after.is_empty()) {
+            return None;
+        }
+        let line_end = end + (rest.len() - after.len()) + usize::from(after.starts_with('\n'));
+        edits.push(Edit::delete(line_start, line_end));
+    } else {
+        edits.push(Edit::replace(
+            start,
+            end,
+            format!("from {HTTP_ROUTING} import {}", kept.join(", ")),
+        ));
+    }
+    Some(Fix::safe("Use the `ir.http` class methods", edits))
 }

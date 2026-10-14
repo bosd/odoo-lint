@@ -185,6 +185,7 @@ pub const ALL: &[Rule] = &[
     upgrade::v18::USER_HAS_GROUPS,
     upgrade::v18::PYTHON_TREE_VIEW,
     upgrade::v18::NAME_SEARCH_OVERRIDE,
+    upgrade::v18::HTTP_ROUTING_HELPERS,
     upgrade::v19::ENV_SHORTCUTS,
     upgrade::v19::SQL_CONSTRAINTS,
     upgrade::v19::API_MODEL_CREATE,
