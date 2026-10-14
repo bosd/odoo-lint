@@ -71,7 +71,7 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
     // Some rules share a check function, which reports for each of them.
     let mut done: Vec<usize> = Vec::new();
     for rule in rules {
-        if let Check::Xml(check) = rule.check {
+        if let Some(check) = rule.check.xml() {
             let key = check as usize;
             if rule.applies_in(version) && !done.contains(&key) {
                 done.push(key);

@@ -117,7 +117,7 @@ pub fn run_python_rule_with(
     let semantic = Semantic::new(parsed.suite());
     let line_index = LineIndex::from_source_text(source);
     let mut reporter = Reporter::new(file_path, source, &line_index);
-    if let crate::rules::Check::Python(check) = rule.check {
+    if let Some(check) = rule.check.python() {
         let ctx = PythonContext {
             file_path,
             source,

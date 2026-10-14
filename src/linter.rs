@@ -69,11 +69,7 @@ fn lint_xml(
     settings: &Settings,
     sources: &Sources,
 ) -> Vec<Violation> {
-    let xml_rules: Vec<&Rule> = rules
-        .iter()
-        .copied()
-        .filter(|r| matches!(r.check, Check::Xml(_)))
-        .collect();
+    let xml_rules: Vec<&Rule> = rules.iter().copied().filter(|r| r.check.xml().is_some()).collect();
     if xml_rules.is_empty() {
         return Vec::new();
     }
@@ -296,7 +292,7 @@ fn lint_file(
         settings,
     };
     for rule in &rules {
-        if let Check::Python(check) = rule.check {
+        if let Some(check) = rule.check.python() {
             check(&python_ctx, &mut reporter);
         }
     }

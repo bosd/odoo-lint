@@ -46,8 +46,31 @@ pub enum Check {
     Xml(fn(&xml::XmlContext, &mut xml::XmlReporter)),
     /// Runs once per module, on its folder and manifest.
     Module(fn(&module::ModuleContext, &mut module::ModuleReporter)),
+    /// A [`Check::Python`] and a [`Check::Xml`] in one rule.
+    PythonXml(
+        fn(&PythonContext, &mut Reporter),
+        fn(&xml::XmlContext, &mut xml::XmlReporter),
+    ),
     /// Emitted by the linter itself (e.g. syntax errors).
     Builtin,
+}
+
+impl Check {
+    /// The check of Python files, if the rule has one.
+    pub fn python(&self) -> Option<fn(&PythonContext, &mut Reporter)> {
+        match *self {
+            Check::Python(check) | Check::PythonXml(check, _) => Some(check),
+            _ => None,
+        }
+    }
+
+    /// The check of XML data files, if the rule has one.
+    pub fn xml(&self) -> Option<fn(&xml::XmlContext, &mut xml::XmlReporter)> {
+        match *self {
+            Check::Xml(check) | Check::PythonXml(_, check) => Some(check),
+            _ => None,
+        }
+    }
 }
 
 /// Metadata, documentation and implementation of a rule.
@@ -145,6 +168,8 @@ pub const ALL: &[Rule] = &[
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,
+    upgrade::renames::RENAMED_15,
+    upgrade::renames::REMOVED_15,
     upgrade::v16::XML_EXTENSION_GROUPS,
     upgrade::v16::XML_HTML_FIELD_TYPE,
     upgrade::v16::ASSETS_QWEB,
@@ -156,6 +181,8 @@ pub const ALL: &[Rule] = &[
     upgrade::v16::SEARCH_ARGS,
     upgrade::v16::OSV_QUERY,
     upgrade::v16::FIELDS_VIEW_GET,
+    upgrade::renames::RENAMED_16,
+    upgrade::renames::REMOVED_16,
     upgrade::v17::XML_ATTRS,
     upgrade::v17::XML_LIST_INVISIBLE,
     upgrade::v17::XML_SHORTCUT_TAGS,
@@ -177,6 +204,8 @@ pub const ALL: &[Rule] = &[
     upgrade::v17::READ_GROUP_SIGNATURE,
     upgrade::v17::OPENERP_MANIFEST,
     upgrade::v17::REMOVED_BUNDLES_RULE,
+    upgrade::renames::RENAMED_17,
+    upgrade::renames::REMOVED_17,
     upgrade::v18::XML_TREE_VIEW,
     upgrade::v18::XML_VIEW_MODE_TREE,
     upgrade::v18::XML_TREE_REFERENCE,
@@ -188,6 +217,8 @@ pub const ALL: &[Rule] = &[
     upgrade::v18::PYTHON_TREE_VIEW,
     upgrade::v18::NAME_SEARCH_OVERRIDE,
     upgrade::v18::HTTP_ROUTING_HELPERS,
+    upgrade::renames::RENAMED_18,
+    upgrade::renames::REMOVED_18,
     upgrade::v19::ENV_SHORTCUTS,
     upgrade::v19::SQL_CONSTRAINTS,
     upgrade::v19::API_MODEL_CREATE,
@@ -212,6 +243,8 @@ pub const ALL: &[Rule] = &[
     upgrade::v19::IMPLICIT_NAME,
     upgrade::v19::SUPERUSER_ID_IMPORT,
     upgrade::v19::CRON_NOTIFY_PROGRESS,
+    upgrade::renames::RENAMED_19,
+    upgrade::renames::REMOVED_19,
     upgrade::v20::MANIFEST_ACCESS_CSV,
     upgrade::v20::XML_ACCESS_RECORDS,
     upgrade::v20::XML_T_ESC,

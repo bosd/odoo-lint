@@ -82,6 +82,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
+| [U1590](U1590.md) | `upgrade-renamed-15` | A model that Odoo 15.0 renamed or merged into another. |
+| [U1591](U1591.md) | `upgrade-removed-15` | A model that Odoo 15.0 removed. |
 | [U1601](U1601.md) | `upgrade-extension-view-groups` | An extension view sets `groups_id`, rejected since Odoo 16.0. |
 | [U1602](U1602.md) | `upgrade-html-field-type` | `body_html` of a mail template loaded with `type="xml"`, deprecated in Odoo 16.0. |
 | [U1603](U1603.md) | `upgrade-assets-qweb` | The manifest adds templates to `web.assets_qweb`, removed in Odoo 16.0. |
@@ -93,6 +95,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1609](U1609.md) | `upgrade-search-args` | `search(args=...)`, renamed `domain=` in Odoo 16.0. |
 | [U1610](U1610.md) | `upgrade-osv-query` | `odoo.osv.query`, moved to `odoo.tools.query` in Odoo 16.0. |
 | [U1611](U1611.md) | `upgrade-fields-view-get` | A `fields_view_get` override, no longer called by the web client since Odoo 16.0. |
+| [U1690](U1690.md) | `upgrade-renamed-16` | A model that Odoo 16.0 renamed or merged into another. |
+| [U1691](U1691.md) | `upgrade-removed-16` | A model that Odoo 16.0 removed. |
 | [U1701](U1701.md) | `upgrade-attrs-states` | A view uses `attrs` or `states`, rejected since Odoo 17.0. |
 | [U1702](U1702.md) | `upgrade-list-column-invisible` | A list column hidden with `invisible`, which only hides the cells since Odoo 17.0. |
 | [U1703](U1703.md) | `upgrade-report-act-window-tags` | `<report>` or `<act_window>`, removed in Odoo 17.0. |
@@ -114,6 +118,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1719](U1719.md) | `upgrade-private-read-group` | `_read_group` called with the 16.0 signature (`lazy`, `orderby`, fields). |
 | [U1720](U1720.md) | `upgrade-openerp-manifest` | The manifest is `__openerp__.py`, deprecated in 17.0 and not found by 19.0. |
 | [U1721](U1721.md) | `upgrade-removed-asset-bundles` | The manifest adds files to an asset bundle removed in Odoo 17.0. |
+| [U1790](U1790.md) | `upgrade-renamed-17` | A model that Odoo 17.0 renamed or merged into another. |
+| [U1791](U1791.md) | `upgrade-removed-17` | A model that Odoo 17.0 removed. |
 | [U1801](U1801.md) | `upgrade-tree-view` | A view uses `<tree>`, renamed `<list>` in Odoo 18.0. |
 | [U1802](U1802.md) | `upgrade-view-mode-tree` | An action's `view_mode` says `tree`, renamed `list` in Odoo 18.0. |
 | [U1803](U1803.md) | `upgrade-tree-reference` | An xpath, `mode` or `tree_view_ref` refers to `tree`, renamed `list` in Odoo 18.0. |
@@ -125,6 +131,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
 | [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
 | [U1811](U1811.md) | `upgrade-http-routing-helpers` | `slug`, `slugify`, `unslug` or `url_for` is imported from `http_routing`, removed in Odoo 18.0. |
+| [U1890](U1890.md) | `upgrade-renamed-18` | A model that Odoo 18.0 renamed or merged into another. |
+| [U1891](U1891.md) | `upgrade-removed-18` | A model that Odoo 18.0 removed. |
 | [U1901](U1901.md) | `upgrade-env-shortcuts` | `._uid`, `._context` or `request.cr/uid/context`, deprecated in Odoo 19.0. |
 | [U1902](U1902.md) | `upgrade-sql-constraints` | `_sql_constraints`, silently ignored since Odoo 19.0. |
 | [U1903](U1903.md) | `upgrade-api-model-create` | `create` is decorated with `@api.model`, which makes it a batch create in Odoo 19.0. |
@@ -149,6 +157,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1922](U1922.md) | `upgrade-implicit-model-name` | A model class has no `_name` and a list `_inherit`; Odoo 19.0 names it after the class. |
 | [U1923](U1923.md) | `upgrade-superuser-id` | `SUPERUSER_ID` is imported from `odoo`, moved to `odoo.api` in Odoo 19.0. |
 | [U1924](U1924.md) | `upgrade-cron-notify-progress` | `_notify_progress()`, deprecated in Odoo 19.0 for `_commit_progress()`. |
+| [U1990](U1990.md) | `upgrade-renamed-19` | A model that Odoo 19.0 renamed or merged into another. |
+| [U1991](U1991.md) | `upgrade-removed-19` | A model that Odoo 19.0 removed. |
 | [U2001](U2001.md) | `upgrade-ir-model-access-csv` | The manifest loads `ir.model.access.csv`, a model replaced by `ir.access` in Odoo 20.0. |
 | [U2002](U2002.md) | `upgrade-ir-access-records` | `ir.rule` or `ir.model.access` records, models replaced by `ir.access` in Odoo 20.0. |
 | [U2003](U2003.md) | `upgrade-t-esc-t-raw` | `t-esc` or `t-raw`, removed from QWeb in Odoo 20.0. |
@@ -311,6 +321,8 @@ PO104
 R8101
 R8180
 R8181
+U1590
+U1591
 U1601
 U1602
 U1603
@@ -322,6 +334,8 @@ U1608
 U1609
 U1610
 U1611
+U1690
+U1691
 U1701
 U1702
 U1703
@@ -343,6 +357,8 @@ U1718
 U1719
 U1720
 U1721
+U1790
+U1791
 U1801
 U1802
 U1803
@@ -354,6 +370,8 @@ U1808
 U1809
 U1810
 U1811
+U1890
+U1891
 U1901
 U1902
 U1903
@@ -378,6 +396,8 @@ U1921
 U1922
 U1923
 U1924
+U1990
+U1991
 U2001
 U2002
 U2003
