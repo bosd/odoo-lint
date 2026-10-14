@@ -44,6 +44,7 @@ lsp-server = "0.7"
 lsp-types = "0.95"
 roxmltree = "0.21.1"
 lax-markup = "0.3.2"
+lax-css = "0.3"
 dprint-core = { version = "0.67.4", default-features = false, features = ["formatting"] }
 
 [profile.release]
