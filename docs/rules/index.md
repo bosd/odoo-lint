@@ -54,6 +54,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [MOD007](MOD007.md) | `unused-logger` | `_logger = logging.getLogger(__name__)` is never used. |
 | [MOD008](MOD008.md) | `use-header-comments` | A Python file starts with comments such as a copyright header. |
 | [MOD009](MOD009.md) | `field-string-redundant` | A field's `string` is the label Odoo derives from its name anyway. |
+| [MOD010](MOD010.md) | `manifest-website` | The manifest `website` is not the one the configuration sets. |
 | [ODOO001](ODOO001.md) | `missing-depends` | Compute method referenced by `compute=` lacks `@api.depends`. |
 | [ODOO002](ODOO002.md) | `module-unwanted-file` | A package, archive, executable, database dump or video inside a module. |
 | [ODOO003](ODOO003.md) | `module-large-file` | A file inside a module is larger than the limit (1 MiB by default). |
@@ -293,6 +294,7 @@ MOD006
 MOD007
 MOD008
 MOD009
+MOD010
 ODOO001
 ODOO002
 ODOO003
