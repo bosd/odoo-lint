@@ -44,6 +44,11 @@ lsp-server = "0.7"
 lsp-types = "0.95"
 roxmltree = "0.21.1"
 lax-markup = "0.3.2"
+oxc_allocator = "0.154"
+oxc_ast = "0.154"
+oxc_ast_visit = "0.154"
+oxc_parser = "0.154"
+oxc_span = "0.154"
 dprint-core = { version = "0.67.4", default-features = false, features = ["formatting"] }
 
 [profile.release]

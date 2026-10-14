@@ -5,7 +5,7 @@
 //! existing `# pylint: disable=` comments and configs keep working. Rules of
 //! odoo-lint's own use `ODOO###` codes.
 
-use crate::checker::{ManifestContext, PythonContext, Reporter};
+use crate::checker::{JsContext, ManifestContext, PythonContext, Reporter};
 use crate::odoo_version::OdooVersion;
 use po::PoContext;
 
@@ -47,6 +47,9 @@ pub enum Check {
     Xml(fn(&xml::XmlContext, &mut xml::XmlReporter)),
     /// Runs once per module, on its folder and manifest.
     Module(fn(&module::ModuleContext, &mut module::ModuleReporter)),
+    /// Runs on every JavaScript file of a module's `static/src` and
+    /// `static/tests`, parsed by oxc.
+    Js(fn(&JsContext, &mut Reporter)),
     /// A [`Check::Python`] and a [`Check::Xml`] in one rule.
     PythonXml(
         fn(&PythonContext, &mut Reporter),
@@ -61,6 +64,14 @@ impl Check {
     pub fn python(&self) -> Option<fn(&PythonContext, &mut Reporter)> {
         match *self {
             Check::Python(check) | Check::PythonXml(check, _) => Some(check),
+            _ => None,
+        }
+    }
+
+    /// The check of JavaScript files, if the rule has one.
+    pub fn js(&self) -> Option<fn(&JsContext, &mut Reporter)> {
+        match *self {
+            Check::Js(check) => Some(check),
             _ => None,
         }
     }
@@ -209,6 +220,9 @@ pub const ALL: &[Rule] = &[
     upgrade::v17::READ_GROUP_SIGNATURE,
     upgrade::v17::OPENERP_MANIFEST,
     upgrade::v17::REMOVED_BUNDLES_RULE,
+    upgrade::js::PATCH_NAME,
+    upgrade::js::UNPATCH,
+    upgrade::js::FIELD_REGISTRY_COMPONENT,
     upgrade::renames::RENAMED_17,
     upgrade::renames::REMOVED_17,
     upgrade::v18::XML_TREE_VIEW,
@@ -222,6 +236,8 @@ pub const ALL: &[Rule] = &[
     upgrade::v18::PYTHON_TREE_VIEW,
     upgrade::v18::NAME_SEARCH_OVERRIDE,
     upgrade::v18::HTTP_ROUTING_HELPERS,
+    upgrade::js::RPC_SERVICE,
+    upgrade::js::LEGACY_WIDGET,
     upgrade::renames::RENAMED_18,
     upgrade::renames::REMOVED_18,
     upgrade::v19::ENV_SHORTCUTS,

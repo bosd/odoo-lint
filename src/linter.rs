@@ -1,6 +1,6 @@
 //! Runs the enabled rules over files and modules.
 
-use crate::checker::{ManifestContext, ModuleInfo, PythonContext, Reporter};
+use crate::checker::{JsContext, ManifestContext, ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
 use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
 use crate::po::{PoError, PoFile};
@@ -160,7 +160,68 @@ pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
 }
 
 fn is_linted_extension(extension: &std::ffi::OsStr) -> bool {
-    extension == "py" || extension == "xml" || is_po_extension(extension)
+    extension == "py" || extension == "xml" || extension == "js" || is_po_extension(extension)
+}
+
+/// Whether `path` is JavaScript of a module's assets or tests, not a
+/// library it ships (`static/lib`, `static/src/lib`).
+fn is_module_js(path: &Path) -> bool {
+    let parts: Vec<&str> = path.iter().filter_map(|p| p.to_str()).collect();
+    let assets = parts
+        .windows(2)
+        .any(|w| w == ["static", "src"] || w == ["static", "tests"]);
+    let library = parts.windows(2).any(|w| w == ["static", "lib"]) || parts.windows(2).any(|w| w == ["src", "lib"]);
+    assets && !library
+}
+
+/// The JavaScript rules on one file. Rules that share a check function run
+/// it once; it reports for each of them, so findings of rules not enabled
+/// are dropped.
+fn lint_js_file(
+    path: &Path,
+    module: Option<&ModuleInfo>,
+    rules: &[&'static Rule],
+    settings: &Settings,
+    sources: &Sources,
+) -> Vec<Violation> {
+    let js_rules: Vec<&Rule> = rules
+        .iter()
+        .copied()
+        .filter(|rule| rule.check.js().is_some() && !settings.is_ignored_in_file(path, rule))
+        .collect();
+    if js_rules.is_empty() || !is_module_js(path) {
+        return Vec::new();
+    }
+    let Ok(source) = sources.read_to_string(path) else {
+        return Vec::new();
+    };
+    let allocator = oxc_allocator::Allocator::default();
+    let parsed = oxc_parser::Parser::new(&allocator, &source, oxc_span::SourceType::mjs()).parse();
+    // Not ours to report: eslint/oxlint say why the file does not parse.
+    if !parsed.diagnostics.is_empty() {
+        return Vec::new();
+    }
+    let file_path = path.to_string_lossy();
+    let line_index = LineIndex::from_source_text(&source);
+    let mut reporter = Reporter::new(&file_path, &source, &line_index);
+    let ctx = JsContext {
+        file_path: &file_path,
+        source: &source,
+        program: &parsed.program,
+        module,
+        settings,
+    };
+    let mut done: Vec<usize> = Vec::new();
+    for rule in &js_rules {
+        let check = rule.check.js().expect("filtered");
+        if !done.contains(&(check as usize)) {
+            done.push(check as usize);
+            check(&ctx, &mut reporter);
+        }
+    }
+    let mut violations = reporter.violations;
+    violations.retain(|v| js_rules.iter().any(|r| r.code == v.code));
+    violations
 }
 
 fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
@@ -254,6 +315,9 @@ fn lint_file(
     if path.extension().is_some_and(|e| e == "xml") {
         // Linted per module, in `lint_xml`.
         return (Vec::new(), Vec::new());
+    }
+    if path.extension().is_some_and(|e| e == "js") {
+        return (lint_js_file(path, module, &rules, settings, sources), Vec::new());
     }
     let Ok(source) = sources.read_to_string(path) else {
         return (Vec::new(), Vec::new());

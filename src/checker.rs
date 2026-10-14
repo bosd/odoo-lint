@@ -34,6 +34,15 @@ pub struct PythonContext<'a> {
     pub settings: &'a Settings,
 }
 
+/// Context for rules that inspect a JavaScript file of a module's assets.
+pub struct JsContext<'a> {
+    pub file_path: &'a str,
+    pub source: &'a str,
+    pub program: &'a oxc_ast::ast::Program<'a>,
+    pub module: Option<&'a ModuleInfo>,
+    pub settings: &'a Settings,
+}
+
 /// Context for rules that inspect a module manifest.
 pub struct ManifestContext<'a> {
     pub file_path: &'a str,
