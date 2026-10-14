@@ -115,6 +115,15 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Write requirements.txt from the Python external_dependencies of the addons in a folder
+    Requirements {
+        /// The folder with the addons
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Write nothing; exit with 1 when requirements.txt is out of date (for CI)
+        #[arg(long)]
+        check: bool,
+    },
     /// Lint the file an AI coding agent just edited (hook event JSON on stdin)
     Hook,
     /// Run a language server on stdin/stdout, for editors
@@ -182,6 +191,29 @@ fn main() -> ExitCode {
                 }
                 if check && !changes.is_empty() {
                     eprintln!("Run `odl readme` to update {} file(s).", changes.len());
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::from(2)
+            }
+        },
+        Commands::Requirements { dir, check } => match odoo_lint::requirements::run(&dir, check) {
+            Ok(change) => {
+                use odoo_lint::requirements::Change;
+                match (&change, check) {
+                    (Some(Change::Written(path)), false) => eprintln!("wrote {}", path.display()),
+                    (Some(Change::Removed(path)), false) => eprintln!("removed {}", path.display()),
+                    (Some(Change::Written(path) | Change::Removed(path)), true) => {
+                        eprintln!("out of date: {}", path.display());
+                    }
+                    (None, _) => {}
+                }
+                if check && change.is_some() {
+                    eprintln!("Run `odl requirements` to update it.");
                     ExitCode::from(1)
                 } else {
                     ExitCode::SUCCESS

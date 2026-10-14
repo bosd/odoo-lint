@@ -30,6 +30,7 @@ ai
 translations
 upgrades
 readme
+requirements-txt
 benchmarks
 rules/index
 parity
