@@ -17,6 +17,7 @@ pub mod po;
 pub mod pyliteral;
 pub mod readme;
 pub(crate) mod receiver;
+pub mod requirements;
 pub mod rules;
 pub mod semantic;
 pub mod server;
