@@ -106,6 +106,21 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Format XML files, moving only whitespace (lax-markup), and never their content
+    Format {
+        /// Files or directories to format
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// Write nothing; exit with 1 when a file is not formatted (for CI)
+        #[arg(long)]
+        check: bool,
+        /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Skip excluded files even when passed explicitly (for pre-commit)
+        #[arg(long)]
+        force_exclude: bool,
+    },
     /// Build each module's README.md and static/description/index.html from its readme/ fragments
     Readme {
         /// Modules, folders with modules, or files of modules (as hooks pass them)
@@ -183,6 +198,12 @@ fn main() -> ExitCode {
             config,
             output,
         } => badge(&paths, upgrade, config, output),
+        Commands::Format {
+            paths,
+            check,
+            config,
+            force_exclude,
+        } => format(&paths, check, config, force_exclude),
         Commands::Readme { paths, check } => match odoo_lint::readme::run(&paths, check) {
             Ok(changes) => {
                 for change in &changes {
@@ -502,6 +523,43 @@ fn upgrade_check(args: UpgradeArgs) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+fn format(paths: &[PathBuf], check: bool, config: Option<PathBuf>, force_exclude: bool) -> ExitCode {
+    let mut settings = match Settings::load(&paths[0], config.as_deref(), CliOverrides::default()) {
+        Ok(loaded) => loaded.settings,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    settings.force_exclude |= force_exclude;
+    let results = match odoo_lint::format::run(paths, &settings, check) {
+        Ok(results) => results,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut pending = 0;
+    for (path, outcome) in &results {
+        match outcome {
+            odoo_lint::format::Outcome::Formatted(_) if check => {
+                pending += 1;
+                eprintln!("would format {}", path.display());
+            }
+            odoo_lint::format::Outcome::Formatted(_) => eprintln!("formatted {}", path.display()),
+            odoo_lint::format::Outcome::Refused(reason) => eprintln!("left as is {}: {reason}", path.display()),
+            odoo_lint::format::Outcome::Invalid(reason) => eprintln!("not XML {}: {reason}", path.display()),
+            odoo_lint::format::Outcome::Unchanged => {}
+        }
+    }
+    if pending > 0 {
+        eprintln!("Run `odl format` to format {pending} file(s).");
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 

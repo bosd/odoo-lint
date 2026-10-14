@@ -29,6 +29,7 @@ editors
 ai
 translations
 upgrades
+format
 readme
 requirements-txt
 benchmarks
