@@ -408,7 +408,7 @@ impl Server {
         })
     }
 
-    /// The XML ids, models or fields that fit at a position.
+    /// The XML ids, models, fields or methods that fit at a position.
     fn completion(&self, params: &lsp_types::CompletionParams) -> Option<lsp_types::CompletionResponse> {
         let position = &params.text_document_position;
         let uri = &position.text_document.uri;
@@ -432,6 +432,7 @@ impl Server {
                     crate::completion::Kind::XmlId => lsp_types::CompletionItemKind::REFERENCE,
                     crate::completion::Kind::Model => lsp_types::CompletionItemKind::CLASS,
                     crate::completion::Kind::Field => lsp_types::CompletionItemKind::FIELD,
+                    crate::completion::Kind::Method => lsp_types::CompletionItemKind::METHOD,
                 }),
                 detail: Some(candidate.detail),
                 text_edit: Some(lsp_types::CompletionTextEdit::Edit(TextEdit::new(

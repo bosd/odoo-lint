@@ -13,7 +13,7 @@ use crate::semantic::func_lib;
 use ruff_python_ast::{Expr, Stmt, StmtClassDef};
 use ruff_python_parser::parse_module;
 use ruff_text_size::Ranged;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -800,6 +800,44 @@ impl Closure {
             .expect("methods cache")
             .insert(model.to_string(), computed.clone());
         computed
+    }
+
+    /// The methods (`def`) of `model` that the closure shows, with the
+    /// module defining each: its classes, those of its parents and, when an
+    /// Odoo source is next to `base`, `BaseModel`'s. Unlike [`Self::methods`]
+    /// a part that is unknown is left out rather than making it `None`.
+    pub fn method_names(&self, model: &str) -> BTreeMap<String, String> {
+        let mut found = BTreeMap::new();
+        self.collect_method_names(model, &mut HashSet::new(), &mut found);
+        if let Some(methods) = self.module("base").and_then(|base| base_model_methods(&base.path)) {
+            for method in methods.iter() {
+                found.entry(method.clone()).or_insert_with(|| "BaseModel".to_string());
+            }
+        }
+        found
+    }
+
+    fn collect_method_names(&self, model: &str, visiting: &mut HashSet<String>, found: &mut BTreeMap<String, String>) {
+        if !visiting.insert(model.to_string()) {
+            return;
+        }
+        let mut parents: Vec<String> = Vec::new();
+        for module in &self.modules {
+            for class in &module.classes {
+                let defines = class.name.as_deref() == Some(model);
+                let extends = class.name.is_none() && class.inherit.iter().any(|i| i == model);
+                if !defines && !extends {
+                    continue;
+                }
+                for (method, _) in &class.method_lines {
+                    found.entry(method.clone()).or_insert_with(|| module.name.clone());
+                }
+                parents.extend(class.inherit.iter().filter(|i| *i != model).cloned());
+            }
+        }
+        for parent in parents {
+            self.collect_method_names(&parent, visiting, found);
+        }
     }
 
     fn compute_methods(&self, model: &str, visiting: &mut HashSet<String>) -> Option<HashSet<String>> {

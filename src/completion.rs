@@ -1,4 +1,4 @@
-//! Completion of XML ids, models and fields in Odoo files, from the index of
+//! Completion of XML ids, models, fields and methods in Odoo files, from the index of
 //! the addons path: where go to definition finds a name, completion offers
 //! the names that fit. The language server answers
 //! `textDocument/completion` with it.
@@ -14,6 +14,7 @@ pub enum Kind {
     XmlId,
     Model,
     Field,
+    Method,
 }
 
 /// A name to offer.
@@ -160,6 +161,33 @@ fn fields(closure: &Closure, model: &str) -> Vec<Candidate> {
     candidates
 }
 
+/// The methods of `model`, except the dunder ones; with the module that
+/// defines each.
+fn methods(closure: &Closure, model: &str) -> Vec<Candidate> {
+    closure
+        .method_names(model)
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("__"))
+        .map(|(label, module)| Candidate {
+            label,
+            kind: Kind::Method,
+            detail: module,
+        })
+        .collect()
+}
+
+/// Whether the name starting at `start` follows a `.` in code rather than in
+/// a string: `order.` is attribute access, `"partner_id.` a field path.
+fn after_attribute_dot(text: &str, start: usize) -> bool {
+    let before = &text[..start];
+    let Some(line) = before.strip_suffix('.') else {
+        return false;
+    };
+    let line = &line[line.rfind('\n').map_or(0, |i| i + 1)..];
+    let quotes = line.chars().filter(|c| matches!(c, '"' | '\'')).count();
+    quotes % 2 == 0 && line.ends_with(|c: char| c.is_alphanumeric() || matches!(c, '_' | ')' | ']'))
+}
+
 /// The model reached from `model` through the relational fields `path`.
 fn follow(closure: &Closure, model: &str, path: &[&str]) -> Option<String> {
     let mut current = model.to_string();
@@ -187,10 +215,20 @@ pub fn completion(
         Target::Field { models, path, segment } => {
             let segments: Vec<&str> = path.split('.').collect();
             let before = &segments[..segment.min(segments.len())];
+            let attribute = extension == "py" && after_attribute_dot(text, start);
             let mut found: Vec<Candidate> = Vec::new();
             for model in &models {
                 if let Some(current) = follow(&closure, model, before) {
                     found.extend(fields(&closure, &current));
+                    // `order.` takes methods too; a field path does not.
+                    if attribute {
+                        let fields: Vec<String> = found.iter().map(|c| c.label.clone()).collect();
+                        found.extend(
+                            methods(&closure, &current)
+                                .into_iter()
+                                .filter(|m| !fields.contains(&m.label)),
+                        );
+                    }
                 }
             }
             found.sort_by(|a, b| a.label.cmp(&b.label));
@@ -203,8 +241,19 @@ pub fn completion(
                 .map(|current| fields(&closure, &current))
                 .unwrap_or_default()
         }
-        // Methods are not offered (yet).
-        Target::Method { .. } => Vec::new(),
+        // `order.action_` with the call already written.
+        Target::Method { models, path, .. } => {
+            let path: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+            let mut found: Vec<Candidate> = Vec::new();
+            for model in &models {
+                if let Some(current) = follow(&closure, model, &path) {
+                    found.extend(methods(&closure, &current));
+                }
+            }
+            found.sort_by(|a, b| a.label.cmp(&b.label));
+            found.dedup_by(|a, b| a.label == b.label);
+            found
+        }
     };
     Some(Completion { start, candidates })
 }
