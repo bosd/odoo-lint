@@ -94,6 +94,8 @@ pub struct RulesConfig {
     /// ODOO013: models only privileged groups may read, besides those the
     /// access rights show.
     pub view_field_restricted_comodel: Option<RestrictedModelsConfig>,
+    /// MOD010: the website every manifest must have.
+    pub manifest_website: Option<WebsiteConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -123,7 +125,14 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     module_unwanted_file: None,
     module_large_file: None,
     view_field_restricted_comodel: None,
+    manifest_website: None,
 };
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct WebsiteConfig {
+    pub website: Option<String>,
+}
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]

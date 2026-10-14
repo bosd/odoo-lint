@@ -140,6 +140,7 @@ pub const ALL: &[Rule] = &[
     module::UNUSED_LOGGER,
     module::USE_HEADER_COMMENTS,
     module::FIELD_STRING_REDUNDANT,
+    manifest::values::MANIFEST_WEBSITE,
     odoo001_missing_depends::RULE,
     module::UNWANTED_FILE,
     module::LARGE_FILE,

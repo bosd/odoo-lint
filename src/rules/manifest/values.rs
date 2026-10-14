@@ -1,9 +1,10 @@
 //! Manifest values: license, version format, development status, category,
 //! summary, maintainers, support email, website and external assets.
 
-use super::{key_or_dict, string_elements};
+use super::{add_value, key_or_dict, string_elements};
 use crate::checker::{ManifestContext, Reporter};
 use crate::config::list_or;
+use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
 use crate::pyliteral::{is_truthy, repr_str, str_of};
 use crate::rules::{Check, Rule};
@@ -579,6 +580,95 @@ fn check_website(ctx: &ManifestContext, reporter: &mut Reporter) {
     }
 }
 
+pub const MANIFEST_WEBSITE: Rule = Rule {
+    code: "MOD010",
+    name: "manifest-website",
+    summary: "The manifest `website` is not the one the configuration sets.",
+    doc: r#"
+## What it does
+
+Checks that the manifest's `website` is the URL the configuration sets, and
+reports a manifest without one. Does nothing without a configured website.
+
+## Why is this bad?
+
+Odoo links to the website from the Apps menu: the modules of one repository
+point to one place, the company's or the project's.
+
+## Options
+
+```toml
+[tool.odoo-lint.rules.manifest-website]
+website = "https://www.example.com"
+```
+
+## Fix safety
+
+Safe: the configured URL replaces the value, or is added as the last entry.
+This replaces OCA's `oca-fix-manifest-website` hook.
+"#,
+    check: Check::Manifest(check_manifest_website),
+    min_odoo: None,
+    max_odoo: None,
+};
+
+fn check_manifest_website(ctx: &ManifestContext, reporter: &mut Reporter) {
+    let Some(expected) = ctx
+        .settings
+        .config
+        .rules()
+        .manifest_website
+        .as_ref()
+        .and_then(|c| c.website.as_deref())
+    else {
+        return;
+    };
+    match ctx.manifest.entry("website") {
+        Some((key, value)) => {
+            let Some(literal) = value.as_string_literal_expr() else {
+                return;
+            };
+            let current = literal.value.to_str();
+            if current == expected {
+                return;
+            }
+            let violation = reporter.report(
+                &MANIFEST_WEBSITE,
+                key.start(),
+                format!("The manifest website is \"{current}\"; it must be \"{expected}\""),
+            );
+            if !literal.value.is_implicit_concatenated() {
+                let source = &ctx.source[literal.range()];
+                let quote = source
+                    .trim_start_matches(|c: char| c.is_ascii_alphabetic())
+                    .chars()
+                    .next();
+                if let Some(quote @ ('"' | '\'')) = quote {
+                    if !expected.contains([quote, '\\', '\n']) {
+                        violation.fix = Some(Fix::safe(
+                            format!("Set `website` to \"{expected}\""),
+                            vec![Edit::replace(
+                                literal.start().to_usize(),
+                                literal.end().to_usize(),
+                                format!("{quote}{expected}{quote}"),
+                            )],
+                        ));
+                    }
+                }
+            }
+        }
+        None => {
+            reporter
+                .report(
+                    &MANIFEST_WEBSITE,
+                    ctx.manifest.dict().start(),
+                    format!("The manifest has no website; it must be \"{expected}\""),
+                )
+                .fix = add_value(ctx, "website", &toml::Value::String(expected.to_string()));
+        }
+    }
+}
+
 fn is_external_url(url: &str) -> bool {
     !url_scheme_and_netloc(url).0.is_empty()
 }
@@ -627,6 +717,39 @@ mod tests {
 
     fn messages(rule: &Rule, src: &str) -> Vec<String> {
         run(rule, src).into_iter().map(|v| v.message).collect()
+    }
+
+    #[test]
+    fn manifest_website() {
+        let config =
+            OdooLintConfig::from_odoo_lint_toml("[rules.manifest-website]\nwebsite = \"https://www.example.com\"\n")
+                .unwrap();
+        let settings = Settings::new(config, None, CliOverrides::default()).unwrap().0;
+        let fixed = |src: &str| {
+            let violations = run_manifest_rule(&MANIFEST_WEBSITE, src, "m", &settings);
+            let edits: Vec<&crate::fix::Edit> = violations
+                .iter()
+                .flat_map(|v| v.fix.iter().flat_map(|f| &f.edits))
+                .collect();
+            (violations.len(), crate::fix::apply_edits(src, &edits))
+        };
+        assert_eq!(fixed("{'name': 'x', 'website': 'https://www.example.com'}\n").0, 0);
+        assert_eq!(
+            fixed("{\n    'name': 'x',\n    'website': 'https://github.com/OCA/x',\n}\n"),
+            (
+                1,
+                "{\n    'name': 'x',\n    'website': 'https://www.example.com',\n}\n".to_string()
+            )
+        );
+        assert_eq!(
+            fixed("{\n    \"name\": \"x\",\n}\n"),
+            (
+                1,
+                "{\n    \"name\": \"x\",\n    \"website\": \"https://www.example.com\",\n}\n".to_string()
+            )
+        );
+        // Without a configured website the rule does nothing.
+        assert!(run(&MANIFEST_WEBSITE, "{'name': 'x'}\n").is_empty());
     }
 
     #[test]

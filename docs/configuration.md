@@ -154,6 +154,19 @@ wins over `*`, key by key. Values are strings, numbers, booleans or lists of
 them. Without a configured value there is no fix: odoo-lint does not guess a
 license or an author.
 
+### `manifest-website`
+
+The website every manifest must have; [MOD010](rules/MOD010.md) reports
+another or a missing one, and `odl check --fix` sets it, as OCA's
+`oca-fix-manifest-website` hook does:
+
+```toml
+[tool.odoo-lint.rules.manifest-website]
+website = "https://www.example.com"
+```
+
+Without it the rule does nothing.
+
 ### Other rule options
 
 Rules ported from pylint-odoo take the same options, under
