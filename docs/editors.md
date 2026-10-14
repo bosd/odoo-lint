@@ -48,8 +48,10 @@ the XML ids of the module and its dependencies (the module's own without
 its name, as it writes them), the models they define, and the fields of
 the model at hand, with their type and comodel. In a path such as
 `related="partner_id.co"` it offers the fields of the model the path has
-reached; after `order.` in Python, the fields of the records `order` holds;
-in a view, the fields of the embedded list or form the cursor is in.
+reached; after `order.` in Python, the fields and methods of the records
+`order` holds (with the module that defines each method, `BaseModel` for
+Odoo's own); in a view, the fields of the embedded list or form the cursor
+is in.
 
 ## Find references
 

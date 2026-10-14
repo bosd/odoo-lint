@@ -1,4 +1,4 @@
-//! Completion of XML ids, models and fields across the addons path.
+//! Completion of XML ids, models, fields and methods across the addons path.
 
 use odoo_lint::completion::{completion, Kind};
 use odoo_lint::linter::modules_of;
@@ -42,7 +42,7 @@ fn setup(root: &Path) -> (PathBuf, PathBuf) {
     write(
         &core,
         "sale/models.py",
-        "from odoo import fields, models\n\n\nclass Order(models.Model):\n    _name = 'sale.order'\n\n    partner_id = fields.Many2one('res.partner')\n    order_line = fields.One2many('sale.order.line', 'order_id')\n\n\nclass Line(models.Model):\n    _name = 'sale.order.line'\n\n    order_id = fields.Many2one('sale.order')\n    qty = fields.Float()\n",
+        "from odoo import fields, models\n\n\nclass Order(models.Model):\n    _name = 'sale.order'\n\n    partner_id = fields.Many2one('res.partner')\n    order_line = fields.One2many('sale.order.line', 'order_id')\n\n    def action_confirm(self):\n        return True\n\n\nclass Line(models.Model):\n    _name = 'sale.order.line'\n\n    order_id = fields.Many2one('sale.order')\n    qty = fields.Float()\n",
     );
     write(
         &core,
@@ -162,4 +162,43 @@ fn fields_of_records_after_a_dot() {
     assert_eq!(typed, "co");
     assert!(names(&found).contains(&"country_id"), "{found:?}");
     assert!(!names(&found).contains(&"order_line"));
+}
+
+#[test]
+fn methods_of_records_after_a_dot() {
+    let dir = tempfile::tempdir().unwrap();
+    let (found, typed) = complete(
+        dir.path(),
+        "models.py",
+        "from odoo import models\n\n\nclass Order(models.Model):\n    _inherit = 'sale.order'\n\n    def action_x(self):\n        for order in self:\n            order.|\n",
+    );
+    assert_eq!(typed, "");
+    assert!(
+        found.contains(&("action_confirm".to_string(), Kind::Method)),
+        "{found:?}"
+    );
+    assert!(found.contains(&("partner_id".to_string(), Kind::Field)), "{found:?}");
+
+    // With the call already written.
+    let dir = tempfile::tempdir().unwrap();
+    let (found, typed) = complete(
+        dir.path(),
+        "models.py",
+        "from odoo import models\n\n\nclass Order(models.Model):\n    _inherit = 'sale.order'\n\n    def action_x(self):\n        return self.action_c|()\n",
+    );
+    assert_eq!(typed, "action_c");
+    // The module's own methods too, from the file as it parses.
+    assert!(found.contains(&("action_x".to_string(), Kind::Method)), "{found:?}");
+    assert!(
+        found.contains(&("action_confirm".to_string(), Kind::Method)),
+        "{found:?}"
+    );
+
+    // A field path in a string takes fields only.
+    let (found, _) = complete(
+        dir.path(),
+        "models.py",
+        "from odoo import api, models\n\n\nclass Order(models.Model):\n    _inherit = 'sale.order'\n\n    @api.depends('partner_id.|')\n    def _compute_x(self):\n        pass\n",
+    );
+    assert!(found.iter().all(|(_, kind)| *kind == Kind::Field), "{found:?}");
 }
