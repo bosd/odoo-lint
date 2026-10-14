@@ -1144,3 +1144,15 @@ fn http_routing_helpers_in_a_test_case() {
         "{python}"
     );
 }
+
+#[test]
+fn cron_notify_progress_is_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[],
+        "from odoo import models\n\n\nclass Partner(models.Model):\n    _inherit = \"res.partner\"\n\n    def _cron_sync(self):\n        partners = self.search([])\n        self.env[\"ir.cron\"]._notify_progress(done=len(partners), remaining=0)\n",
+    );
+    assert_eq!(codes(dir.path(), "U1924", V19), vec![("U1924".to_string(), 9)]);
+}

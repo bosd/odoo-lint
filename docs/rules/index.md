@@ -147,6 +147,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1921](U1921.md) | `upgrade-partner-mobile-title` | A partner or company view uses `mobile` or `title`, removed in Odoo 19.0. |
 | [U1922](U1922.md) | `upgrade-implicit-model-name` | A model class has no `_name` and a list `_inherit`; Odoo 19.0 names it after the class. |
 | [U1923](U1923.md) | `upgrade-superuser-id` | `SUPERUSER_ID` is imported from `odoo`, moved to `odoo.api` in Odoo 19.0. |
+| [U1924](U1924.md) | `upgrade-cron-notify-progress` | `_notify_progress()`, deprecated in Odoo 19.0 for `_commit_progress()`. |
 | [U2001](U2001.md) | `upgrade-ir-model-access-csv` | The manifest loads `ir.model.access.csv`, a model replaced by `ir.access` in Odoo 20.0. |
 | [U2002](U2002.md) | `upgrade-ir-access-records` | `ir.rule` or `ir.model.access` records, models replaced by `ir.access` in Odoo 20.0. |
 | [U2003](U2003.md) | `upgrade-t-esc-t-raw` | `t-esc` or `t-raw`, removed from QWeb in Odoo 20.0. |
@@ -374,6 +375,7 @@ U1920
 U1921
 U1922
 U1923
+U1924
 U2001
 U2002
 U2003
