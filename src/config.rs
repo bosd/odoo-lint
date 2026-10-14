@@ -37,6 +37,15 @@ pub struct OdooLintConfig {
     /// (`Framework :: Odoo :: 19.0`): the default target version.
     #[serde(skip)]
     pub classifier_version: Option<String>,
+    /// `odl format`: the line width and indentation of XML files.
+    pub format: Option<FormatConfig>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct FormatConfig {
+    pub line_width: Option<u32>,
+    pub indent_width: Option<u8>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

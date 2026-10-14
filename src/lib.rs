@@ -6,6 +6,7 @@ pub mod definition;
 pub mod diagnostics;
 pub mod fix;
 pub mod fixer;
+pub mod format;
 pub mod hook;
 pub mod index;
 pub mod linter;

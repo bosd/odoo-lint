@@ -138,6 +138,16 @@ Default: `"Odoo Community Association (OCA)"`.
 : Table of module folder name or `prefix*` pattern to required author(s). An
 exact name wins over a pattern; among patterns the longest prefix wins.
 
+### `format`
+
+Line width and indentation of `odl format` ([Formatting XML](format.md)):
+
+```toml
+[tool.odoo-lint.format]
+line-width = 88
+indent-width = 4
+```
+
 ### `manifest-defaults`
 
 Values that `odl check --fix` fills in when a manifest lacks a required key
