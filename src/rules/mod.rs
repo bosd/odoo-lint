@@ -10,6 +10,7 @@ use crate::odoo_version::OdooVersion;
 use po::PoContext;
 
 pub mod access;
+pub mod action_read;
 pub mod e0001_syntax_error;
 pub mod inheritance;
 pub mod manifest;
@@ -152,6 +153,7 @@ pub const ALL: &[Rule] = &[
     model_methods::BUTTON_METHOD_NOT_FOUND,
     widgets::FIELD_WITHOUT_WIDGET,
     access::RESTRICTED_COMODEL,
+    action_read::ACTION_READ,
     po::PO_SYNTAX_ERROR,
     po::PO_REQUIRES_MODULE,
     po::PO_PYTHON_PARSE_PRINTF,
@@ -214,6 +216,7 @@ pub const ALL: &[Rule] = &[
     upgrade::v18::USER_HAS_GROUPS,
     upgrade::v18::PYTHON_TREE_VIEW,
     upgrade::v18::NAME_SEARCH_OVERRIDE,
+    upgrade::v18::HTTP_ROUTING_HELPERS,
     upgrade::renames::RENAMED_18,
     upgrade::renames::REMOVED_18,
     upgrade::v19::ENV_SHORTCUTS,
@@ -239,6 +242,7 @@ pub const ALL: &[Rule] = &[
     upgrade::v19::XML_PARTNER_MOBILE,
     upgrade::v19::IMPLICIT_NAME,
     upgrade::v19::SUPERUSER_ID_IMPORT,
+    upgrade::v19::CRON_NOTIFY_PROGRESS,
     upgrade::renames::RENAMED_19,
     upgrade::renames::REMOVED_19,
     upgrade::v20::MANIFEST_ACCESS_CSV,

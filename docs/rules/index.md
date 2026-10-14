@@ -67,6 +67,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO011](ODOO011.md) | `button-method-not-found` | A view's `<button type="object">` calls a method its model does not have. |
 | [ODOO012](ODOO012.md) | `view-field-without-widget` | A view shows a field without the widget that suits it. |
 | [ODOO013](ODOO013.md) | `view-field-restricted-comodel` | A view shows a one2many or many2many field whose comodel only administrators may read, without `groups`. |
+| [ODOO014](ODOO014.md) | `action-read` | An action is read with `env.ref(...).read()`, which only administrators may do. |
 | [PO001](PO001.md) | `po-syntax-error` | A PO file cannot be parsed. |
 | [PO002](PO002.md) | `po-requires-module` | A translation entry lacks its `#. module:` comment. |
 | [PO003](PO003.md) | `po-python-parse-printf` | A translation does not match the `%` placeholders of its source. |
@@ -129,6 +130,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1808](U1808.md) | `upgrade-user-has-groups` | `user_has_groups()`, removed in Odoo 18.0, is called. |
 | [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
 | [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
+| [U1811](U1811.md) | `upgrade-http-routing-helpers` | `slug`, `slugify`, `unslug` or `url_for` is imported from `http_routing`, removed in Odoo 18.0. |
 | [U1890](U1890.md) | `upgrade-renamed-18` | A model that Odoo 18.0 renamed or merged into another. |
 | [U1891](U1891.md) | `upgrade-removed-18` | A model that Odoo 18.0 removed. |
 | [U1901](U1901.md) | `upgrade-env-shortcuts` | `._uid`, `._context` or `request.cr/uid/context`, deprecated in Odoo 19.0. |
@@ -154,6 +156,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1921](U1921.md) | `upgrade-partner-mobile-title` | A partner or company view uses `mobile` or `title`, removed in Odoo 19.0. |
 | [U1922](U1922.md) | `upgrade-implicit-model-name` | A model class has no `_name` and a list `_inherit`; Odoo 19.0 names it after the class. |
 | [U1923](U1923.md) | `upgrade-superuser-id` | `SUPERUSER_ID` is imported from `odoo`, moved to `odoo.api` in Odoo 19.0. |
+| [U1924](U1924.md) | `upgrade-cron-notify-progress` | `_notify_progress()`, deprecated in Odoo 19.0 for `_commit_progress()`. |
 | [U1990](U1990.md) | `upgrade-renamed-19` | A model that Odoo 19.0 renamed or merged into another. |
 | [U1991](U1991.md) | `upgrade-removed-19` | A model that Odoo 19.0 removed. |
 | [U2001](U2001.md) | `upgrade-ir-model-access-csv` | The manifest loads `ir.model.access.csv`, a model replaced by `ir.access` in Odoo 20.0. |
@@ -303,6 +306,7 @@ ODOO010
 ODOO011
 ODOO012
 ODOO013
+ODOO014
 PO001
 PO002
 PO003
@@ -365,6 +369,7 @@ U1807
 U1808
 U1809
 U1810
+U1811
 U1890
 U1891
 U1901
@@ -390,6 +395,7 @@ U1920
 U1921
 U1922
 U1923
+U1924
 U1990
 U1991
 U2001
