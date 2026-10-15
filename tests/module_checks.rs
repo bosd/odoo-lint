@@ -275,3 +275,31 @@ class Partner(models.Model):
     let all = fixed(dir.path(), "MOD008", &file, FixMode::Unsafe);
     assert!(all.starts_with("# -*- coding: utf-8 -*-\nimport logging\n"), "{all}");
 }
+
+#[test]
+fn a_missing_init_is_named_as_such() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = dir.path().join("c");
+    std::fs::create_dir_all(&module).unwrap();
+    std::fs::write(
+        module.join("__manifest__.py"),
+        "{\n    'name': 'X',\n    'version': '18.0.1.0.0',\n    'depends': ['base'],\n    'installable': True,\n}\n",
+    )
+    .unwrap();
+    let mut settings = odoo_lint::settings::Settings::default();
+    settings.select = vec!["MOD001".to_string()];
+    let messages = |settings: &odoo_lint::settings::Settings| -> Vec<String> {
+        odoo_lint::linter::lint_paths(&[dir.path().to_path_buf()], settings)
+            .into_iter()
+            .map(|v| v.message)
+            .collect()
+    };
+    assert_eq!(
+        messages(&settings),
+        vec!["Manifest could not be loaded: the module has no __init__.py, so Odoo does not load it"]
+    );
+    std::fs::write(module.join("__init__.py"), "").unwrap();
+    assert!(messages(&settings).is_empty());
+    std::fs::write(module.join("__manifest__.py"), "{'name': NAME}\n").unwrap();
+    assert_eq!(messages(&settings), vec!["Manifest could not be loaded"]);
+}
