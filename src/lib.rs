@@ -18,6 +18,7 @@ pub mod output;
 pub mod po;
 pub mod pyliteral;
 pub mod readme;
+pub mod readme_obs;
 pub(crate) mod receiver;
 pub mod requirements;
 pub mod rules;

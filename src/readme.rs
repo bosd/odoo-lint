@@ -166,14 +166,75 @@ pub struct Change {
     pub path: PathBuf,
     /// Whether the file was written (`false` in check mode).
     pub written: bool,
+    /// Whether the file is (or would be) removed: a README.rst the `obs`
+    /// style replaces.
+    pub removed: bool,
+}
+
+/// The layout `odl readme` writes.
+pub enum Style {
+    /// README.md and static/description/index.html, as obs-client-template.
+    Template,
+    /// README.md only, as OBSNL/obs-modules; optionally removing README.rst.
+    Obs {
+        repository: crate::readme_obs::Repository,
+        remove_rst: bool,
+    },
+}
+
+/// The style the configuration asks for: `[readme] style = "obs"`, or the
+/// default. The branch defaults to `target`.
+pub fn style(config: &crate::config::OdooLintConfig, target: &str) -> Result<Style, String> {
+    let Some(readme) = &config.readme else {
+        return Ok(Style::Template);
+    };
+    match readme.style.as_deref() {
+        None | Some("template") => Ok(Style::Template),
+        Some("obs") => {
+            let repo = readme.repo.clone().ok_or("`[readme] style = \"obs\"` needs `repo`")?;
+            Ok(Style::Obs {
+                repository: crate::readme_obs::Repository {
+                    org: readme.org.clone().unwrap_or_else(|| "OBSNL".to_string()),
+                    repo,
+                    branch: readme.branch.clone().unwrap_or_else(|| target.to_string()),
+                },
+                remove_rst: readme.remove_rst.unwrap_or(false),
+            })
+        }
+        Some(other) => Err(format!("unknown readme style `{other}`: use `template` or `obs`")),
+    }
 }
 
 /// Generates the documentation of the modules under `paths`. With `check`,
 /// writes nothing and only reports the files that are out of date.
 pub fn run(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<Change>> {
+    run_with(paths, check, &Style::Template)
+}
+
+/// [`run`] in a [`Style`].
+pub fn run_with(paths: &[PathBuf], check: bool, style: &Style) -> std::io::Result<Vec<Change>> {
     let mut changes = Vec::new();
     for module in modules(paths) {
-        let Some(files) = outputs(&module) else { continue };
+        let files = match style {
+            Style::Template => outputs(&module),
+            Style::Obs { repository, remove_rst } => {
+                let readme = crate::readme_obs::readme(&module, repository).map_err(std::io::Error::other)?;
+                // The README.rst goes once a README.md stands next to it.
+                let rst = module.join("README.rst");
+                if *remove_rst && rst.is_file() && (readme.is_some() || module.join("README.md").is_file()) {
+                    if !check {
+                        std::fs::remove_file(&rst)?;
+                    }
+                    changes.push(Change {
+                        path: rst,
+                        written: !check,
+                        removed: true,
+                    });
+                }
+                readme.map(|content| vec![(module.join("README.md"), content)])
+            }
+        };
+        let Some(files) = files else { continue };
         for (path, content) in files {
             if std::fs::read(&path).ok().as_deref() == Some(content.as_bytes()) {
                 continue;
@@ -184,7 +245,11 @@ pub fn run(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<Change>> {
                 }
                 std::fs::write(&path, &content)?;
             }
-            changes.push(Change { path, written: !check });
+            changes.push(Change {
+                path,
+                written: !check,
+                removed: false,
+            });
         }
     }
     Ok(changes)
