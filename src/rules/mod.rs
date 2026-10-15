@@ -305,6 +305,7 @@ pub const ALL: &[Rule] = &[
     upgrade::js20::USE_EFFECT,
     upgrade::js20::TEMPLATE_DIRECTIVES,
     upgrade::v20::REC_NAMES_SEARCH_TUPLE,
+    upgrade::owl3_this::TEMPLATE_THIS,
     fields::TRANSLATION_FIELD,
     fields::ATTRIBUTE_DEPRECATED,
     methods::METHOD_REQUIRED_SUPER,

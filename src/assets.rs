@@ -18,6 +18,36 @@ pub struct Assets {
     pub view_widgets: HashSet<String>,
     /// OWL template names (`t-name`).
     pub templates: HashSet<String>,
+    /// The templates components render: `static template = "..."`.
+    pub component_templates: HashSet<String>,
+    /// The variables each template defines (`t-set`, `t-as`, ...), also
+    /// those its extensions add, by template name.
+    pub template_locals: HashMap<String, HashSet<String>>,
+    /// The template each one inherits from (`t-inherit`), by name.
+    pub parents: HashMap<String, String>,
+    /// The templates `t-call` names: they get variables from their caller.
+    pub called_templates: HashSet<String>,
+}
+
+/// The variables a template defines: `t-set`, `t-as` (and its `_index`,
+/// `_value`, `_first`, `_last`, `_size`), `t-slot-scope`, anywhere in it.
+pub fn template_locals(template: roxmltree::Node) -> HashSet<String> {
+    let mut locals = HashSet::new();
+    for node in template.descendants().filter(roxmltree::Node::is_element) {
+        if let Some(name) = node.attribute("t-set") {
+            locals.insert(name.trim().to_string());
+        }
+        if let Some(name) = node.attribute("t-as") {
+            let name = name.trim();
+            for suffix in ["", "_index", "_value", "_first", "_last", "_size"] {
+                locals.insert(format!("{name}{suffix}"));
+            }
+        }
+        if let Some(name) = node.attribute("t-slot-scope") {
+            locals.insert(name.trim().to_string());
+        }
+    }
+    locals
 }
 
 impl Assets {
@@ -58,6 +88,8 @@ struct Registrations {
     variables: HashMap<String, String>,
     /// (category, key) of every `.add(key, ...)`.
     added: Vec<(String, String)>,
+    /// `static template = "..."` of the classes.
+    component_templates: Vec<String>,
 }
 
 impl<'a> Visit<'a> for Registrations {
@@ -68,6 +100,15 @@ impl<'a> Visit<'a> for Registrations {
             }
         }
         walk::walk_variable_declarator(self, declarator);
+    }
+
+    fn visit_property_definition(&mut self, property: &oxc_ast::ast::PropertyDefinition<'a>) {
+        if property.r#static && property.key.is_specific_static_name("template") {
+            if let Some(Expression::StringLiteral(name)) = &property.value {
+                self.component_templates.push(name.value.to_string());
+            }
+        }
+        walk::walk_property_definition(self, property);
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
@@ -110,13 +151,14 @@ fn read(module: &Path) -> Assets {
             continue;
         };
         // Most files register nothing; skip parsing them.
-        if !source.contains(".add(") {
+        if !source.contains(".add(") && !source.contains("template") {
             continue;
         }
         let allocator = oxc_allocator::Allocator::default();
         let parsed = oxc_parser::Parser::new(&allocator, &source, oxc_span::SourceType::mjs()).parse();
         let mut registrations = Registrations::default();
         registrations.visit_program(&parsed.program);
+        assets.component_templates.extend(registrations.component_templates);
         for (category, key) in registrations.added {
             match category.as_str() {
                 "fields" => assets.field_widgets.insert(key),
@@ -136,10 +178,35 @@ fn read(module: &Path) -> Assets {
         // `<template>`), or the root itself when it has one. Every `t-name`
         // is registered, an extension's too.
         let root = doc.root_element();
-        let names = std::iter::once(root)
-            .chain(root.children().filter(|t| t.is_element()))
-            .filter_map(|t| t.attribute("t-name"));
-        assets.templates.extend(names.map(str::to_string));
+        for node in root.descendants().filter(roxmltree::Node::is_element) {
+            if let Some(called) = node.attribute("t-call").filter(|c| !c.contains(['{', '('])) {
+                assets.called_templates.insert(called.trim().to_string());
+            }
+        }
+        let templates = std::iter::once(root).chain(root.children().filter(|t| t.is_element()));
+        for template in templates {
+            let name = template.attribute("t-name");
+            let parent = template.attribute("t-inherit");
+            if let Some(name) = name {
+                assets.templates.insert(name.to_string());
+            }
+            if let (Some(name), Some(parent)) = (name, parent) {
+                if template.attribute("t-inherit-mode") != Some("extension") {
+                    assets.parents.insert(name.to_string(), parent.to_string());
+                }
+            }
+            // An extension's variables belong to the template it extends.
+            let owner = match (template.attribute("t-inherit-mode"), parent, name) {
+                (Some("extension"), Some(parent), _) => parent,
+                (_, _, Some(name)) => name,
+                _ => continue,
+            };
+            assets
+                .template_locals
+                .entry(owner.to_string())
+                .or_default()
+                .extend(template_locals(template));
+        }
     }
     assets
 }

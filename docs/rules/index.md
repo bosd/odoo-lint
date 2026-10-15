@@ -206,6 +206,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U2033](U2033.md) | `upgrade-owl3-use-effect` | `useEffect(fn, dependencies)`, whose meaning OWL 3 (Odoo 20.0) changed. |
 | [U2034](U2034.md) | `upgrade-owl3-template-directives` | An OWL template uses `t-portal`, `t-esc` or a `t-ref` name, which OWL 3 (Odoo 20.0) changed. |
 | [U2035](U2035.md) | `upgrade-rec-names-search-tuple` | `_rec_names_search` is a list; Odoo 20.0 declares it a tuple. |
+| [U2036](U2036.md) | `upgrade-owl3-template-this` | A component template reads the component without `this.`, which OWL 3 (Odoo 20.0) requires. |
 | [W8103](W8103.md) | `translation-field` | A field label is wrapped in `_()`. |
 | [W8105](W8105.md) | `attribute-deprecated` | A model uses a deprecated class attribute. |
 | [W8106](W8106.md) | `method-required-super` | An override of a core method does not call `super()`. |
@@ -462,6 +463,7 @@ U2032
 U2033
 U2034
 U2035
+U2036
 W8103
 W8105
 W8106
