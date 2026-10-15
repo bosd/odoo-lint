@@ -87,11 +87,19 @@ pub struct ModuleReport {
     pub effort: Effort,
     pub rules: Vec<RuleReport>,
     pub violations: Vec<Violation>,
+    /// `depends` odl finds neither among Odoo's own addons of the target
+    /// series nor next to the module nor on the addons paths: maybe not
+    /// ported yet, or from Odoo Enterprise.
+    pub unresolved_depends: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
     pub target: String,
+    /// What "ready" covers: `code`, the module's own files. Whether its
+    /// dependencies exist for the target is not checked (see
+    /// `unresolved_depends`).
+    pub scope: &'static str,
     #[serde(flatten)]
     pub effort: Effort,
     pub modules: Vec<ModuleReport>,
@@ -242,7 +250,62 @@ pub fn check(base: &Settings, paths: &[PathBuf], target: OdooVersion) -> Report 
     let (settings, modules) = settings_for(base, paths, target, &sources);
     let files = collect_files(paths, &settings);
     let violations = lint_files_with(&files, &settings, &sources);
-    report(target, &modules, violations)
+    let mut report = report(target, &modules, violations);
+    for module in &mut report.modules {
+        module.unresolved_depends = unresolved_depends(Path::new(&module.path), target, &settings);
+    }
+    report
+}
+
+/// The addons of Odoo itself (Community) per series, from odoo/odoo.
+fn core_addons(target: OdooVersion) -> Option<&'static str> {
+    Some(match target.major {
+        14 => include_str!("data/core_addons/v14.tsv"),
+        15 => include_str!("data/core_addons/v15.tsv"),
+        16 => include_str!("data/core_addons/v16.tsv"),
+        17 => include_str!("data/core_addons/v17.tsv"),
+        18 => include_str!("data/core_addons/v18.tsv"),
+        19 => include_str!("data/core_addons/v19.tsv"),
+        20 => include_str!("data/core_addons/v20.tsv"),
+        _ => return None,
+    })
+}
+
+/// The `depends` of the module at `path` that odl cannot find for
+/// `target`: not an addon of Odoo itself, not next to the module, not on
+/// the addons paths. Empty for a series odl has no list of Odoo's addons for.
+fn unresolved_depends(path: &Path, target: OdooVersion, settings: &Settings) -> Vec<String> {
+    let Some(core) = core_addons(target) else {
+        return Vec::new();
+    };
+    let Some(source) = crate::manifest::MANIFEST_FILE_NAMES
+        .iter()
+        .find_map(|name| std::fs::read_to_string(path.join(name)).ok())
+    else {
+        return Vec::new();
+    };
+    let Some(manifest) = crate::manifest::Manifest::parse(&source) else {
+        return Vec::new();
+    };
+    let Some(depends) = manifest.get("depends") else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
+    dirs.extend(settings.addons_path.iter().cloned());
+    let found = |name: &str| {
+        core.lines().any(|line| line == name)
+            || dirs.iter().any(|dir| {
+                crate::manifest::MANIFEST_FILE_NAMES
+                    .iter()
+                    .any(|m| dir.join(name).join(m).is_file())
+            })
+    };
+    crate::rules::manifest::string_elements(depends)
+        .into_iter()
+        .map(|(name, _)| name)
+        .filter(|name| !found(name))
+        .map(str::to_string)
+        .collect()
 }
 
 /// Groups `violations` (already limited to the upgrade) per module and rule.
@@ -288,10 +351,12 @@ pub fn report(
                 })
                 .collect(),
             violations,
+            unresolved_depends: Vec::new(),
         });
     }
     Report {
         target: target.to_string(),
+        scope: "code",
         effort: total,
         modules: module_reports,
     }
@@ -329,17 +394,28 @@ pub fn render_text(report: &Report, show_violations: bool) -> String {
     }
     let needing = report.modules.len() - ready;
     let modules = if report.modules.len() == 1 { "module" } else { "modules" };
+    for module in &report.modules {
+        for depend in &module.unresolved_depends {
+            let _ = writeln!(
+                out,
+                "note: {} depends on {depend}, which odl cannot find for Odoo {}",
+                module.name, report.target
+            );
+        }
+    }
+    // "Ready" is about the code: whether the dependencies exist for the
+    // target is not checked.
     if needing == 0 {
         let _ = writeln!(
             out,
-            "{} {modules} checked: ready for Odoo {}.",
+            "{} {modules} checked: ready for Odoo {} (code only; dependencies not checked).",
             report.modules.len(),
             report.target
         );
     } else {
         let _ = writeln!(
             out,
-            "{} {modules} checked for Odoo {}: {ready} ready, {needing} to upgrade ({}).",
+            "{} {modules} checked for Odoo {}: {ready} ready (code only; dependencies not checked), {needing} to upgrade ({}).",
             report.modules.len(),
             report.target,
             report.effort.summary()
@@ -471,7 +547,7 @@ mod tests {
         let text = render_text(&report, false);
         assert!(text.contains("acme_old (16.0 → 19.0)"), "{text}");
         assert!(
-            text.contains("1 ready, 1 to upgrade (2 changes: 2 automatic)"),
+            text.contains("1 ready (code only; dependencies not checked), 1 to upgrade (2 changes: 2 automatic)"),
             "{text}"
         );
     }
@@ -530,5 +606,36 @@ mod tests {
         let mut settings = Settings::default();
         settings.select = vec!["ALL".to_string(), "U1923".to_string()];
         assert_eq!(codes(&settings), vec!["U1923"]);
+    }
+
+    #[test]
+    fn depends_odl_cannot_find_are_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        module(dir.path(), "acme_dep", "19.0.1.0.0");
+        write(
+            dir.path(),
+            "acme_app/__manifest__.py",
+            "{'name': 'App', 'version': '19.0.1.0.0', 'license': 'AGPL-3', \
+             'depends': ['sale', 'acme_dep', 'oca_not_ported', 'web_studio']}\n",
+        );
+        write(dir.path(), "acme_app/__init__.py", "");
+        let report = check(
+            &Settings::default(),
+            &[dir.path().to_path_buf()],
+            OdooVersion::new(19, 0),
+        );
+        let app = report.modules.iter().find(|m| m.name == "acme_app").unwrap();
+        // `sale` is Odoo's, `acme_dep` is next to it; `web_studio` is
+        // Enterprise, which odl does not know.
+        assert_eq!(app.unresolved_depends, vec!["oca_not_ported", "web_studio"]);
+        assert_eq!(report.scope, "code");
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["scope"], "code");
+        let text = render_text(&report, false);
+        assert!(
+            text.contains("note: acme_app depends on oca_not_ported, which odl cannot find for Odoo 19.0"),
+            "{text}"
+        );
+        assert!(text.contains("(code only; dependencies not checked)"), "{text}");
     }
 }
