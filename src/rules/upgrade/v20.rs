@@ -1882,3 +1882,56 @@ fn check_test_classes(ctx: &PythonContext, reporter: &mut Reporter) {
         _ => {}
     });
 }
+
+pub const REC_NAMES_SEARCH_TUPLE: Rule = Rule {
+    code: "U2035",
+    name: "upgrade-rec-names-search-tuple",
+    summary: "`_rec_names_search` is a list; Odoo 20.0 declares it a tuple.",
+    doc: r#"
+## What it does
+
+Reports `_rec_names_search = [...]` in a model class.
+
+## Why is this bad?
+
+Odoo 20.0 types the attribute as a collection with `()` as default, and its
+own upgrade script (`19.5-00-tuple-rec_names_search`) turns the lists into
+tuples. A list still works; this keeps a module in step with Odoo's code.
+
+Opt-in: select it (`select = ["ALL", "U2035"]`).
+
+## Fix safety
+
+Safe: the list becomes a tuple.
+"#,
+    check: Check::Python(check_rec_names_search_tuple),
+    min_odoo: ODOO_20,
+    max_odoo: None,
+};
+
+fn check_rec_names_search_tuple(ctx: &PythonContext, reporter: &mut Reporter) {
+    for class in classes(ctx.parsed.suite()) {
+        for stmt in &class.body {
+            let Stmt::Assign(assign) = stmt else { continue };
+            let [Expr::Name(target)] = assign.targets.as_slice() else {
+                continue;
+            };
+            let Expr::List(list) = &*assign.value else { continue };
+            if target.id.as_str() != "_rec_names_search" || !list.elts.iter().all(Expr::is_string_literal_expr) {
+                continue;
+            }
+            let (start, end) = (list.start().to_usize(), list.end().to_usize());
+            let inner = &ctx.source[start + 1..end - 1];
+            // One element needs its comma: `("name",)`.
+            let comma = list.elts.len() == 1 && !inner.trim_end().ends_with(',');
+            let tuple = format!("({inner}{})", if comma { "," } else { "" });
+            reporter
+                .report(
+                    &REC_NAMES_SEARCH_TUPLE,
+                    assign.value.start(),
+                    "`_rec_names_search` is a tuple in Odoo 20.0",
+                )
+                .fix = Some(Fix::safe("Make it a tuple", vec![Edit::replace(start, end, tuple)]));
+        }
+    }
+}
