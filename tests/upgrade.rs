@@ -1323,3 +1323,39 @@ fn a_removed_field_the_module_defines_again_is_its_own() {
     );
     assert!(codes(dir.path(), "U1991", V19).is_empty());
 }
+
+#[test]
+fn renamed_xml_ids_get_their_new_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let views = "<odoo>\n    <menuitem id=\"menu_x\" name=\"X\" parent=\"base.module_category_inventory\"/>\n    <record id=\"group_x\" model=\"res.groups\">\n        <field name=\"name\">X</field>\n        <field name=\"category_id\" ref=\"base.module_category_inventory\"/>\n    </record>\n</odoo>\n";
+    let module = module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[("views/menu.xml", views)],
+        "from odoo import models\n\n\nclass Partner(models.Model):\n    _inherit = \"res.partner\"\n\n    def category(self):\n        return self.env.ref(\"base.module_category_inventory\")\n",
+    );
+    let mut found = codes(dir.path(), "U1990", V19);
+    found.sort();
+    assert_eq!(
+        found,
+        [("U1990", 2), ("U1990", 5), ("U1990", 8)]
+            .map(|(c, l)| (c.to_string(), l))
+            .to_vec()
+    );
+    let xml = fixed(dir.path(), "U1990", V19, &module.join("views/menu.xml"), FixMode::Safe);
+    assert_eq!(
+        xml,
+        views.replace("module_category_inventory", "module_category_supply_chain")
+    );
+    let python = fixed(
+        dir.path(),
+        "U1990",
+        V19,
+        &module.join("models/partner.py"),
+        FixMode::Safe,
+    );
+    assert!(
+        python.contains("self.env.ref(\"base.module_category_supply_chain\")"),
+        "{python}"
+    );
+}

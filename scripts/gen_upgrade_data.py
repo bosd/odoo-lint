@@ -7,7 +7,8 @@ Odoo renamed and removed between the previous version and that one.
 - renamed models: ``apriori.renamed_models`` and ``openupgrade.rename_models()``
   calls in the migration scripts; merged models: ``apriori.merged_models``;
 - renamed fields: ``openupgrade.rename_fields()`` calls;
-- renamed XML ids: ``openupgrade.rename_xmlids()`` calls;
+- renamed XML ids: ``openupgrade.rename_xmlids()`` calls, when the sources
+  define the new id and not the old one;
 - removed models and fields: the ``obsolete model`` and ``DEL`` lines of the
   ``upgrade_analysis.txt`` files, minus what another module adds back
   (``NEW``), what a rename explains, and what the Odoo sources of that
@@ -131,6 +132,43 @@ def odoo_definitions(odoo):
     return models, fields
 
 
+def odoo_xmlids(odoo):
+    """The XML ids the data files of the sources define (``module.name``)."""
+    import csv
+    import xml.etree.ElementTree as ET
+
+    ids = set()
+    for manifest in odoo.rglob("__manifest__.py"):
+        module = manifest.parent
+        for path in module.rglob("*.xml"):
+            if "static" in path.parts:
+                continue
+            try:
+                tree = ET.parse(path)  # noqa: S314 - the Odoo sources, not user input
+            except (ET.ParseError, UnicodeDecodeError, ValueError):
+                continue
+            for element in tree.iter():
+                xmlid = element.get("id")
+                if xmlid and element.tag in {
+                    "record",
+                    "template",
+                    "menuitem",
+                    "act_window",
+                    "report",
+                }:
+                    ids.add(xmlid if "." in xmlid else f"{module.name}.{xmlid}")
+        for path in module.rglob("*.csv"):
+            try:
+                with path.open(encoding="utf-8", newline="") as handle:
+                    for row in csv.DictReader(handle):
+                        xmlid = row.get("id")
+                        if xmlid:
+                            ids.add(xmlid if "." in xmlid else f"{module.name}.{xmlid}")
+            except (UnicodeDecodeError, csv.Error):
+                continue
+    return ids
+
+
 def generate(root, odoo, major):
     scripts = root / "openupgrade_scripts" / "scripts"
     models = apriori_models(root, "renamed_models")
@@ -179,6 +217,14 @@ def generate(root, odoo, major):
     # What the sources still define is no rename either.
     models = {old: new for old, new in models.items() if old not in defined_models}
     fields = {key: new for key, new in fields.items() if key not in defined_fields}
+    # An XML id the sources still define is not renamed; one whose new name
+    # they do not define is no use as a fix.
+    defined_xmlids = odoo_xmlids(odoo)
+    xmlids = {
+        old: new
+        for old, new in xmlids.items()
+        if old not in defined_xmlids and new in defined_xmlids
+    }
     # A field renamed in a renamed model is known under the old model too.
     rows = [f"model\t{old}\t{new}" for old, new in sorted(models.items())]
     rows += [f"model-merged\t{old}\t{new}" for old, new in sorted(merged.items())]
