@@ -48,6 +48,7 @@ oxc_ast = "0.154"
 oxc_ast_visit = "0.154"
 oxc_parser = "0.154"
 oxc_span = "0.154"
+oxc_syntax = "0.154"
 lax-css = "0.3"
 dprint-core = { version = "0.67.4", default-features = false, features = ["formatting"] }
 

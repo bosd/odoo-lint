@@ -82,6 +82,7 @@ fn findings() {
         ("U2034", 3),
         ("U2034", 3),
         ("U2034", 4),
+        ("U2036", 3),
     ]
     .into_iter()
     .map(|(c, l)| (c.to_string(), l))
