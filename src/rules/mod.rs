@@ -27,6 +27,7 @@ pub mod records;
 pub mod references;
 pub mod upgrade;
 pub mod views;
+pub mod web_assets;
 pub mod widgets;
 pub mod xml;
 
@@ -167,6 +168,9 @@ pub const ALL: &[Rule] = &[
     widgets::FIELD_WITHOUT_WIDGET,
     access::RESTRICTED_COMODEL,
     action_read::ACTION_READ,
+    web_assets::WIDGET_NOT_FOUND,
+    web_assets::TEMPLATE_NOT_FOUND,
+    web_assets::TEMPLATE_REFERENCE_NOT_FOUND,
     owl::FOREACH_WITHOUT_KEY,
     owl::T_RAW,
     owl::HANDLER_NOT_A_FUNCTION,
