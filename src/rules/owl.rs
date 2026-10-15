@@ -67,31 +67,34 @@ component where it holds HTML.
 pub const HANDLER_NOT_A_FUNCTION: Rule = Rule {
     code: "OWL003",
     name: "owl-handler-not-a-function",
-    summary: "A `t-on-*` handler in an OWL template is a statement or a call, not a function.",
+    summary: "A `t-on-*` handler in an OWL template is a statement, not a function.",
     doc: r#"
 ## What it does
 
 Reports `t-on-*` attributes whose value assigns (`state.open = true`,
-`state.count++`) or calls (`onClick(line)`) instead of naming a function
-(`onClick`, `props.onSelect`, `() => this.onClick(line)`).
+`state.count++`) instead of naming a function (`onClick`,
+`props.onSelect`, `() => this.onClick(line)`).
 
 ## Why is this bad?
 
 OWL 2 evaluates the value when the template renders and calls the result on
-the event. An assignment or a call runs at every render, and the click
-then fails with "Invalid handler (expected a function, ...)". OWL 1 ran the
-expression on the event; templates ported from it keep that form.
+the event. An assignment runs at every render, and the click then fails
+with "Invalid handler (expected a function, ...)". OWL 1 ran the expression
+on the event; templates ported from it keep that form.
+
+A call (`onClick(line)`) is not reported: a method that returns the handler
+(`protectedClick(handler)`) is a common pattern.
 
 ## Example
 
 ```xml
-<button t-on-click="selectLine(line)">Select</button>
+<button t-on-click="state.open = !state.open">Toggle</button>
 ```
 
 Use instead:
 
 ```xml
-<button t-on-click="() => this.selectLine(line)">Select</button>
+<button t-on-click="() => this.state.open = !this.state.open">Toggle</button>
 ```
 "#,
     check: Check::Xml(check),
@@ -115,9 +118,9 @@ fn owl_templates<'a, 'input>(file: &'a XmlFile<'input>, legacy_engine: bool) -> 
         .collect()
 }
 
-/// Whether a `t-on-*` value assigns or calls rather than evaluating to a
-/// function: an arrow function, a name or a property path pass, as does
-/// `fn.bind(...)`.
+/// Whether a `t-on-*` value assigns rather than evaluating to a function:
+/// an arrow function, a name, a property path or a call (which may return
+/// the handler) pass.
 fn not_a_function(value: &str) -> bool {
     let value = value.trim();
     if value.is_empty() || value.contains("=>") {
@@ -128,8 +131,7 @@ fn not_a_function(value: &str) -> bool {
         || value.char_indices().any(|(i, c)| {
             c == '=' && !value[..i].ends_with(['=', '!', '<', '>']) && !value[i + 1..].starts_with(['=', '>'])
         });
-    let calls = value.ends_with(')') && !value.contains(".bind(");
-    assigns || calls
+    assigns
 }
 
 fn check(ctx: &XmlContext, reporter: &mut XmlReporter) {
@@ -137,7 +139,13 @@ fn check(ctx: &XmlContext, reporter: &mut XmlReporter) {
     let legacy_engine = version.is_some_and(|v| v < OdooVersion::new(17, 0));
     for file in ctx.files.iter().filter(|f| f.section == "assets") {
         for template in owl_templates(file, legacy_engine) {
+            // An inheritance spec (`position=`) and an `xpath` select
+            // elements; their attributes are not the template's.
+            let spec = |n: &Node| n.attribute("position").is_some() || n.tag_name().name() == "xpath";
             for node in template.descendants().filter(Node::is_element) {
+                if spec(&node) {
+                    continue;
+                }
                 if node.attribute("t-foreach").is_some() && node.attribute("t-key").is_none() {
                     let violation = reporter.report(
                         &FOREACH_WITHOUT_KEY,
@@ -205,15 +213,12 @@ mod tests {
             "() => this.select(line)",
             "(ev) => state.x = ev.target.value",
             "onClick.bind(this, 1)",
+            "protectedClick(props.primaryClick)",
+            "props.onClose()",
         ] {
             assert!(!not_a_function(ok), "{ok}");
         }
-        for bad in [
-            "state.open = !state.open",
-            "state.count++",
-            "selectLine(line)",
-            "props.onClose()",
-        ] {
+        for bad in ["state.open = !state.open", "state.count++"] {
             assert!(not_a_function(bad), "{bad}");
         }
         assert!(!not_a_function("state.a == 1 and b"));
