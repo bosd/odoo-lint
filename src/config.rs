@@ -39,6 +39,22 @@ pub struct OdooLintConfig {
     pub classifier_version: Option<String>,
     /// `odl format`: the line width and indentation of XML files.
     pub format: Option<FormatConfig>,
+    /// `odl readme`: the layout of the generated READMEs.
+    pub readme: Option<ReadmeStyleConfig>,
+}
+
+/// `[tool.odoo-lint.readme]`: `style = "obs"` writes the README.md of
+/// OBSNL's repositories (title, badges, table of contents, credits) for
+/// the GitHub repository `org`/`repo`, on `branch` (default: the target
+/// version, e.g. `19.0`); `remove-rst` deletes a README.rst next to it.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ReadmeStyleConfig {
+    pub style: Option<String>,
+    pub org: Option<String>,
+    pub repo: Option<String>,
+    pub branch: Option<String>,
+    pub remove_rst: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

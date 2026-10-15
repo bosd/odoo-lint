@@ -204,10 +204,15 @@ fn main() -> ExitCode {
             config,
             force_exclude,
         } => format(&paths, check, config, force_exclude),
-        Commands::Readme { paths, check } => match odoo_lint::readme::run(&paths, check) {
+        Commands::Readme { paths, check } => match readme(&paths, check) {
             Ok(changes) => {
                 for change in &changes {
-                    let verb = if change.written { "wrote" } else { "out of date:" };
+                    let verb = match (change.written, change.removed) {
+                        (true, true) => "removed",
+                        (false, true) => "to remove:",
+                        (true, false) => "wrote",
+                        (false, false) => "out of date:",
+                    };
                     eprintln!("{verb} {}", change.path.display());
                 }
                 if check && !changes.is_empty() {
@@ -561,6 +566,14 @@ fn format(paths: &[PathBuf], check: bool, config: Option<PathBuf>, force_exclude
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// `odl readme` in the style the configuration found from `paths[0]` asks for.
+fn readme(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<odoo_lint::readme::Change>> {
+    let loaded = Settings::load(&paths[0], None, CliOverrides::default()).map_err(std::io::Error::other)?;
+    let target = loaded.settings.target_version.to_string();
+    let style = odoo_lint::readme::style(&loaded.settings.config, &target).map_err(std::io::Error::other)?;
+    odoo_lint::readme::run_with(paths, check, &style)
 }
 
 fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> ExitCode {

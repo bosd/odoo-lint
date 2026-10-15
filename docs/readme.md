@@ -49,6 +49,30 @@ another Markdown engine for documents with a diagram; `odl readme` renders
 them like every other document, so moving over changes their punctuation
 once (`'quotes'` become typographic quotes, `...` becomes `…`).
 
+## The `obs` style
+
+OBSNL/obs-modules writes one `README.md` per addon in another layout: an
+HTML comment with a digest of the sources, the title, badges (maturity,
+license, GitHub), the description, a table of contents, the sections
+("Use Cases / Context", "Installation", "Configuration", "Usage",
+"Development", "Known issues / Roadmap", "Changelog"), "Bug Tracker" and
+"Credits" (authors, contributors, other credits, maintainers). Relative
+images point at raw.githubusercontent.com, and the fragments' own headings
+move below their section. It is the output of the repository's former
+`tools/obs_gen_addon_readme.py`, byte for byte:
+
+```toml
+[tool.odoo-lint.readme]
+style = "obs"
+org = "OBSNL"           # the default
+repo = "obs-modules"
+branch = "19.0"         # default: target-version
+remove-rst = true       # delete a README.rst next to the README.md
+```
+
+An addon without `readme/DESCRIPTION.md` keeps its README; an `.rst`
+fragment is an error, as this style writes Markdown.
+
 ## As a hook
 
 In `hk.pkl`:
