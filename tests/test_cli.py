@@ -267,7 +267,7 @@ def test_upgrade_check(project: Path) -> None:
 
     ready = run_odl("upgrade-check", addons, "--target", "18.0")
     assert ready.returncode == 0, ready.stdout
-    assert "ready for Odoo 18.0" in ready.stdout
+    assert "ready for Odoo 18.0 (code only; dependencies not checked)" in ready.stdout
 
     upgrade = run_odl("upgrade-check", addons, "--target", "19.0")
     assert upgrade.returncode == 1

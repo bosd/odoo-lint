@@ -15,8 +15,17 @@ acme_sale (17.0 → 19.0)
   19.0  XML016  xml-deprecated-res-groups-category-id       1  1 to review
   17 changes: 15 automatic, 1 to review, 1 by hand
 
-12 modules checked for Odoo 19.0: 11 ready, 1 to upgrade (17 changes: 15 automatic, 1 to review, 1 by hand).
+note: acme_report depends on report_xlsx, which odl cannot find for Odoo 19.0
+12 modules checked for Odoo 19.0: 11 ready (code only; dependencies not checked), 1 to upgrade (17 changes: 15 automatic, 1 to review, 1 by hand).
 ```
+
+"Ready" is about the module's own code. Whether its dependencies exist for
+the target is not checked: a module can be ready while a module it depends
+on has not been ported yet. odl names the `depends` it cannot find among
+Odoo's own addons of the target (Community; Enterprise addons are not
+known), next to the module, or on the addons paths. With
+`--output-format json`, the report says `"scope": "code"` and each module
+lists them in `unresolved_depends`.
 
 ## What it checks
 
