@@ -201,6 +201,11 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U2028](U2028.md) | `upgrade-self-writeable-fields` | `SELF_READABLE_FIELDS`/`SELF_WRITEABLE_FIELDS`, replaced in Odoo 20.0. |
 | [U2029](U2029.md) | `upgrade-inherit-read` | Code reads `._inherit` at runtime, which raises in Odoo 20.0. |
 | [U2030](U2030.md) | `upgrade-test-classes` | `SingleTransactionCase` or `odoo.tests.common.Form`, removed in Odoo 20.0. |
+| [U2031](U2031.md) | `upgrade-owl3-static-props` | A component declares `static props` or `static defaultProps`, which Odoo 20.0 refuses. |
+| [U2032](U2032.md) | `upgrade-owl3-removed-hooks` | A hook imported from `@odoo/owl` that OWL 3 (Odoo 20.0) no longer has. |
+| [U2033](U2033.md) | `upgrade-owl3-use-effect` | `useEffect(fn, dependencies)`, whose meaning OWL 3 (Odoo 20.0) changed. |
+| [U2034](U2034.md) | `upgrade-owl3-template-directives` | An OWL template uses `t-portal`, `t-esc` or a `t-ref` name, which OWL 3 (Odoo 20.0) changed. |
+| [U2035](U2035.md) | `upgrade-rec-names-search-tuple` | `_rec_names_search` is a list; Odoo 20.0 declares it a tuple. |
 | [W8103](W8103.md) | `translation-field` | A field label is wrapped in `_()`. |
 | [W8105](W8105.md) | `attribute-deprecated` | A model uses a deprecated class attribute. |
 | [W8106](W8106.md) | `method-required-super` | An override of a core method does not call `super()`. |
@@ -452,6 +457,11 @@ U2027
 U2028
 U2029
 U2030
+U2031
+U2032
+U2033
+U2034
+U2035
 W8103
 W8105
 W8106

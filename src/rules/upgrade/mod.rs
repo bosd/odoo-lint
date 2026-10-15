@@ -9,6 +9,7 @@
 
 mod attrs;
 pub mod js;
+pub mod js20;
 pub mod renames;
 pub mod v16;
 pub mod v17;

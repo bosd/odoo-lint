@@ -148,7 +148,7 @@ impl Default for Settings {
 
 /// Rules `ALL` leaves out: policies many projects do not share, enabled by
 /// selecting them by code, name or code prefix.
-pub const OPT_IN: &[&str] = &["MOD008", "ODOO012", "U1923"];
+pub const OPT_IN: &[&str] = &["MOD008", "ODOO012", "U1923", "U2035"];
 
 /// Whether a `select`/`ignore` entry matches `rule`: `ALL`, an exact code or
 /// name, or a code prefix such as `C81` or `ODOO`.
