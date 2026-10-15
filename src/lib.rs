@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod badge;
 pub mod checker;
 pub mod completion;

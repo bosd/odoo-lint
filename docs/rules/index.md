@@ -69,6 +69,9 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [ODOO012](ODOO012.md) | `view-field-without-widget` | A view shows a field without the widget that suits it. |
 | [ODOO013](ODOO013.md) | `view-field-restricted-comodel` | A view shows a one2many or many2many field whose comodel only administrators may read, without `groups`. |
 | [ODOO014](ODOO014.md) | `action-read` | An action is read with `env.ref(...).read()`, which only administrators may do. |
+| [ODOO015](ODOO015.md) | `view-widget-not-found` | A view uses a `widget` that no JavaScript of the module or its dependencies registers. |
+| [ODOO016](ODOO016.md) | `owl-template-not-found` | A component's `static template` names an OWL template no module it can see defines. |
+| [ODOO017](ODOO017.md) | `owl-template-reference-not-found` | An OWL template inherits from or calls a template no module it can see defines. |
 | [OWL001](OWL001.md) | `owl-foreach-without-key` | A `t-foreach` in an OWL template has no `t-key`. |
 | [OWL002](OWL002.md) | `owl-t-raw` | An OWL template uses `t-raw`, deprecated in OWL 2 for `t-out`. |
 | [OWL003](OWL003.md) | `owl-handler-not-a-function` | A `t-on-*` handler in an OWL template is a statement or a call, not a function. |
@@ -317,6 +320,9 @@ ODOO011
 ODOO012
 ODOO013
 ODOO014
+ODOO015
+ODOO016
+ODOO017
 OWL001
 OWL002
 OWL003

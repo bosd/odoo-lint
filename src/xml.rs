@@ -40,6 +40,34 @@ fn strings(expr: &Expr) -> Vec<&str> {
         .collect()
 }
 
+/// The paths a bundle of the manifest's `assets` adds: its strings, and the
+/// file of a directive (`("after", target, path)`, `("prepend", path)`, ...).
+/// `include` adds a bundle and `remove` takes a file away.
+fn asset_paths(expr: &Expr) -> Vec<&str> {
+    let items: &[Expr] = match expr {
+        Expr::List(list) => &list.elts,
+        Expr::Tuple(tuple) => &tuple.elts,
+        _ => return Vec::new(),
+    };
+    fn text(e: &Expr) -> Option<&str> {
+        e.as_string_literal_expr().map(|s| s.value.to_str())
+    }
+    items
+        .iter()
+        .filter_map(|item| match item {
+            Expr::Tuple(directive) => {
+                let parts: Vec<Option<&str>> = directive.elts.iter().map(text).collect();
+                match parts.as_slice() {
+                    [Some("after" | "before" | "replace"), _, Some(path)] => Some(*path),
+                    [Some("prepend" | "append"), Some(path)] => Some(*path),
+                    _ => None,
+                }
+            }
+            other => text(other),
+        })
+        .collect()
+}
+
 /// `relative` (with `/` separators) under `base`, with native separators.
 fn join(base: &Path, relative: &str) -> PathBuf {
     let mut path = base.to_path_buf();
@@ -51,8 +79,48 @@ fn join(base: &Path, relative: &str) -> PathBuf {
 /// `**` matches like `*`, and wildcards skip hidden names. The matches are
 /// `/`-separated paths relative to `base`, sorted.
 pub fn py_glob(base: &Path, pattern: &str) -> Vec<String> {
+    py_glob_with(base, pattern, false)
+}
+
+/// The non-hidden files and folders under `prefix` (relative to `base`), at
+/// any depth, `prefix` itself included: what `**` matches with `recursive`.
+fn descendants(base: &Path, prefix: &str) -> Vec<String> {
+    let mut found = vec![prefix.to_string()];
+    let mut index = 0;
+    while index < found.len() {
+        let current = found[index].clone();
+        index += 1;
+        let Ok(entries) = std::fs::read_dir(join(base, &current)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            found.push(if current.is_empty() {
+                name
+            } else {
+                format!("{current}/{name}")
+            });
+        }
+    }
+    found
+}
+
+/// [`py_glob`], or with `recursive` as Odoo globs its assets
+/// (`glob(pattern, recursive=True)`): a `**` segment matches any number of
+/// folders.
+pub fn py_glob_with(base: &Path, pattern: &str, recursive: bool) -> Vec<String> {
     let mut found = vec![String::new()];
     for part in pattern.split('/').filter(|p| !p.is_empty()) {
+        if recursive && part == "**" {
+            let mut next: Vec<String> = found.iter().flat_map(|prefix| descendants(base, prefix)).collect();
+            next.sort();
+            next.dedup();
+            found = next;
+            continue;
+        }
         let wildcard = part.contains(['*', '?', '[']);
         let mut next = Vec::new();
         for prefix in &found {
@@ -107,13 +175,18 @@ fn glob_section(module: &ModuleInfo, manifest: &Manifest, section: &str) -> Vec<
         return Vec::new();
     };
     let mut found = Vec::new();
-    for pattern in lists.into_iter().flat_map(strings) {
+    let patterns: Vec<&str> = if section == "assets" {
+        lists.into_iter().flat_map(asset_paths).collect()
+    } else {
+        lists.into_iter().flat_map(strings).collect()
+    };
+    for pattern in patterns {
         let pattern = if section == "qweb" {
             format!("{}/{pattern}", module.name)
         } else {
             pattern.to_string()
         };
-        for path in py_glob(addons, &pattern) {
+        for path in py_glob_with(addons, &pattern, section == "assets") {
             // Only the module's own files.
             if let Some(relative) = path.strip_prefix(&format!("{}/", module.name)) {
                 found.push(relative.to_string());
@@ -370,6 +443,10 @@ mod tests {
         assert_eq!(
             py_glob(dir.path(), "acme/static/src/**/*.xml"),
             vec!["acme/static/src/xml/a.xml"]
+        );
+        assert_eq!(
+            py_glob_with(dir.path(), "acme/static/src/**/*.xml", true),
+            vec!["acme/static/src/xml/a.xml", "acme/static/src/xml/sub/c.xml"]
         );
         assert_eq!(
             py_glob(dir.path(), "acme/static/src/xml/a.xml"),

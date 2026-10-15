@@ -4,7 +4,7 @@
 
 use crate::fix::{Edit, Fix};
 use crate::odoo_version::OdooVersion;
-use crate::rules::xml::{at, is, XmlContext, XmlReporter};
+use crate::rules::xml::{at, XmlContext, XmlReporter};
 use crate::rules::{Check, Rule};
 use crate::xml::XmlFile;
 use roxmltree::Node;
@@ -99,15 +99,18 @@ Use instead:
     max_odoo: None,
 };
 
-/// The OWL templates of the assets: the `<t t-name>` children of a
-/// `<templates>` root. Before 17.0, when the legacy QWeb engine still
+/// The OWL templates of the assets: the `<t t-name>` children of the root. Before 17.0, when the legacy QWeb engine still
 /// rendered templates, only those marked `owl="1"`.
 fn owl_templates<'a, 'input>(file: &'a XmlFile<'input>, legacy_engine: bool) -> Vec<Node<'a, 'input>> {
-    let Some(root) = file.root().filter(|r| is(*r, "templates")) else {
+    // The bundle takes the `t-name` children of any root (`<templates>`,
+    // `<template>`), or the root itself when it is a template.
+    let Some(root) = file.root() else {
         return Vec::new();
     };
-    root.children()
-        .filter(|t| t.is_element() && (t.attribute("t-name").is_some() || t.attribute("t-inherit").is_some()))
+    let is_template = |t: &Node| t.attribute("t-name").is_some() || t.attribute("t-inherit").is_some();
+    std::iter::once(root)
+        .chain(root.children().filter(Node::is_element))
+        .filter(|t| is_template(t))
         .filter(|t| !legacy_engine || t.attribute("owl") == Some("1"))
         .collect()
 }
