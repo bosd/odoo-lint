@@ -11,7 +11,7 @@ const TEMPLATES: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <templates xml:space="preserve">
     <t t-name="acme_owl.Lines">
         <ul>
-            <li t-foreach="props.lines" t-as="line" t-on-click="selectLine(line)">
+            <li t-foreach="props.lines" t-as="line" t-on-click="state.line = line">
                 <span t-raw="line.html"/>
             </li>
             <li t-foreach="props.lines" t-as="line" t-key="line.id" t-on-click="() => this.selectLine(line)"/>
@@ -94,4 +94,15 @@ fn before_17_only_templates_marked_owl() {
         &TEMPLATES.replace(r#"t-name="acme_owl.Lines""#, r#"t-name="acme_owl.Lines" owl="1""#),
     );
     assert_eq!(found(dir.path()).len(), 4);
+}
+
+#[test]
+fn inheritance_specs_are_selectors() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "17.0.1.0.0",
+        "<templates>\n    <t t-name=\"acme_owl.Panel\" t-inherit=\"web.SearchPanel\" t-inherit-mode=\"primary\">\n        <li t-foreach=\"values\" position=\"replace\">\n            <li t-foreach=\"this.items\" t-as=\"item\" t-key=\"item.id\"/>\n        </li>\n        <xpath expr=\"//div[@t-foreach='x']\" position=\"inside\"/>\n    </t>\n</templates>\n",
+    );
+    assert!(found(dir.path()).is_empty(), "{:?}", found(dir.path()));
 }
