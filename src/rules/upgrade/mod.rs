@@ -8,6 +8,7 @@
 //! branches. Reimplemented from behaviour, not copied.
 
 mod attrs;
+pub mod js;
 pub mod renames;
 pub mod v16;
 pub mod v17;

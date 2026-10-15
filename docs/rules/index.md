@@ -122,6 +122,9 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1719](U1719.md) | `upgrade-private-read-group` | `_read_group` called with the 16.0 signature (`lazy`, `orderby`, fields). |
 | [U1720](U1720.md) | `upgrade-openerp-manifest` | The manifest is `__openerp__.py`, deprecated in 17.0 and not found by 19.0. |
 | [U1721](U1721.md) | `upgrade-removed-asset-bundles` | The manifest adds files to an asset bundle removed in Odoo 17.0. |
+| [U1722](U1722.md) | `upgrade-js-patch-name` | `patch()` is called with a patch name, dropped in Odoo 17.0. |
+| [U1723](U1723.md) | `upgrade-js-unpatch` | `unpatch()`, removed in Odoo 17.0. |
+| [U1724](U1724.md) | `upgrade-js-field-registry-component` | A component is added to the field registry directly, not in a descriptor as Odoo 17.0 expects. |
 | [U1790](U1790.md) | `upgrade-renamed-17` | A model or field that Odoo 17.0 renamed, or a model it merged into another. |
 | [U1791](U1791.md) | `upgrade-removed-17` | A model or field that Odoo 17.0 removed. |
 | [U1801](U1801.md) | `upgrade-tree-view` | A view uses `<tree>`, renamed `<list>` in Odoo 18.0. |
@@ -135,6 +138,8 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [U1809](U1809.md) | `upgrade-python-tree-view` | Python code refers to the `tree` view type, renamed `list` in Odoo 18.0. |
 | [U1810](U1810.md) | `upgrade-name-search-override` | A model overrides `_name_search`, which Odoo 18.0 no longer calls. |
 | [U1811](U1811.md) | `upgrade-http-routing-helpers` | `slug`, `slugify`, `unslug` or `url_for` is imported from `http_routing`, removed in Odoo 18.0. |
+| [U1812](U1812.md) | `upgrade-js-rpc-service` | The `rpc` service, removed in Odoo 18.0. |
+| [U1813](U1813.md) | `upgrade-js-legacy-widget` | The legacy `Widget` is imported, removed in Odoo 18.0. |
 | [U1890](U1890.md) | `upgrade-renamed-18` | A model or field that Odoo 18.0 renamed, or a model it merged into another. |
 | [U1891](U1891.md) | `upgrade-removed-18` | A model or field that Odoo 18.0 removed. |
 | [U1901](U1901.md) | `upgrade-env-shortcuts` | `._uid`, `._context` or `request.cr/uid/context`, deprecated in Odoo 19.0. |
@@ -365,6 +370,9 @@ U1718
 U1719
 U1720
 U1721
+U1722
+U1723
+U1724
 U1790
 U1791
 U1801
@@ -378,6 +386,8 @@ U1808
 U1809
 U1810
 U1811
+U1812
+U1813
 U1890
 U1891
 U1901
