@@ -164,6 +164,9 @@ def clippy(session: nox.Session) -> None:
         *session.posargs,
         external=True,
     )
+    # The crate builds from what it packages: a file `include_str!` reads
+    # but `include` in Cargo.toml leaves out fails only at publish time.
+    session.run("cargo", "package", "--locked", "--allow-dirty", external=True)
 
 
 @nox.session(name="cargo-test", python=False)
