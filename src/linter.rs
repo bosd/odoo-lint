@@ -125,6 +125,15 @@ fn lint_modules(
 
 /// The files to lint under `paths`, without excluded ones.
 pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
+    collect_files_matching(paths, settings, is_linted_extension)
+}
+
+/// The files under `paths` whose extension `matches`, without excluded ones.
+pub fn collect_files_matching(
+    paths: &[PathBuf],
+    settings: &Settings,
+    matches: fn(&std::ffi::OsStr) -> bool,
+) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
         if root.is_file() {
@@ -150,7 +159,7 @@ pub fn collect_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
         files.extend(
             walker
                 .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(is_linted_extension))
+                .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(matches))
                 .map(|e| e.into_path()),
         );
     }

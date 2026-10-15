@@ -1,5 +1,5 @@
 //! What each Odoo version renamed and removed (U1590, U1591, ... U1991):
-//! models and fields, from the migration scripts and analysis of OCA/OpenUpgrade, kept
+//! models, fields and XML ids, from the migration scripts and analysis of OCA/OpenUpgrade, kept
 //! in `data/v<major>.tsv` (see `scripts/gen_upgrade_data.py`).
 
 use super::{data_elements, text_range, version_guards, view_archs};
@@ -23,6 +23,7 @@ pub struct Changes {
     pub removed_models: HashSet<&'static str>,
     pub fields: HashMap<(&'static str, &'static str), &'static str>,
     pub removed_fields: HashSet<(&'static str, &'static str)>,
+    pub xmlids: HashMap<&'static str, &'static str>,
 }
 
 fn parse(text: &'static str) -> Changes {
@@ -44,6 +45,9 @@ fn parse(text: &'static str) -> Changes {
             }
             ["field-removed", model, field] => {
                 changes.removed_fields.insert((model, field));
+            }
+            ["xmlid", old, new] => {
+                changes.xmlids.insert(old, new);
             }
             _ => {}
         }
@@ -180,6 +184,9 @@ fn is_migration(path: &str) -> bool {
 
 fn check_python(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule, major: u16, renamed: bool) {
     check_python_fields(ctx, reporter, rule, major, renamed);
+    if renamed {
+        check_python_ids(ctx, reporter, rule, major);
+    }
     let Some(changes) = changes(major) else { return };
     if is_migration(ctx.file_path) {
         return;
@@ -402,6 +409,112 @@ fn check_python_fields(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule
     }
 }
 
+/// `ref('module.name')` in an `eval`, and `%(module.name)d` in a value.
+static EVAL_REF: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"\bref\(\s*['"]([\w.]+)['"]|%\(([\w.]+)\)d"#).unwrap());
+
+/// The XML ids in the attributes of data files: `ref`, `inherit_id` and
+/// `parent`/`action` of menus, `groups`, `t-call`, `ref()` in `eval` and
+/// `%(...)d`. Each with the element and the range of the id.
+fn xml_id_uses<'a, 'input>(
+    file: &'a crate::xml::XmlFile<'input>,
+) -> Vec<(roxmltree::Node<'a, 'input>, std::ops::Range<usize>)> {
+    let Some(doc) = &file.doc else { return Vec::new() };
+    let mut uses = Vec::new();
+    for node in doc.descendants().filter(|n| n.is_element()) {
+        for attribute in node.attributes() {
+            let range = attribute.range_value();
+            let Some(raw) = file.source.get(range.clone()) else {
+                continue;
+            };
+            let whole = || {
+                let start = range.start + (raw.len() - raw.trim_start().len());
+                start..start + raw.trim().len()
+            };
+            match attribute.name() {
+                "ref" | "inherit_id" | "t-call" => uses.push((node, whole())),
+                "parent" | "action" if is(node, "menuitem") => uses.push((node, whole())),
+                "groups" => {
+                    let mut offset = range.start;
+                    for part in raw.split(',') {
+                        let name = part.trim().trim_start_matches('!');
+                        if let Some(at) = part.find(name).filter(|_| !name.is_empty()) {
+                            uses.push((node, offset + at..offset + at + name.len()));
+                        }
+                        offset += part.len() + 1;
+                    }
+                }
+                _ => {
+                    for captures in EVAL_REF.captures_iter(raw) {
+                        let id = captures.get(1).or_else(|| captures.get(2)).expect("group");
+                        uses.push((node, range.start + id.start()..range.start + id.end()));
+                    }
+                }
+            }
+        }
+    }
+    uses
+}
+
+fn check_xml_ids(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, major: u16) {
+    let Some(changes) = changes(major) else { return };
+    if changes.xmlids.is_empty() {
+        return;
+    }
+    for file in ctx.files {
+        for (node, range) in xml_id_uses(file) {
+            let Some(id) = file.source.get(range.clone()) else {
+                continue;
+            };
+            let Some(new) = changes.xmlids.get(id) else { continue };
+            reporter
+                .report(
+                    rule,
+                    file,
+                    node.range().start,
+                    format!("XML id `{id}` is `{new}` since Odoo {major}.0"),
+                )
+                .fix = Some(Fix::safe(
+                format!("Use `{new}`"),
+                vec![Edit::replace(range.start, range.end, *new)],
+            ));
+        }
+    }
+}
+
+/// `env.ref("module.name")`, `has_group("module.name")` and
+/// `_for_xml_id("module.name")` in Python.
+fn check_python_ids(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule, major: u16) {
+    let Some(changes) = changes(major) else { return };
+    if changes.xmlids.is_empty() || is_migration(ctx.file_path) {
+        return;
+    }
+    walk(ctx.parsed.suite(), |node, _| {
+        let Node::Expr(Expr::Call(call)) = node else { return };
+        let Expr::Attribute(func) = &*call.func else { return };
+        if !matches!(func.attr.as_str(), "ref" | "has_group" | "has_groups" | "_for_xml_id") {
+            return;
+        }
+        let Some(literal) = call.arguments.args.first().and_then(|a| a.as_string_literal_expr()) else {
+            return;
+        };
+        if literal.value.is_implicit_concatenated() {
+            return;
+        }
+        for part in literal.value.to_str().split(',') {
+            let id = part.trim().trim_start_matches('!');
+            let Some(new) = changes.xmlids.get(id) else { continue };
+            let violation = reporter.report(
+                rule,
+                literal.start(),
+                format!("XML id `{id}` is `{new}` since Odoo {major}.0"),
+            );
+            violation.fix = rename_in(ctx.source, literal.range(), id, new)
+                .map(|edit| Fix::safe(format!("Use `{new}`"), vec![edit]));
+        }
+    });
+}
+
 /// Replaces `old` inside the source of `range`, once.
 fn rename_in(source: &str, range: TextRange, old: &str, new: &str) -> Option<Edit> {
     let start = range.start().to_usize();
@@ -485,6 +598,9 @@ fn check_xml_fields(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, m
 
 fn check_xml(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, major: u16, renamed: bool) {
     check_xml_fields(ctx, reporter, rule, major, renamed);
+    if renamed {
+        check_xml_ids(ctx, reporter, rule, major);
+    }
     let Some(changes) = changes(major) else { return };
     let own = own_models(Some(ctx.module));
     for file in ctx.files {
@@ -552,7 +668,10 @@ Reports what Odoo "#,
   values of `write()` and `create()`, domains of `search()`, paths of
   `mapped()` and `filtered()`, `@api.depends()` and `related=`; in data
   files the fields of views (not of sub-views), of `xpath` expressions and
-  of records.
+  of records;
+- XML ids, with their module: in `ref`, `inherit_id`, `groups`, `t-call`,
+  menu `parent` and `action`, `ref()` in `eval` and `%(...)d` of data files,
+  and in `env.ref()`, `has_group()` and `_for_xml_id()`.
 
 ## Why is this bad?
 

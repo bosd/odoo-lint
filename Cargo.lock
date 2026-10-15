@@ -776,6 +776,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lax-css"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c964e0b1c58e6a38762c707d7b5f7a78ab4efab65d3e6c4ab2031deb8f65229e"
+dependencies = [
+ "anyhow",
+ "dprint-core",
+ "lax-core",
+ "serde",
+]
+
+[[package]]
 name = "lax-markup"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -918,6 +930,7 @@ dependencies = [
  "dprint-core",
  "fancy-regex",
  "globset",
+ "lax-css",
  "lax-markup",
  "lsp-server",
  "lsp-types",

@@ -1,4 +1,5 @@
-//! `odl format`: XML files formatted by [lax-markup], which only moves
+//! `odl format`: stylesheets (SCSS, CSS, Less) formatted by [lax-css], and
+//! XML files formatted by [lax-markup]; both only move
 //! whitespace, with a check that the document still means the same:
 //! elements, attributes, comments, every text that is not indentation
 //! between elements, and the whitespace of record field values. A file the check rejects is left as it is and reported.
@@ -8,6 +9,7 @@
 //! inline elements.
 //!
 //! [lax-markup]: https://github.com/bartlomieju/lax
+//! [lax-css]: https://github.com/bartlomieju/lax
 
 use crate::settings::Settings;
 use dprint_core::configuration::{ConfigKeyMap, ConfigKeyValue, GlobalConfiguration};
@@ -145,28 +147,95 @@ pub fn format_source(path: &Path, source: &str, config: &lax_markup::configurati
     }
 }
 
-/// The XML files under `paths`, without excluded ones.
-pub fn xml_files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
-    crate::linter::collect_files(paths, settings)
+fn is_formatted_extension(extension: &std::ffi::OsStr) -> bool {
+    matches!(extension.to_str(), Some("xml" | "scss" | "css" | "less"))
+}
+
+fn is_stylesheet(path: &Path) -> bool {
+    matches!(path.extension().and_then(|e| e.to_str()), Some("scss" | "css" | "less"))
+}
+
+/// Libraries a module ships as they are (`static/lib`, `static/src/lib`).
+fn is_vendored(path: &Path) -> bool {
+    let parts: Vec<&str> = path.iter().filter_map(|p| p.to_str()).collect();
+    parts.windows(2).any(|w| w == ["static", "lib"]) || parts.windows(3).any(|w| w == ["static", "src", "lib"])
+}
+
+/// The XML files and stylesheets under `paths`, without excluded ones and
+/// libraries.
+pub fn files(paths: &[PathBuf], settings: &Settings) -> Vec<PathBuf> {
+    crate::linter::collect_files_matching(paths, settings, is_formatted_extension)
         .into_iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "xml"))
+        .filter(|p| !is_vendored(p))
         .collect()
 }
 
-/// Formats every XML file under `paths`; with `check`, writes nothing.
+/// The configuration lax-css gets.
+pub fn css_configuration(line_width: u32, indent_width: u8) -> lax_css::configuration::Configuration {
+    let mut map = ConfigKeyMap::new();
+    map.insert("lineWidth".into(), ConfigKeyValue::from_i32(line_width as i32));
+    map.insert("indentWidth".into(), ConfigKeyValue::from_i32(i32::from(indent_width)));
+    lax_css::configuration::resolve_config(map, &GlobalConfiguration::default()).config
+}
+
+/// A stylesheet reduced to its tokens: whitespace runs as one space, none
+/// next to `{`, `}`, `;` or `,`, nor after `:` (`color:red` is
+/// `color: red`; before it, `a :hover` is not `a:hover`), nor inside
+/// parentheses (`:not( .a )` is `:not(.a)`; before one, `url (a)` is not
+/// `url(a)`). lax-css moves only whitespace; this checks
+/// that it did not join or split two tokens.
+fn css_tokens(source: &str) -> String {
+    let mut out = String::new();
+    let mut space = false;
+    for c in source.chars() {
+        if c.is_whitespace() {
+            space = true;
+            continue;
+        }
+        if space
+            && !out.is_empty()
+            && !out.ends_with(['{', '}', ';', ',', ':', '('])
+            && !matches!(c, '{' | '}' | ';' | ',' | ')')
+        {
+            out.push(' ');
+        }
+        space = false;
+        out.push(c);
+    }
+    out
+}
+
+/// Formats the stylesheet `source` of `path`.
+pub fn format_stylesheet(path: &Path, source: &str, config: &lax_css::configuration::Configuration) -> Outcome {
+    match lax_css::format_text(path, source, config) {
+        Ok(None) => Outcome::Unchanged,
+        Ok(Some(text)) if css_tokens(&text) == css_tokens(source) => Outcome::Formatted(text),
+        Ok(Some(_)) => Outcome::Refused("formatting would change more than whitespace".to_string()),
+        Err(error) => Outcome::Invalid(error.to_string()),
+    }
+}
+
+/// Formats every XML file and stylesheet under `paths`; with `check`,
+/// writes nothing.
 /// Returns each file whose outcome is not `Unchanged`.
 pub fn run(paths: &[PathBuf], settings: &Settings, check: bool) -> std::io::Result<Vec<(PathBuf, Outcome)>> {
     let format = &settings.config.format.clone().unwrap_or_default();
-    let config = configuration(
+    let (width, indent) = (
         format.line_width.unwrap_or(DEFAULT_LINE_WIDTH),
         format.indent_width.unwrap_or(DEFAULT_INDENT_WIDTH),
     );
+    let config = configuration(width, indent);
+    let css = css_configuration(width, indent);
     let mut results = Vec::new();
-    for path in xml_files(paths, settings) {
+    for path in files(paths, settings) {
         let Ok(source) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let outcome = format_source(&path, &source, &config);
+        let outcome = if is_stylesheet(&path) {
+            format_stylesheet(&path, &source, &css)
+        } else {
+            format_source(&path, &source, &config)
+        };
         if let Outcome::Formatted(text) = &outcome {
             if !check {
                 std::fs::write(&path, text)?;
@@ -227,5 +296,39 @@ mod tests {
     #[test]
     fn invalid_xml() {
         assert!(matches!(format("<odoo><record></odoo>"), Outcome::Invalid(_)));
+    }
+}
+
+#[cfg(test)]
+mod stylesheet_tests {
+    use super::*;
+
+    #[test]
+    fn scss_is_indented_and_vendored_files_are_skipped() {
+        let out = format_stylesheet(
+            Path::new("a.scss"),
+            ".o_form_view {\n.o_field_widget{color:red;}\n  &:hover  { color: $primary; }\n}\n",
+            &css_configuration(88, 4),
+        );
+        let Outcome::Formatted(text) = out else {
+            panic!("{out:?}")
+        };
+        assert!(text.contains("\n    .o_field_widget {"), "{text}");
+        assert_eq!(
+            css_tokens(&text),
+            css_tokens(".o_form_view{.o_field_widget{color:red;}&:hover{color: $primary;}}")
+        );
+        assert!(is_vendored(Path::new("acme/static/lib/x/x.css")));
+        assert!(is_vendored(Path::new("acme/static/src/lib/x.scss")));
+        assert!(!is_vendored(Path::new("acme/static/src/scss/x.scss")));
+    }
+
+    #[test]
+    fn tokens_keep_combinators() {
+        assert_ne!(css_tokens(".a .b{}"), css_tokens(".a.b{}"));
+        assert_ne!(css_tokens("a :hover{}"), css_tokens("a:hover{}"));
+        assert_eq!(css_tokens("a {\n  color: red ;\n}"), css_tokens("a{color:red;}"));
+        assert_eq!(css_tokens("a:not(\n    .b\n) {}"), css_tokens("a:not(.b){}"));
+        assert_ne!(css_tokens("a{b: url (x)}"), css_tokens("a{b: url(x)}"));
     }
 }
