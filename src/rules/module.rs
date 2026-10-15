@@ -163,7 +163,8 @@ pub const MANIFEST_SYNTAX_ERROR: Rule = Rule {
 ## What it does
 
 Reports a manifest that is not a dictionary of literals, an empty one, and
-a module without an `__init__.py`.
+a module without an `__init__.py` (with a message that says so: the
+manifest itself is fine then).
 
 ## Why is this bad?
 
@@ -178,16 +179,16 @@ expressions in it make the module fail to load, and so does a missing
 
 fn check_manifest_syntax_error(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
     let module = ctx.module;
-    let loaded = module.path.join("__init__.py").is_file()
-        && module.manifest.as_ref().is_some_and(|m| !m.dict().items.is_empty());
-    if !loaded {
-        reporter.report(
-            &MANIFEST_SYNTAX_ERROR,
-            manifest_line_one(module),
-            1,
-            "Manifest could not be loaded",
-        );
-    }
+    let manifest_ok = module.manifest.as_ref().is_some_and(|m| !m.dict().items.is_empty());
+    // As OCA's check, one finding either way; the message says which.
+    let message = if !manifest_ok {
+        "Manifest could not be loaded"
+    } else if !module.path.join("__init__.py").is_file() {
+        "Manifest could not be loaded: the module has no __init__.py, so Odoo does not load it"
+    } else {
+        return;
+    };
+    reporter.report(&MANIFEST_SYNTAX_ERROR, manifest_line_one(module), 1, message);
 }
 
 // --- MOD002 file-not-used ---------------------------------------------------
