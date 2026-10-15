@@ -1,9 +1,11 @@
-# Formatting XML
+# Formatting XML and stylesheets
 
 `odl format` formats the XML files of a project with
 [lax-markup](https://github.com/bartlomieju/lax), the formatter behind
-`deno fmt`, which only moves whitespace: attribute values (domains,
-`&lt;`, quotes), comments and text stay as written.
+`deno fmt`, and its SCSS, CSS and Less with lax-css. Both only move
+whitespace: attribute values (domains, `&lt;`, quotes), comments, text and
+declarations stay as written. Libraries a module ships as they are
+(`static/lib`, `static/src/lib`) are left alone.
 
 ```bash
 odl format                  # every XML file under the current folder
@@ -27,6 +29,16 @@ that were indented by hand and drops a blank line right after an opening
 tag or before a closing one. On OCA repositories formatted by prettier that
 is a one-time change of a few lines per file; on OBSNL/obs-modules none.
 
+## Stylesheets
+
+lax-css indents rules and puts each declaration on a line of its own. odl
+checks that only whitespace moved where it does not matter: between tokens,
+around `{`, `}`, `;` and `,`, after `:` and inside parentheses. A space
+before `:` or `(` (`a :hover`, `url (x)`) or between two selectors stays.
+Unlike prettier it does not break long selectors over lines, and it joins
+those prettier broke inside `:not(...)`. On OCA/web 18.0 that changed 7 of
+54 stylesheets, by 51 lines.
+
 ## Configuration
 
 ```toml
@@ -44,5 +56,5 @@ indent-width = 4
       name: Format XML
       entry: odl format --force-exclude
       language: system
-      files: \.xml$
+      files: \.(xml|scss|css|less)$
 ```

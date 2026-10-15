@@ -106,7 +106,7 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Format XML files, moving only whitespace (lax-markup), and never their content
+    /// Format XML files and stylesheets, moving only whitespace (lax), and never their content
     Format {
         /// Files or directories to format
         #[arg(default_value = ".")]
