@@ -123,6 +123,8 @@ pub struct RulesConfig {
     pub manifest_website: Option<WebsiteConfig>,
     /// PO105: the languages every module with terms must be translated in.
     pub po_translation_missing: Option<LanguagesConfig>,
+    /// MOD012: the icon of the modules, and the outdated ones it replaces.
+    pub module_icon: Option<ModuleIconConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -154,6 +156,7 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     view_field_restricted_comodel: None,
     manifest_website: None,
     po_translation_missing: None,
+    module_icon: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -167,6 +170,17 @@ pub struct WebsiteConfig {
 pub struct LanguagesConfig {
     /// Odoo language codes, `nl` or `nl_BE`.
     pub languages: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleIconConfig {
+    /// The icon modules should have, relative to the configuration file.
+    pub icon: Option<String>,
+    /// Outdated icons: known names, `sha256:<hex>` or files.
+    pub replace: Option<Vec<String>>,
+    /// Module glob -> icon, for groups of modules with their own icon.
+    pub paths: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

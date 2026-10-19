@@ -278,7 +278,10 @@ impl Server {
         if wanted(&CodeActionKind::QUICKFIX) {
             let lines = params.range.start.line..=params.range.end.line;
             for violation in &violations {
-                let Some(fix) = &violation.fix else { continue };
+                // A file copy is no text edit: `odl check --fix` does it.
+                let Some(fix) = violation.fix.as_ref().filter(|f| f.copy.is_none()) else {
+                    continue;
+                };
                 let diagnostic = diagnostic(text, violation, self.encoding);
                 if !lines.contains(&diagnostic.range.start.line) {
                     continue;

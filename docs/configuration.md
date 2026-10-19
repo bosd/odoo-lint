@@ -74,7 +74,10 @@ does.
 Which rules run. Each entry is one of:
 
 - `ALL`, every rule except the opt-in ones ([MOD008](rules/MOD008.md),
-  which removes copyright headers, [ODOO012](rules/ODOO012.md), which
+  which removes copyright headers, [MOD011](rules/MOD011.md) and
+  [MOD013](rules/MOD013.md), which require `readme/` fragments and tests,
+  [XML103](rules/XML103.md), which reports view extensions appended to a
+  whole form, [ODOO012](rules/ODOO012.md), which
   suggests widgets for fields in views, as a review would,
   [U1923](rules/U1923.md), which moves `SUPERUSER_ID` imports to
   `odoo.api`, and [U2035](rules/U2035.md), which turns
@@ -191,6 +194,27 @@ languages = ["nl", "es"]
 ```
 
 Without it the rule does nothing.
+
+### `module-icon`
+
+The icon of the modules, and the outdated icons it replaces;
+[MOD012](rules/MOD012.md) reports a module without an icon or with an
+outdated one, and `odl check --fix` copies the configured icon. Other icons
+(a module's own app icon) are left alone:
+
+```toml
+[tool.odoo-lint.rules.module-icon]
+icon = "tools/icons/company.png"
+replace = ["oca-2015", "oca-2025-01"]
+
+[tool.odoo-lint.rules.module-icon.paths]
+"modules/client/**" = "tools/icons/client.png"
+```
+
+`replace` takes `oca-2015` (OCA's grey cube), `oca-2025-01` (its first new
+logo), `sha256:<hex>` or a file; `paths` gives the modules under a glob their
+own icon (the longest matching glob wins). Paths are relative to the
+configuration file. Without the table the rule does nothing.
 
 ### Other rule options
 

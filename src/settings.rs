@@ -148,7 +148,7 @@ impl Default for Settings {
 
 /// Rules `ALL` leaves out: policies many projects do not share, enabled by
 /// selecting them by code, name or code prefix.
-pub const OPT_IN: &[&str] = &["MOD008", "ODOO012", "U1923", "U2035"];
+pub const OPT_IN: &[&str] = &["MOD008", "MOD011", "MOD013", "ODOO012", "U1923", "U2035", "XML103"];
 
 /// Whether a `select`/`ignore` entry matches `rule`: `ALL`, an exact code or
 /// name, or a code prefix such as `C81` or `ODOO`.
@@ -315,6 +315,12 @@ impl Settings {
             return relative;
         }
         path.to_path_buf()
+    }
+
+    /// Whether `path` matches `pattern`, a glob relative to the project root
+    /// as in `exclude`; an invalid glob matches nothing.
+    pub fn matches_glob(&self, pattern: &str, path: &Path) -> bool {
+        PathPattern::new(pattern).is_ok_and(|p| p.matches(&self.relative(path)))
     }
 
     /// Whether `path` (a file or directory) is excluded by `exclude`.

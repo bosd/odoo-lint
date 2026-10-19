@@ -31,7 +31,7 @@ pub struct ModuleReporter {
 }
 
 impl ModuleReporter {
-    pub fn report(&mut self, rule: &Rule, path: &Path, line: usize, message: impl Into<String>) {
+    pub fn report(&mut self, rule: &Rule, path: &Path, line: usize, message: impl Into<String>) -> &mut Violation {
         self.violations.push(Violation {
             file_path: path.to_string_lossy().into_owned(),
             line,
@@ -41,6 +41,7 @@ impl ModuleReporter {
             message: message.into(),
             fix: None,
         });
+        self.violations.last_mut().expect("just pushed")
     }
 }
 

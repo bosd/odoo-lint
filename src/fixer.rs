@@ -21,6 +21,42 @@ pub struct FixResult {
     pub fixed: usize,
     /// Changed files: path, contents before fixing, new contents.
     pub changed: Vec<(PathBuf, String, String)>,
+    /// Files to copy, `(from, to)`: binary files the fixes replace.
+    pub copies: Vec<(PathBuf, PathBuf)>,
+}
+
+impl FixResult {
+    /// Writes the changed files and copies the copied ones.
+    pub fn write(&self) -> Result<(), String> {
+        for (path, _, new) in &self.changed {
+            std::fs::write(path, new).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        }
+        for (from, to) in &self.copies {
+            if let Some(parent) = to.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+            }
+            std::fs::copy(from, to).map_err(|e| format!("cannot copy {} to {}: {e}", from.display(), to.display()))?;
+        }
+        Ok(())
+    }
+
+    /// What `write` would do, as a diff and lines for the copied files.
+    pub fn diff(&self) -> String {
+        let mut text: String = self
+            .changed
+            .iter()
+            .map(|(path, old, new)| unified_diff(path, old, new))
+            .collect();
+        for (from, to) in &self.copies {
+            text.push_str(&format!("Copy {} to {}\n", from.display(), to.display()));
+        }
+        text
+    }
+
+    /// The number of files `write` changes or copies.
+    pub fn files(&self) -> usize {
+        self.changed.len() + self.copies.len()
+    }
 }
 
 fn is_po(path: &Path) -> bool {
@@ -41,6 +77,7 @@ pub fn fix_paths(paths: &[PathBuf], settings: &Settings, mode: FixMode) -> FixRe
 /// documents in it. `sources` holds the fixed contents afterwards.
 pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sources: &Sources) -> FixResult {
     let mut originals: HashMap<PathBuf, String> = HashMap::new();
+    let mut copies: Vec<(PathBuf, PathBuf)> = Vec::new();
     let mut fixed = 0;
     let files = collect_files(paths, settings);
     let units = lint_units(&files, sources);
@@ -48,6 +85,14 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
     for _ in 0..MAX_PASSES {
         let candidates = violations.iter().filter_map(|v| {
             let fix = v.fix.as_ref().filter(|f| mode.allows(f.applicability))?;
+            // A copy is done in the end; the file keeps reporting until then.
+            if fix
+                .copy
+                .as_ref()
+                .is_some_and(|(_, to)| copies.iter().any(|(_, t)| t == to))
+            {
+                return None;
+            }
             Some((PathBuf::from(&v.file_path), fix))
         });
         let chosen = select_non_overlapping(candidates);
@@ -55,6 +100,11 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
             break;
         }
         let mut edits_by_file: HashMap<PathBuf, Vec<&Edit>> = HashMap::new();
+        for (_, fix) in &chosen {
+            if let Some(copy) = &fix.copy {
+                copies.push(copy.clone());
+            }
+        }
         for (file, fix) in &chosen {
             for edit in &fix.edits {
                 let target = edit.path.clone().unwrap_or_else(|| file.clone());
@@ -99,10 +149,18 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
         })
         .collect();
     changed.sort();
+    violations.retain(|v| {
+        !v.fix
+            .as_ref()
+            .and_then(|f| f.copy.as_ref())
+            .is_some_and(|copy| copies.contains(copy))
+    });
+    copies.sort();
     FixResult {
         remaining: violations,
         fixed,
         changed,
+        copies,
     }
 }
 
