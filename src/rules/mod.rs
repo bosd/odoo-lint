@@ -20,6 +20,7 @@ pub mod odoo001_missing_depends;
 pub mod owl;
 pub mod po;
 pub mod po_fixes;
+pub mod po_languages;
 pub mod po_odoo;
 pub mod python;
 pub mod python_fields;
@@ -185,6 +186,7 @@ pub const ALL: &[Rule] = &[
     po_odoo::PO_UNKNOWN_OCCURRENCE,
     po_odoo::PO_FILE_NAME,
     po_odoo::PO_FUZZY,
+    po_languages::PO_TRANSLATION_MISSING,
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,

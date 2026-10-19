@@ -86,6 +86,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [PO102](PO102.md) | `po-unknown-occurrence` | Odoo cannot read a `#:` reference of a translation. |
 | [PO103](PO103.md) | `po-file-name` | Odoo never loads a `.po` file with this name. |
 | [PO104](PO104.md) | `po-fuzzy` | A translation is marked `fuzzy`, but Odoo loads it anyway. |
+| [PO105](PO105.md) | `po-translation-missing` | A module with translatable terms lacks the translation of a configured language. |
 | [R8101](R8101.md) | `odoo-exception-warning` | `odoo.exceptions.Warning` is imported. |
 | [R8180](R8180.md) | `consider-merging-classes-inherited` | Several classes in one module extend the same model. |
 | [R8181](R8181.md) | `invalid-email` | The manifest `support` is not a valid email address. |
@@ -343,6 +344,7 @@ PO101
 PO102
 PO103
 PO104
+PO105
 R8101
 R8180
 R8181
