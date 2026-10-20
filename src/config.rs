@@ -121,6 +121,8 @@ pub struct RulesConfig {
     pub view_field_restricted_comodel: Option<RestrictedModelsConfig>,
     /// MOD010: the website every manifest must have.
     pub manifest_website: Option<WebsiteConfig>,
+    /// PO105: the languages every module with terms must be translated in.
+    pub po_translation_missing: Option<LanguagesConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -151,12 +153,20 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     module_large_file: None,
     view_field_restricted_comodel: None,
     manifest_website: None,
+    po_translation_missing: None,
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct WebsiteConfig {
     pub website: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct LanguagesConfig {
+    /// Odoo language codes, `nl` or `nl_BE`.
+    pub languages: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

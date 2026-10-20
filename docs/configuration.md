@@ -179,6 +179,19 @@ website = "https://www.example.com"
 
 Without it the rule does nothing.
 
+### `po-translation-missing`
+
+The languages every module with translatable terms must have a `.po` file
+for; [PO105](rules/PO105.md) reports a missing file, and a file that leaves
+terms of the module's `.pot` untranslated:
+
+```toml
+[tool.odoo-lint.rules.po-translation-missing]
+languages = ["nl", "es"]
+```
+
+Without it the rule does nothing.
+
 ### Other rule options
 
 Rules ported from pylint-odoo take the same options, under

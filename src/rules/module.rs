@@ -109,7 +109,7 @@ fn normalize(relative: &str) -> String {
 
 /// The files the manifest lists, per key, relative to the module and
 /// normalised, each once per key.
-fn manifest_files(module: &ModuleInfo) -> Vec<(String, &'static str)> {
+pub(crate) fn manifest_files(module: &ModuleInfo) -> Vec<(String, &'static str)> {
     let Some(manifest) = &module.manifest else {
         return Vec::new();
     };
