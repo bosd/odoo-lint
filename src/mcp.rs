@@ -205,24 +205,21 @@ fn fix(arguments: &Value) -> Result<String, String> {
     let mode = if flag("unsafe") { FixMode::Unsafe } else { FixMode::Safe };
     let result = fixer::fix_paths(&paths, &settings, mode);
     if flag("dry_run") {
-        if result.changed.is_empty() {
+        if result.files() == 0 {
             return Ok("No changes.".to_string());
         }
-        let mut text = format!(
-            "{} fix(es) would change {} file(s):\n\n",
-            result.fixed,
-            result.changed.len()
-        );
-        for (path, old, new) in &result.changed {
-            text.push_str(&fixer::unified_diff(path, old, new));
-        }
+        let mut text = format!("{} fix(es) would change {} file(s):\n\n", result.fixed, result.files());
+        text.push_str(&result.diff());
         return Ok(text);
     }
-    let mut written = Vec::new();
-    for (path, _, new) in &result.changed {
-        std::fs::write(path, new).map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
-        written.push(path.display().to_string());
-    }
+    result.write().map_err(|e| format!("Cannot fix: {e}"))?;
+    let written: Vec<String> = result
+        .changed
+        .iter()
+        .map(|(path, _, _)| path)
+        .chain(result.copies.iter().map(|(_, to)| to))
+        .map(|path| path.display().to_string())
+        .collect();
     let mut text = format!("Fixed {} violation(s)", result.fixed);
     if written.is_empty() {
         text.push_str(".\n");

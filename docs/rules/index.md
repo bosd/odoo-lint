@@ -55,6 +55,9 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [MOD008](MOD008.md) | `use-header-comments` | A Python file starts with comments such as a copyright header. |
 | [MOD009](MOD009.md) | `field-string-redundant` | A field's `string` is the label Odoo derives from its name anyway. |
 | [MOD010](MOD010.md) | `manifest-website` | The manifest `website` is not the one the configuration sets. |
+| [MOD011](MOD011.md) | `readme-fragments-missing` | The module has no `readme/DESCRIPTION` fragment to build its README from. |
+| [MOD012](MOD012.md) | `module-icon` | The module has no icon, or an outdated one the configuration replaces. |
+| [MOD013](MOD013.md) | `module-without-tests` | A module with Python models has no tests. |
 | [ODOO001](ODOO001.md) | `missing-depends` | Compute method referenced by `compute=` lacks `@api.depends`. |
 | [ODOO002](ODOO002.md) | `module-unwanted-file` | A package, archive, executable, database dump or video inside a module. |
 | [ODOO003](ODOO003.md) | `module-large-file` | A file inside a module is larger than the limit (1 MiB by default). |
@@ -260,6 +263,7 @@ Run `odl rule <CODE>` to show the same documentation in the terminal.
 | [XML024](XML024.md) | `xml-field-numeric-without-eval` | A numeric field is set as text instead of with `eval`. |
 | [XML101](XML101.md) | `xml-bootstrap4-class` | A Bootstrap 4 class that Bootstrap 5 renamed, in Odoo 15.0 or later. |
 | [XML102](XML102.md) | `xml-bootstrap4-removed-class` | A Bootstrap 4 class that Bootstrap 5 removed, in Odoo 15.0 or later. |
+| [XML103](XML103.md) | `xml-inside-form-container` | A view extension appends inside the whole `<sheet>` or `<form>`, below everything else. |
 
 ```{toctree}
 :hidden:
@@ -313,6 +317,9 @@ MOD007
 MOD008
 MOD009
 MOD010
+MOD011
+MOD012
+MOD013
 ODOO001
 ODOO002
 ODOO003
@@ -518,4 +525,5 @@ XML023
 XML024
 XML101
 XML102
+XML103
 ```

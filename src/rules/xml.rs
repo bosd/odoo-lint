@@ -1666,3 +1666,86 @@ fn check_bootstrap4_removed_class(ctx: &XmlContext, reporter: &mut XmlReporter) 
         }
     }
 }
+
+pub const XML_INSIDE_FORM_CONTAINER: Rule = Rule {
+    code: "XML103",
+    name: "xml-inside-form-container",
+    summary: "A view extension appends inside the whole `<sheet>` or `<form>`, below everything else.",
+    doc: r#"
+## What it does
+
+Reports inheritance specs that put their content `inside` (the default of
+`xpath`) the `<sheet>` or the `<form>` of a form view: `<xpath
+expr="//sheet">`, `<xpath expr="//form" position="inside">`, `<sheet
+position="inside">`. Opt-in: select it by code or name.
+
+## Why is this bad?
+
+The content lands at the very end: below the notebook of the sheet, or
+below the sheet and the chatter of the form, where users miss it (a field
+seems not to be there at all). Where it ends up also changes whenever
+another module extends the same view.
+
+## How to fix
+
+Anchor the content to a named element: `<field name="user_ids"
+position="after">`, `<group name="extra" position="inside">` or `<page
+name="..." position="inside">`.
+"#,
+    check: Check::Xml(check_inside_form_container),
+    min_odoo: None,
+    max_odoo: None,
+};
+
+/// Whether `node` is in a view of `res.config.settings`, whose form takes
+/// each app's block at its end.
+fn extends_settings(node: Node) -> bool {
+    let Some(record) = node.ancestors().find(|n| n.has_tag_name("record")) else {
+        return false;
+    };
+    record
+        .children()
+        .filter(|c| c.has_tag_name("field"))
+        .any(|field| match field.attribute("name") {
+            Some("model") => field.text().is_some_and(|t| t.trim() == "res.config.settings"),
+            Some("inherit_id") => field
+                .attribute("ref")
+                .is_some_and(|r| r.contains("res_config_settings")),
+            _ => false,
+        })
+}
+
+/// `//sheet`, `/form/sheet`, `//form`, ...: the sheet or the form itself.
+static FORM_CONTAINER_EXPR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(?://?form)?//?(sheet|form)\s*$").unwrap());
+
+fn check_inside_form_container(ctx: &XmlContext, reporter: &mut XmlReporter) {
+    for file in ctx.files {
+        let Some(doc) = &file.doc else { continue };
+        for node in doc.descendants().filter(Node::is_element) {
+            let position = node.attribute("position");
+            let container = match node.tag_name().name() {
+                "xpath" if position.is_none_or(|p| p == "inside") => node
+                    .attribute("expr")
+                    .and_then(|expr| FORM_CONTAINER_EXPR.captures(expr))
+                    .and_then(|c| c.get(1))
+                    .map(|m| m.as_str()),
+                tag @ ("sheet" | "form") if position == Some("inside") => Some(tag),
+                _ => None,
+            };
+            let Some(container) = container else { continue };
+            if extends_settings(node) {
+                continue;
+            }
+            reporter.report(
+                &XML_INSIDE_FORM_CONTAINER,
+                file,
+                at(file, node),
+                format!(
+                    "Content appended inside the whole <{container}> ends up below everything else; \
+                     anchor it to a named element"
+                ),
+            );
+        }
+    }
+}

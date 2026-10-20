@@ -16,6 +16,7 @@ pub mod inheritance;
 pub mod manifest;
 pub mod model_methods;
 pub mod module;
+pub mod module_conventions;
 pub mod odoo001_missing_depends;
 pub mod owl;
 pub mod po;
@@ -155,6 +156,9 @@ pub const ALL: &[Rule] = &[
     module::USE_HEADER_COMMENTS,
     module::FIELD_STRING_REDUNDANT,
     manifest::values::MANIFEST_WEBSITE,
+    module_conventions::README_FRAGMENTS_MISSING,
+    module_conventions::MODULE_ICON,
+    module_conventions::MODULE_WITHOUT_TESTS,
     odoo001_missing_depends::RULE,
     module::UNWANTED_FILE,
     module::LARGE_FILE,
@@ -360,6 +364,7 @@ pub const ALL: &[Rule] = &[
     xml::XML_FIELD_NUMERIC_WITHOUT_EVAL,
     xml::XML_BOOTSTRAP4_CLASS,
     xml::XML_BOOTSTRAP4_REMOVED_CLASS,
+    xml::XML_INSIDE_FORM_CONTAINER,
 ];
 
 pub fn find(code_or_name: &str) -> Option<&'static Rule> {

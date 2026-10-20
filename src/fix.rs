@@ -70,6 +70,10 @@ pub struct Fix {
     pub title: String,
     #[serde(skip)]
     pub edits: Vec<Edit>,
+    /// A file to copy, `(from, to)`, for binary files such as icons, which
+    /// edits cannot write. The caller copies it when it writes the fixes.
+    #[serde(skip)]
+    pub copy: Option<(PathBuf, PathBuf)>,
 }
 
 impl Fix {
@@ -78,6 +82,7 @@ impl Fix {
             applicability: Applicability::Safe,
             title: title.into(),
             edits,
+            copy: None,
         }
     }
 
@@ -86,6 +91,15 @@ impl Fix {
             applicability: Applicability::Unsafe,
             title: title.into(),
             edits,
+            copy: None,
+        }
+    }
+
+    /// A safe fix that copies `from` over `to`.
+    pub fn copy_file(title: impl Into<String>, from: PathBuf, to: PathBuf) -> Self {
+        Self {
+            copy: Some((from, to)),
+            ..Self::safe(title, Vec::new())
         }
     }
 }

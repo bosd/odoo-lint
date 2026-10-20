@@ -250,6 +250,8 @@ class Partner(models.Model):
             ("field-string-redundant".to_string(), "models.py".to_string(), 16),
             ("field-string-redundant".to_string(), "models.py".to_string(), 18),
             ("field-string-redundant".to_string(), "models.py".to_string(), 21),
+            ("module-without-tests".to_string(), "__manifest__.py".to_string(), 1),
+            ("readme-fragments-missing".to_string(), "__manifest__.py".to_string(), 1),
             ("unused-logger".to_string(), "models.py".to_string(), 8),
             ("use-header-comments".to_string(), "models.py".to_string(), 3),
         ]

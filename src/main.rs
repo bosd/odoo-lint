@@ -353,15 +353,9 @@ fn main() -> ExitCode {
             let mode = if unsafe_fixes { FixMode::Unsafe } else { FixMode::Safe };
             if diff {
                 let result = fixer::fix_paths(&paths, &settings, mode);
-                for (path, old, new) in &result.changed {
-                    print!("{}", fixer::unified_diff(path, old, new));
-                }
-                eprintln!(
-                    "{} fix(es) would change {} file(s).",
-                    result.fixed,
-                    result.changed.len()
-                );
-                return if result.changed.is_empty() || exit_zero {
+                print!("{}", result.diff());
+                eprintln!("{} fix(es) would change {} file(s).", result.fixed, result.files());
+                return if result.files() == 0 || exit_zero {
                     ExitCode::SUCCESS
                 } else {
                     ExitCode::from(1)
@@ -369,11 +363,9 @@ fn main() -> ExitCode {
             }
             let (violations, fixed) = if fix {
                 let result = fixer::fix_paths(&paths, &settings, mode);
-                for (path, _, new) in &result.changed {
-                    if let Err(err) = std::fs::write(path, new) {
-                        eprintln!("error: cannot write {}: {err}", path.display());
-                        return ExitCode::from(2);
-                    }
+                if let Err(err) = result.write() {
+                    eprintln!("error: {err}");
+                    return ExitCode::from(2);
                 }
                 (result.remaining, Some(result.fixed))
             } else {
