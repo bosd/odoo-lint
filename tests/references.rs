@@ -58,6 +58,13 @@ fn odoo(root: &Path) -> PathBuf {
         "'data': ['security/groups.xml']",
         "from odoo import fields, models\n\n\nclass Picking(models.Model):\n    _name = 'stock.picking'\n    name = fields.Char()\n",
     );
+    // Loaded with `base`, whether a module depends on it or not.
+    module(&core, "web", &["base"], "'data': ['views/layout.xml']", "");
+    write(
+        &core,
+        "web/views/layout.xml",
+        "<odoo>\n    <template id=\"external_layout\"><div/></template>\n</odoo>\n",
+    );
     write(
         &core,
         "stock/security/groups.xml",
@@ -123,6 +130,14 @@ fn references_across_modules() {
         <field name="groups" eval="[(4, ref('group_acme')), (4, ref('demo_only')), (4, ref('base.gone', False))]"/>
     </record>
     <template id="ticket_page"><t t-call="sale.missing_template"/><t t-call="Inline"/><t t-call="stock.page"/></template>
+    <template id="layout" inherit_id="web.external_layout"><div/></template>
+    <record id="export_name" model="ir.rule">
+        <field name="field_id" ref="base.field_res_users__name"/>
+        <field name="tax_id" ref="base.1_sale_tax"/>
+        <field name="other_field_id" ref="base.field_res_users__nope"/>
+        <field name="account_id" model="account.chart.template" eval="obj().with_company(obj().env.ref('base.user_demo')).ref('pcg_371').id"/>
+        <field name="user_id" eval="obj().env.ref('base.user_nope').id"/>
+    </record>
 </odoo>
 "#,
     );
@@ -182,6 +197,10 @@ fn references_across_modules() {
             "XML id `acme.group_acme` is defined in `security/groups.xml`, which Odoo loads later",
         ),
         ("views.xml", 18, "XML id `sale.missing_template` does not exist"),
+        // `res.users` gets `name` from the `res.partner` it delegates to.
+        ("views.xml", 23, "XML id `base.field_res_users__nope` does not exist"),
+        // A chart template's `ref()` is not Odoo's; `env.ref()` is.
+        ("views.xml", 25, "XML id `base.user_nope` does not exist"),
     ]
     .into_iter()
     .map(|(f, l, m)| (f.to_string(), l, m.to_string()))

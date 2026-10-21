@@ -199,6 +199,15 @@ fn class_value<'a>(class: &'a StmtClassDef, name: &str) -> Option<&'a Expr> {
     })
 }
 
+/// A string literal, or the name of a string the class body assigns
+/// (`_inherits = {_decorator_model: "line_id"}`).
+fn class_string(class: &StmtClassDef, expr: &Expr) -> Option<String> {
+    string(expr).or_else(|| {
+        let name = expr.as_name_expr()?;
+        class_value(class, name.id.as_str()).and_then(string)
+    })
+}
+
 /// The models a class defines or extends: its `_name`, or every model of
 /// its `_inherit`.
 pub(crate) fn class_models(class: &StmtClassDef) -> Vec<String> {
@@ -218,7 +227,7 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         Some(Expr::Dict(dict)) => dict
             .items
             .iter()
-            .filter_map(|i| i.key.as_ref().and_then(string))
+            .filter_map(|i| i.key.as_ref().and_then(|key| class_string(class, key)))
             .collect(),
         _ => Vec::new(),
     };
@@ -239,13 +248,26 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         })
         .filter_map(|(target, value)| {
             let Expr::Call(call) = value else { return None };
-            let Expr::Attribute(func) = &*call.func else {
-                return None;
+            let kind = match &*call.func {
+                Expr::Attribute(func) if func_lib(&call.func) == "fields" => func.attr.to_string(),
+                // A module's own field classes: `fs_fields.FsFolder()`.
+                Expr::Attribute(func)
+                    if func_lib(&call.func).ends_with("fields")
+                        && func.attr.starts_with(|c: char| c.is_ascii_uppercase()) =>
+                {
+                    func.attr.to_string()
+                }
+                // A field class of a module (`JobSerialized(...)` of
+                // queue_job), imported by name; constants aside.
+                Expr::Name(func)
+                    if func.id.starts_with(|c: char| c.is_ascii_uppercase())
+                        && !target.id.starts_with('_')
+                        && target.id.chars().any(|c| c.is_ascii_lowercase()) =>
+                {
+                    func.id.to_string()
+                }
+                _ => return None,
             };
-            if func_lib(&call.func) != "fields" {
-                return None;
-            }
-            let kind = func.attr.to_string();
             let comodel = call
                 .arguments
                 .keywords
@@ -289,7 +311,14 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
             k.arg.as_ref().is_some_and(|a| a.as_str() == "delegate")
                 && matches!(&k.value, Expr::BooleanLiteral(b) if b.value)
         });
-        if let Some(comodel) = call.arguments.args.first().and_then(string).filter(|_| delegate) {
+        let comodel = call
+            .arguments
+            .keywords
+            .iter()
+            .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "comodel_name"))
+            .map(|k| &k.value)
+            .or_else(|| call.arguments.args.first());
+        if let Some(comodel) = comodel.and_then(string).filter(|_| delegate) {
             delegates.push(comodel);
         }
     }
@@ -515,6 +544,19 @@ pub fn closure(module: &ModuleInfo, addons_path: &[PathBuf]) -> Option<Closure> 
 
 /// [`closure`] of the module in the folder `path`.
 pub fn closure_at(path: &Path, addons_path: &[PathBuf]) -> Option<Closure> {
+    let modules = dependencies(path, addons_path, true)?;
+    Some(Closure {
+        modules,
+        fields: Mutex::new(HashMap::new()),
+        methods: Mutex::new(HashMap::new()),
+        implied: std::sync::OnceLock::new(),
+    })
+}
+
+/// The module in `path` and the modules it depends on, directly or not,
+/// looked up next to it and in `addons_path`. A dependency that cannot be
+/// found gives `None` when `strict`, and is skipped otherwise.
+pub fn dependencies(path: &Path, addons_path: &[PathBuf], strict: bool) -> Option<Vec<Arc<ModuleIndex>>> {
     let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
     dirs.extend(addons_path.iter().cloned());
     let find = |name: &str| {
@@ -526,22 +568,27 @@ pub fn closure_at(path: &Path, addons_path: &[PathBuf]) -> Option<Closure> {
     let root = module_index(path)?;
     let mut seen: HashSet<String> = HashSet::from([root.name.clone()]);
     let mut queue: Vec<String> = root.depends.clone();
+    // Odoo loads `base` and `web` (a server-wide module) before any other.
     queue.push("base".into());
+    if root.name != "base" {
+        queue.push("web".into());
+    }
     let mut modules = vec![root];
     while let Some(name) = queue.pop() {
         if !seen.insert(name.clone()) {
             continue;
         }
-        let found = find(&name)?;
+        let Some(found) = find(&name) else {
+            // Trees of only some modules (tests, `base` alone) lack `web`.
+            if strict && name != "web" {
+                return None;
+            }
+            continue;
+        };
         queue.extend(found.depends.iter().cloned());
         modules.push(found);
     }
-    Some(Closure {
-        modules,
-        fields: Mutex::new(HashMap::new()),
-        methods: Mutex::new(HashMap::new()),
-        implied: std::sync::OnceLock::new(),
-    })
+    Some(modules)
 }
 
 impl Closure {
@@ -1421,5 +1468,46 @@ mod tests {
         let mut found = fields(&module_index(&module).unwrap());
         found.sort();
         assert_eq!(found, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn fields_of_a_module_field_class() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = dir.path().join("acme_job");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("__manifest__.py"), "{'name': 'Job'}\n").unwrap();
+        std::fs::write(
+            module.join("a.py"),
+            "from odoo import fields, models\n\nfrom .fields import JobSerialized\n\n\nclass F(models.Model):\n    _name = 'acme.f'\n\n    MAX = Decimal(1)\n    _cache = LRU(10)\n    action = JobSerialized(base_type=dict)\n    folder = fs_fields.FsFolder()\n    name = fields.Char()\n",
+        )
+        .unwrap();
+        let index = module_index(&module).unwrap();
+        let fields: Vec<(&str, &str)> = index.classes[0]
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.kind.as_str()))
+            .collect();
+        assert_eq!(
+            fields,
+            vec![("action", "JobSerialized"), ("folder", "FsFolder"), ("name", "Char")]
+        );
+    }
+
+    #[test]
+    fn inherits_keyed_by_a_class_attribute() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = dir.path().join("acme_line");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("__manifest__.py"), "{'name': 'Line'}\n").unwrap();
+        std::fs::write(
+            module.join("a.py"),
+            "from odoo import fields, models\n\n\nclass L(models.Model):\n    _name = 'account.move.line'\n    _decorator = 'acme.document.line'\n    _inherit = [_name, 'acme.mixin']\n    _inherits = {_decorator: 'document_line_id'}\n    partner_id = fields.Many2one(comodel_name='res.partner', delegate=True)\n",
+        )
+        .unwrap();
+        let index = module_index(&module).unwrap();
+        assert_eq!(
+            index.classes[0].delegates,
+            vec!["acme.document.line".to_string(), "res.partner".to_string()]
+        );
     }
 }

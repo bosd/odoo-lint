@@ -92,6 +92,26 @@ struct Registrations {
     component_templates: Vec<String>,
 }
 
+impl Registrations {
+    /// The category `.add(...)` is called on: a category, a variable holding
+    /// one, or an earlier `.add(...)` of a chain.
+    fn category_of(&self, expression: &Expression) -> Option<String> {
+        if let Some(name) = category(expression) {
+            return Some(name.to_string());
+        }
+        match expression {
+            Expression::Identifier(id) => self.variables.get(id.name.as_str()).cloned(),
+            Expression::CallExpression(call) => match &call.callee {
+                Expression::StaticMemberExpression(member) if member.property.name == "add" => {
+                    self.category_of(&member.object)
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 impl<'a> Visit<'a> for Registrations {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let (BindingPattern::BindingIdentifier(id), Some(init)) = (&declarator.id, &declarator.init) {
@@ -114,12 +134,7 @@ impl<'a> Visit<'a> for Registrations {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if let Expression::StaticMemberExpression(member) = &call.callee {
             if member.property.name == "add" {
-                let category = category(&member.object)
-                    .map(str::to_string)
-                    .or_else(|| match &member.object {
-                        Expression::Identifier(id) => self.variables.get(id.name.as_str()).cloned(),
-                        _ => None,
-                    });
+                let category = self.category_of(&member.object);
                 if let (Some(category), Some(key)) = (category, call.arguments.first().and_then(string)) {
                     self.added.push((category, key.to_string()));
                 }

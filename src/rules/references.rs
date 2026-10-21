@@ -115,8 +115,11 @@ struct Reference {
     soft: bool,
 }
 
-static EVAL_REF: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\bref\(\s*['"]([\w.]+)['"](\s*,\s*(?:raise_if_not_found\s*=\s*)?False)?"#).unwrap());
+/// `ref(...)` and `env.ref(...)`, not the `ref()` of some other object
+/// (`obj().ref('pcg_371')` of a chart template, which prefixes the company).
+static EVAL_REF: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:^|[^.\w]|\benv\.)ref\(\s*['"]([\w.]+)['"](\s*,\s*(?:raise_if_not_found\s*=\s*)?False)?"#).unwrap()
+});
 /// `%(module.action)d` in button names and the like; `%(city)s` is a
 /// format string (address formats), not a reference.
 static ACTION_REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"%\(([\w.]+)\)d").unwrap());
@@ -285,6 +288,32 @@ fn python_references(module: &ModuleIndex, out: &mut Vec<Reference>) {
 }
 
 /// Ids Odoo creates for every module or category, and exported ids.
+/// Whether Odoo creates `module.name` when it installs the closure, out of
+/// sight of the data files: `1_sale_tax` of the chart template of company 1,
+/// or `field_res_users__phone`, the field `res.users` gets from the
+/// `res.partner` it delegates to.
+fn created_at_install(closure: &Closure, module: &str, name: &str) -> bool {
+    if name.split_once('_').is_some_and(|(company, rest)| {
+        !company.is_empty() && company.bytes().all(|b| b.is_ascii_digit()) && !rest.is_empty()
+    }) {
+        return closure.module(module).is_some();
+    }
+    let Some((model, field)) = name.strip_prefix("field_").and_then(|n| n.split_once("__")) else {
+        return false;
+    };
+    closure.module(module).is_some_and(|m| {
+        m.classes
+            .iter()
+            .flat_map(|c| c.name.iter().chain(c.inherit.iter()))
+            .filter(|candidate| candidate.replace('.', "_") == model)
+            .any(|candidate| {
+                closure
+                    .fields(candidate)
+                    .is_some_and(|fields| fields.contains_key(field))
+            })
+    })
+}
+
 fn always_exists(module: &str, name: &str) -> bool {
     module == "__export__"
         || (module == "base" && (name.starts_with("module_") || name.starts_with("lang_")))
@@ -333,7 +362,7 @@ fn check_xml_ids(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
             })
         };
         let message = match closure.xml_id(&id) {
-            None if delegated() => None,
+            None if delegated() || created_at_install(&closure, module, name) => None,
             // Created by this module: it must come before the reference.
             Some(_) if closure.xml_id_elsewhere(&id, &own.name) => None,
             Some(defined) => match (own.xml_ids.get(&id), reference.position) {

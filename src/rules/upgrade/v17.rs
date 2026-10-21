@@ -861,11 +861,15 @@ names, ids), choose between the model and recordset variants by hand.
 };
 
 /// Whether `expr` is `self`, a chain of attributes from `self`, or a model
-/// from `env[...]`: not some other object with a `flush()`.
+/// from `env[...]`: not some other object with a `flush()`, such as the
+/// file in a private attribute (`self._file`).
 fn is_records(expr: &Expr) -> bool {
     match expr {
         Expr::Name(name) => name.id.as_str() == "self",
-        Expr::Attribute(attribute) => attribute.attr.as_str() != "env" && is_records(&attribute.value),
+        Expr::Attribute(attribute) => {
+            let attr = attribute.attr.as_str();
+            attr != "env" && (attr == "_origin" || !attr.starts_with('_')) && is_records(&attribute.value)
+        }
         Expr::Subscript(subscript) => matches!(&*subscript.value, Expr::Attribute(a) if a.attr.as_str() == "env"),
         Expr::Call(call) => matches!(&*call.func, Expr::Attribute(a) if is_records(&a.value)),
         _ => false,

@@ -115,6 +115,12 @@ const VIEWS: &str = r#"<odoo>
             <xpath expr="/form" position="inside">
                 <button name="action_missing" type="object"/>
             </xpath>
+            <button name="action_line" position="replace">
+                <button name="action_line_edit" type="object"/>
+            </button>
+            <xpath expr="/form" position="inside">
+                <button name="action_close" type="object" special="cancel"/>
+            </xpath>
         </field>
     </record>
 </odoo>
@@ -177,4 +183,25 @@ fn silent_without_odoo_source() {
     let addons = dir.path().join("addons");
     module(&addons, "acme_sale", &["sale"], PYTHON, Some(VIEWS));
     assert!(messages(std::slice::from_ref(&addons), vec![core]).is_empty());
+}
+
+#[test]
+fn abstract_models_may_leave_methods_to_their_heirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = odoo(dir.path());
+    let addons = dir.path().join("addons");
+    module(
+        &addons,
+        "acme_abstract",
+        &["base"],
+        "from odoo import fields, models\n\n\nclass Abstract(models.AbstractModel):\n    _name = 'acme.abstract'\n\n    data = fields.Char(compute='_compute_data')\n\n\nclass Concrete(models.Model):\n    _name = 'acme.concrete'\n    _inherit = 'acme.abstract'\n\n    other = fields.Char(compute='_compute_other')\n\n    def _compute_data(self):\n        pass\n",
+        None,
+    );
+    assert_eq!(
+        messages(&[addons.join("acme_abstract")], vec![core]),
+        vec![(
+            14,
+            "ODOO010 Method `_compute_other` (`compute` of `other`) does not exist on `acme.concrete`".to_string()
+        )]
+    );
 }
