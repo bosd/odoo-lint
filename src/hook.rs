@@ -120,7 +120,7 @@ mod tests {
         fs::create_dir_all(module.join("models")).unwrap();
         fs::write(
             module.join("__manifest__.py"),
-            "{\n    'name': 'Hook',\n    'license': 'AGPL-3',\n    'installable': True,\n}\n",
+            "{\n    'name': 'Hook',\n    'license': 'AGPL-3',\n    'active': True,\n}\n",
         )
         .unwrap();
         let loose = dir.path().join("script.py");

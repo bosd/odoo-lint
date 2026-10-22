@@ -981,6 +981,37 @@ fn default_label(name: &str) -> String {
     python_title(&name.replace('_', " "))
 }
 
+/// The fix removing a field's `string` at `range`; none when a positional
+/// argument follows a positional string.
+pub(crate) fn remove_string_fix(
+    call: &ruff_python_ast::ExprCall,
+    range: ruff_text_size::TextRange,
+    is_positional: bool,
+    position: usize,
+) -> Option<Fix> {
+    let args = &call.arguments.args;
+    let keywords = &call.arguments.keywords;
+    (!is_positional || args.len() == position + 1).then(|| {
+        let all: Vec<_> = args
+            .iter()
+            .map(Ranged::range)
+            .chain(keywords.iter().map(Ranged::range))
+            .collect();
+        let index = all.iter().position(|r| *r == range).expect("an argument");
+        let edit = if index > 0 {
+            Edit::delete(all[index - 1].end().to_usize(), range.end().to_usize())
+        } else if all.len() > 1 {
+            Edit::delete(range.start().to_usize(), all[1].start().to_usize())
+        } else {
+            // The only argument: empty the parentheses, trailing
+            // comma and line breaks included.
+            let arguments = call.arguments.range();
+            Edit::delete(arguments.start().to_usize() + 1, arguments.end().to_usize() - 1)
+        };
+        Fix::safe("Remove the redundant string", vec![edit])
+    })
+}
+
 pub const FIELD_STRING_REDUNDANT: Rule = Rule {
     code: "MOD009",
     name: "field-string-redundant",
@@ -1001,6 +1032,12 @@ It is noise, and one more string for translators.
 ## Fix safety
 
 Safe when no positional argument follows the string: it is removed.
+
+## Opt-in
+
+`ALL` does not include this check: [W8113](W8113.md), on by default,
+reports the same labels and removes them the same way. Enable it with
+`select = ["ALL", "MOD009"]`.
 "#,
     check: Check::Python(check_field_string_redundant),
     min_odoo: None,
@@ -1060,25 +1097,7 @@ fn check_field_string_redundant(ctx: &PythonContext, reporter: &mut Reporter) {
             if literal.value.to_str() != default_label(target.id.as_str()) {
                 continue;
             }
-            let fix = (!is_positional || args.len() == position + 1).then(|| {
-                let all: Vec<_> = args
-                    .iter()
-                    .map(Ranged::range)
-                    .chain(keywords.iter().map(Ranged::range))
-                    .collect();
-                let index = all.iter().position(|r| *r == range).expect("an argument");
-                let edit = if index > 0 {
-                    Edit::delete(all[index - 1].end().to_usize(), range.end().to_usize())
-                } else if all.len() > 1 {
-                    Edit::delete(range.start().to_usize(), all[1].start().to_usize())
-                } else {
-                    // The only argument: empty the parentheses, trailing
-                    // comma and line breaks included.
-                    let arguments = call.arguments.range();
-                    Edit::delete(arguments.start().to_usize() + 1, arguments.end().to_usize() - 1)
-                };
-                Fix::safe("Remove the redundant string", vec![edit])
-            });
+            let fix = remove_string_fix(call, range, is_positional, position);
             reporter
                 .report(
                     &FIELD_STRING_REDUNDANT,

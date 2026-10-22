@@ -187,6 +187,10 @@ Use instead:
 ```python
 partner_id = fields.Many2one("res.partner")
 ```
+
+## Fix safety
+
+Safe when no positional argument follows the label: it is removed.
 "#,
     check: Check::Python(check_string_redundant),
     min_odoo: None,
@@ -427,6 +431,27 @@ fn field_label(call: &ExprCall) -> Option<String> {
     }
 }
 
+/// The fix removing the label `field_label` read, a positional string or
+/// the `string` keyword.
+fn label_fix(call: &ExprCall) -> Option<Fix> {
+    let position = STRING_POSITION
+        .iter()
+        .find(|(t, _)| *t == func_name(&call.func))
+        .map_or(0, |(_, p)| *p);
+    let (range, is_positional) = match call.arguments.args.get(position) {
+        Some(arg) => (arg.range(), true),
+        None => (
+            call.arguments
+                .keywords
+                .iter()
+                .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "string"))?
+                .range(),
+            false,
+        ),
+    };
+    crate::rules::module::remove_string_fix(call, range, is_positional, position)
+}
+
 fn check_string_redundant(ctx: &PythonContext, reporter: &mut Reporter) {
     for class in classes(ctx.parsed.suite()) {
         for (assign, call) in field_definitions(class) {
@@ -441,11 +466,13 @@ fn check_string_redundant(ctx: &PythonContext, reporter: &mut Reporter) {
             };
             let is_related = keywords(call).any(|(arg, _)| arg == Some("related"));
             if !is_related && field_label(call).is_some_and(|label| label == py_title(&field_name)) {
-                reporter.report(
-                    &ATTRIBUTE_STRING_REDUNDANT,
-                    call.start(),
-                    "The attribute string is redundant. String parameter equal to name of variable",
-                );
+                reporter
+                    .report(
+                        &ATTRIBUTE_STRING_REDUNDANT,
+                        call.start(),
+                        "The attribute string is redundant. String parameter equal to name of variable",
+                    )
+                    .fix = label_fix(call);
             }
         }
     }
@@ -567,6 +594,12 @@ mod tests {
             "{HEADER}    partner_id = fields.Many2one('res.partner', 'Partner')\n    name = fields.Char(string='Name')\n    tag_ids = fields.Many2many('t', 'r', 'a', 'b', 'Tag')\n    other = fields.Char('Something')\n    ref = fields.Char('Ref', related='x')\n"
         );
         assert_eq!(messages(&ATTRIBUTE_STRING_REDUNDANT, &src).len(), 3);
+        // Each label is the last positional argument or a keyword: removable.
+        assert!(run_python_rule(&ATTRIBUTE_STRING_REDUNDANT, &src)
+            .iter()
+            .all(|v| v.fix.is_some()));
+        let src = format!("{HEADER}    partner_id = fields.Many2one('res.partner', 'Partner', 'restrict')\n");
+        assert!(run_python_rule(&ATTRIBUTE_STRING_REDUNDANT, &src)[0].fix.is_none());
         assert_eq!(py_title("sale order line"), "Sale Order Line");
     }
 

@@ -197,6 +197,12 @@ translation changes into large, hard to review diffs.
 ## Fix safety
 
 Safe: the file is rewritten as OCA's `po-pretty-format` would write it.
+
+## Opt-in
+
+`ALL` does not include this check: OCA's repositories all disable
+`po-pretty-format` in their oca-checks-po hook, as Odoo's and Weblate's
+exports never match its order. Enable it with `select = ["ALL", "PO007"]`.
 "#,
     check: Check::Po(check_pretty_format),
     min_odoo: None,

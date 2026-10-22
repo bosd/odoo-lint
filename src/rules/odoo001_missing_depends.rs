@@ -5,7 +5,7 @@ use crate::rules::{Check, Rule};
 use ruff_python_ast::statement_visitor::{walk_stmt, StatementVisitor};
 use ruff_python_ast::{Decorator, Expr, Stmt, StmtClassDef};
 use ruff_text_size::Ranged;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 pub const CODE: &str = "ODOO001";
 
@@ -16,9 +16,9 @@ pub const RULE: Rule = Rule {
     doc: r#"
 ## What it does
 
-Checks every model class for fields declared with `compute=` and reports the
-compute method when it has neither `@api.depends(...)` nor
-`@api.depends_context(...)`.
+Checks every model class for stored fields (`store=True`) declared with
+`compute=` and reports the compute method when it has neither
+`@api.depends(...)` nor `@api.depends_context(...)`.
 
 Both `compute="_compute_total"` and `compute=_compute_total` are recognised.
 When several fields share one compute method, the method is reported once and
@@ -28,8 +28,11 @@ the message lists all fields.
 
 Without declared dependencies the ORM does not know when to invalidate the
 value. A stored computed field is never recomputed after its inputs change, so
-the database silently keeps stale data. A non-stored field is recomputed on
-every access instead of being cached.
+the database silently keeps stale data.
+
+A non-stored compute without dependencies is a common, deliberate pattern
+(counts, SQL queries, values of the moment): Odoo computes it again in each
+transaction. Those are left alone unless configured.
 
 ## Example
 
@@ -56,6 +59,14 @@ Use instead:
 If the value only depends on the context (for example the current company or
 user), declare that with `@api.depends_context("company")`.
 
+## Configuration
+
+```toml
+[tool.odoo-lint.rules.missing-depends]
+# Report non-stored computes as well (default: false)
+non-stored = true
+```
+
 ## Limitations
 
 Only compute methods defined in the same class as the field are checked; a
@@ -67,10 +78,18 @@ method inherited from another class is not reported.
 };
 
 fn check(ctx: &PythonContext, reporter: &mut Reporter) {
+    let non_stored = ctx
+        .settings
+        .config
+        .rules()
+        .missing_depends
+        .as_ref()
+        .and_then(|c| c.non_stored)
+        .unwrap_or(false);
     let mut collector = ClassCollector::default();
     collector.visit_body(ctx.parsed.suite());
     for class in collector.classes {
-        check_class(class, reporter);
+        check_class(class, non_stored, reporter);
     }
 }
 
@@ -90,19 +109,27 @@ impl<'a> StatementVisitor<'a> for ClassCollector<'a> {
     }
 }
 
-fn check_class(class: &StmtClassDef, reporter: &mut Reporter) {
+fn check_class(class: &StmtClassDef, non_stored: bool, reporter: &mut Reporter) {
     // compute method name -> fields that use it
     let mut computes: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    // compute methods of a stored field
+    let mut stored: HashSet<&str> = HashSet::new();
     for stmt in &class.body {
         let Stmt::Assign(assign) = stmt else { continue };
         let Some(method) = compute_method(&assign.value) else {
             continue;
         };
+        if is_stored(&assign.value) {
+            stored.insert(method);
+        }
         for target in &assign.targets {
             if let Expr::Name(name) = target {
                 computes.entry(method).or_default().push(name.id.as_str());
             }
         }
+    }
+    if !non_stored {
+        computes.retain(|method, _| stored.contains(method));
     }
     if computes.is_empty() {
         return;
@@ -126,6 +153,14 @@ fn check_class(class: &StmtClassDef, reporter: &mut Reporter) {
             ),
         );
     }
+}
+
+/// Whether the field call passes `store=True`.
+fn is_stored(value: &Expr) -> bool {
+    let Expr::Call(call) = value else { return false };
+    call.arguments
+        .find_keyword("store")
+        .is_some_and(|k| matches!(&k.value, Expr::BooleanLiteral(b) if b.value))
 }
 
 /// Returns the compute method name if `value` is `fields.X(..., compute=...)`.
@@ -215,7 +250,7 @@ class A(models.Model):
     fn shared_method_reported_once_with_all_fields() {
         let src = r#"
 class A(models.Model):
-    a = fields.Float(compute="_compute_ab")
+    a = fields.Float(compute="_compute_ab", store=True)
     b = fields.Float(compute="_compute_ab")
 
     def _compute_ab(self):
@@ -224,6 +259,25 @@ class A(models.Model):
         let v = check(src);
         assert_eq!(v.len(), 1);
         assert!(v[0].message.contains("a, b"));
+    }
+
+    #[test]
+    fn non_stored_computes_only_when_configured() {
+        let src = r#"
+class A(models.Model):
+    count = fields.Integer(compute="_compute_count")
+
+    def _compute_count(self):
+        pass
+"#;
+        assert!(check(src).is_empty());
+        let mut settings = crate::settings::Settings::default();
+        settings.config.rules = Some(crate::config::RulesConfig {
+            missing_depends: Some(crate::config::MissingDependsConfig { non_stored: Some(true) }),
+            ..crate::config::NO_RULES_CONFIG.clone()
+        });
+        let v = crate::checker::run_python_rule_with(&RULE, src, "test.py", None, &settings);
+        assert_eq!(v.len(), 1);
     }
 
     #[test]
