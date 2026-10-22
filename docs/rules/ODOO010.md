@@ -24,4 +24,5 @@ another model without its method.
 Like [ODOO004](ODOO004.md), the check needs the code of the dependencies,
 Odoo's included, in `addons-path`. A model with methods odoo-lint cannot
 see (a Python mixin outside the addons, a parent outside the closure) is not
-checked.
+checked, nor is an abstract model: it may leave the methods to the models
+that inherit it.

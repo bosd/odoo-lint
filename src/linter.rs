@@ -237,6 +237,14 @@ fn is_po_extension(extension: &std::ffi::OsStr) -> bool {
     extension == "po" || extension == "pot"
 }
 
+/// Whether `path` is a translation file of the module, not of its
+/// documentation: Sphinx catalogs in `doc/locale/<lang>/LC_MESSAGES/`.
+fn is_module_po(path: &Path) -> bool {
+    !path
+        .iter()
+        .any(|part| part == "doc" || part == "docs" || part == "LC_MESSAGES")
+}
+
 /// Maps every file to the module (closest ancestor with a manifest) it is in.
 /// The modules the files belong to, once each.
 pub fn modules_of(files: &[PathBuf], sources: &Sources) -> Vec<Arc<ModuleInfo>> {
@@ -319,6 +327,9 @@ fn lint_file(
     let version = settings.version_of(module);
     let rules: Vec<&'static Rule> = rules.iter().copied().filter(|rule| rule.applies_in(version)).collect();
     if path.extension().is_some_and(is_po_extension) {
+        if !is_module_po(path) {
+            return (Vec::new(), Vec::new());
+        }
         return (lint_po_file(path, &rules, settings, sources), Vec::new());
     }
     if path.extension().is_some_and(|e| e == "xml") {

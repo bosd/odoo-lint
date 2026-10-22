@@ -38,7 +38,8 @@ another model without its method.
 Like [ODOO004](ODOO004.md), the check needs the code of the dependencies,
 Odoo's included, in `addons-path`. A model with methods odoo-lint cannot
 see (a Python mixin outside the addons, a parent outside the closure) is not
-checked.
+checked, nor is an abstract model: it may leave the methods to the models
+that inherit it.
 "#,
     check: Check::Python(check_field_methods),
     min_odoo: None,
@@ -95,7 +96,13 @@ fn check_field_methods(ctx: &PythonContext, reporter: &mut Reporter) {
         return;
     };
     for class in classes(ctx.parsed.suite()) {
-        if ctx.semantic.odoo_model_kind(class).is_none() {
+        // An abstract model may leave the methods to the models that
+        // inherit it (`account.reconcile.abstract` of account_reconcile_oca).
+        if ctx
+            .semantic
+            .odoo_model_kind(class)
+            .is_none_or(|(kind, _)| kind == "AbstractModel")
+        {
             continue;
         }
         let models = class_models(class);
@@ -168,10 +175,11 @@ pub(crate) fn node_model(closure: &Closure, arch: Node, node: Node, model: &str)
 
 /// Whether `button`, in the arch of an extension, may end up in a field's
 /// sub-view: under a field or a `<groupby>`, or inserted by a spec that
-/// points into a field, a list or a nested form.
+/// points into a field, a list or a nested form, or at a button, which
+/// may sit in the rows of a list.
 pub(crate) fn lands_in_field(arch: Node, button: Node) -> bool {
     button.ancestors().skip(1).take_while(|a| *a != arch).any(|a| {
-        if is(a, "field") || is(a, "groupby") {
+        if is(a, "field") || is(a, "groupby") || (is(a, "button") && a.has_attribute("position")) {
             return true;
         }
         let Some(expr) = a.attribute("expr").filter(|_| is(a, "xpath")) else {
@@ -198,7 +206,8 @@ fn check_button_methods(ctx: &XmlContext, reporter: &mut XmlReporter) {
             };
             let extension = child_field(record, "inherit_id").is_some();
             for button in arch.descendants().filter(|n| is(*n, "button")) {
-                if button.attribute("type") != Some("object") {
+                // `special` buttons close the dialog without calling `name`.
+                if button.attribute("type") != Some("object") || button.has_attribute("special") {
                     continue;
                 }
                 let Some(name) = button.attribute("name").map(str::trim) else {

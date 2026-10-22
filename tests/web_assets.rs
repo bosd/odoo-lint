@@ -31,7 +31,7 @@ fn setup(root: &Path) -> PathBuf {
     write(
         &core,
         "web/static/src/fields/tags.js",
-        "import { registry } from \"@web/core/registry\";\nconst fieldRegistry = registry.category(\"fields\");\nfieldRegistry.add(\"many2many_tags\", {});\nregistry.category(\"fields\").add(\"list.handle\", {});\nregistry.category(\"view_widgets\").add(\"web_ribbon\", {});\n",
+        "import { registry } from \"@web/core/registry\";\nconst fieldRegistry = registry.category(\"fields\");\nfieldRegistry.add(\"many2many_tags\", {});\nregistry.category(\"fields\").add(\"list.handle\", {}).add(\"daterange\", {});\nregistry.category(\"view_widgets\").add(\"web_ribbon\", {});\n",
     );
     write(
         &core,
@@ -48,7 +48,7 @@ fn setup(root: &Path) -> PathBuf {
     write(
         &addons,
         "acme/views/views.xml",
-        "<odoo>\n    <record id=\"view\" model=\"ir.ui.view\">\n        <field name=\"model\">res.partner</field>\n        <field name=\"arch\" type=\"xml\">\n            <list>\n                <field name=\"sequence\" widget=\"handle\"/>\n                <field name=\"category_id\" widget=\"many2many_tags\"/>\n                <field name=\"name\" widget=\"acme_fancy\"/>\n                <widget name=\"web_ribbon\"/>\n                <widget name=\"acme_banner\"/>\n            </list>\n        </field>\n    </record>\n</odoo>\n",
+        "<odoo>\n    <record id=\"view\" model=\"ir.ui.view\">\n        <field name=\"model\">res.partner</field>\n        <field name=\"arch\" type=\"xml\">\n            <list>\n                <field name=\"sequence\" widget=\"handle\"/>\n                <field name=\"category_id\" widget=\"many2many_tags\"/>\n                <field name=\"name\" widget=\"acme_fancy\"/>\n                <widget name=\"web_ribbon\"/>\n                <widget name=\"acme_banner\"/>\n                <field name=\"date\" widget=\"daterange\"/>\n            </list>\n        </field>\n    </record>\n</odoo>\n",
     );
     write(
         &addons,

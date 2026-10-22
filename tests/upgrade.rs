@@ -479,7 +479,8 @@ class Order(models.Model):
 
 
 class TestOrder(SavepointCase):
-    pass
+    def tearDown(self):
+        self._file.flush()
 "#;
 
 #[test]
@@ -1322,6 +1323,36 @@ fn a_removed_field_the_module_defines_again_is_its_own() {
         "from odoo import fields, models\n\n\nclass Filter(models.Model):\n    _inherit = \"ir.filters\"\n\n    user_id = fields.Many2one(\"res.users\")\n\n    def mine(self):\n        return self.search([(\"user_id\", \"=\", self.env.uid)])\n",
     );
     assert!(codes(dir.path(), "U1991", V19).is_empty());
+}
+
+#[test]
+fn a_removed_model_or_field_a_dependency_defines_again_is_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let python = "from odoo import models\n\n\nclass Filter(models.Model):\n    _inherit = \"ir.filters\"\n\n    def mine(self):\n        tags = self.env[\"account.analytic.tag\"]\n        return self.search([(\"user_id\", \"=\", self.env.uid)]), tags\n";
+    let up = module(dir.path(), "19.0.1.0.0", &[], python);
+    assert_eq!(codes(&up, "U1991", V19), vec![("U1991".to_string(), 9)]);
+    assert_eq!(codes(&up, "U1691", V19), vec![("U1691".to_string(), 8)]);
+    // An OCA module brings both back; the module depends on it.
+    let dir = tempfile::tempdir().unwrap();
+    let up = module(dir.path(), "19.0.1.0.0", &[], python);
+    write(
+        dir.path(),
+        "acme_up/__manifest__.py",
+        "{'name': 'Up', 'version': '19.0.1.0.0', 'license': 'AGPL-3', 'depends': ['acme_tag']}\n",
+    );
+    write(
+        dir.path(),
+        "acme_tag/__manifest__.py",
+        "{'name': 'Tag', 'version': '19.0.1.0.0', 'license': 'AGPL-3'}\n",
+    );
+    write(dir.path(), "acme_tag/__init__.py", "from . import models\n");
+    write(
+        dir.path(),
+        "acme_tag/models.py",
+        "from odoo import fields, models\n\n\nclass Tag(models.Model):\n    _name = \"account.analytic.tag\"\n\n\nclass Filter(models.Model):\n    _inherit = \"ir.filters\"\n\n    user_id = fields.Many2one(\"res.users\")\n",
+    );
+    assert!(codes(&up, "U1991", V19).is_empty());
+    assert!(codes(&up, "U1691", V19).is_empty());
 }
 
 #[test]

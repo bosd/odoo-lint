@@ -146,40 +146,50 @@ fn field_change(
     None
 }
 
-/// The fields the module defines itself, by model: a removed field it
-/// defines again is its own.
-fn own_fields(module: Option<&crate::checker::ModuleInfo>) -> HashSet<(String, String)> {
-    let Some(index) = module.and_then(|m| crate::index::module_index(&m.path)) else {
-        return HashSet::new();
-    };
+/// The module and the modules it depends on that can be found: a removed
+/// model or field one of them defines again is no longer Odoo's.
+fn own_modules(
+    module: Option<&crate::checker::ModuleInfo>,
+    settings: &crate::settings::Settings,
+) -> Vec<std::sync::Arc<crate::index::ModuleIndex>> {
+    module
+        .and_then(|m| crate::index::dependencies(&m.path, &settings.addons_path, false))
+        .unwrap_or_default()
+}
+
+/// The fields the module and its dependencies define, by model.
+fn own_fields(
+    module: Option<&crate::checker::ModuleInfo>,
+    settings: &crate::settings::Settings,
+) -> HashSet<(String, String)> {
     let mut own = HashSet::new();
-    for class in &index.classes {
-        for model in class.name.iter().chain(&class.inherit) {
-            for field in &class.fields {
-                own.insert((model.clone(), field.name.clone()));
+    for index in own_modules(module, settings) {
+        for class in &index.classes {
+            for model in class.name.iter().chain(&class.inherit) {
+                for field in &class.fields {
+                    own.insert((model.clone(), field.name.clone()));
+                }
             }
         }
     }
     own
 }
 
-/// The models the module defines itself (`_name` without inheriting it):
-/// an old name there is the module's own model.
-fn own_models(module: Option<&crate::checker::ModuleInfo>) -> HashSet<String> {
-    let Some(index) = module.and_then(|m| crate::index::module_index(&m.path)) else {
-        return HashSet::new();
-    };
-    index
-        .classes
+/// The models the module and its dependencies define (`_name` without
+/// inheriting it): an old name there is their own model.
+fn own_models(module: Option<&crate::checker::ModuleInfo>, settings: &crate::settings::Settings) -> HashSet<String> {
+    own_modules(module, settings)
         .iter()
+        .flat_map(|index| index.classes.iter())
         .filter_map(|c| c.name.as_ref().filter(|name| !c.inherit.contains(name)).cloned())
         .collect()
 }
 
-/// Files that mention old names on purpose: migration scripts.
+/// Files that mention old names on purpose: migration scripts, and those
+/// of OpenUpgrade.
 fn is_migration(path: &str) -> bool {
     path.split(['/', '\\'])
-        .any(|part| matches!(part, "migrations" | "upgrades"))
+        .any(|part| matches!(part, "migrations" | "upgrades" | "openupgrade_scripts"))
 }
 
 fn check_python(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule, major: u16, renamed: bool) {
@@ -215,7 +225,7 @@ fn check_python(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule, major
     if found.is_empty() {
         return;
     }
-    let own = own_models(ctx.module);
+    let own = own_models(ctx.module, ctx.settings);
     let names: Vec<&str> = found.iter().map(|(_, name, ..)| name.as_str()).collect();
     let guards = version_guards(suite, &names);
     for (range, name, message, new, concatenated) in &found {
@@ -388,7 +398,7 @@ fn check_python_fields(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule
     if uses.is_empty() {
         return;
     }
-    let own = own_fields(ctx.module);
+    let own = own_fields(ctx.module, ctx.settings);
     let names: Vec<&str> = uses.iter().map(|u| u.name).collect();
     let guards = version_guards(suite, &names);
     let mut seen = HashSet::new();
@@ -532,7 +542,7 @@ static XPATH_FIELD: LazyLock<regex::Regex> =
 
 fn check_xml_fields(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, major: u16, renamed: bool) {
     let Some(changes) = changes(major) else { return };
-    let own = own_fields(Some(ctx.module));
+    let own = own_fields(Some(ctx.module), ctx.settings);
     for file in ctx.files {
         // The element to report, the models, and the range of the name.
         let mut uses: Vec<(roxmltree::Node, String, std::ops::Range<usize>)> = Vec::new();
@@ -602,7 +612,7 @@ fn check_xml(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, major: u
         check_xml_ids(ctx, reporter, rule, major);
     }
     let Some(changes) = changes(major) else { return };
-    let own = own_models(Some(ctx.module));
+    let own = own_models(Some(ctx.module), ctx.settings);
     for file in ctx.files {
         let Some(doc) = &file.doc else { continue };
         for node in doc.descendants().filter(|n| n.is_element()) {
@@ -762,5 +772,12 @@ mod tests {
             );
         }
         assert_eq!(changes(18).unwrap().models.get("pos.combo"), Some(&"product.combo"));
+    }
+
+    #[test]
+    fn migration_scripts_mention_old_names() {
+        assert!(is_migration("acme/migrations/18.0.1.0.0/pre-migration.py"));
+        assert!(is_migration("OpenUpgrade/openupgrade_scripts/apriori.py"));
+        assert!(!is_migration("acme/models/order.py"));
     }
 }
