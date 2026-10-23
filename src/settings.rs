@@ -146,9 +146,13 @@ impl Default for Settings {
     }
 }
 
-/// Rules `ALL` leaves out: policies many projects do not share, enabled by
+/// Rules `ALL` leaves out: policies many projects do not share, style that
+/// OCA's CI does not enforce, and MOD009, which W8113 covers; enabled by
 /// selecting them by code, name or code prefix.
-pub const OPT_IN: &[&str] = &["MOD008", "MOD011", "MOD013", "ODOO012", "U1923", "U2035", "XML103"];
+pub const OPT_IN: &[&str] = &[
+    "MOD008", "MOD009", "MOD011", "MOD013", "ODOO012", "PO007", "U1923", "U2035", "XML002", "XML003", "XML009",
+    "XML024", "XML103",
+];
 
 /// Whether a `select`/`ignore` entry matches `rule`: `ALL`, an exact code or
 /// name, or a code prefix such as `C81` or `ODOO`.
@@ -367,7 +371,8 @@ mod tests {
         assert!(selector_matches("MOD008", header));
         assert!(selector_matches("use-header-comments", header));
         assert!(selector_matches("MOD", header));
-        assert!(selector_matches("ALL", rule("MOD009")));
+        assert!(!selector_matches("ALL", rule("MOD009")));
+        assert!(selector_matches("ALL", rule("W8113")));
     }
 
     #[test]

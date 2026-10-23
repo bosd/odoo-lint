@@ -81,9 +81,14 @@ Which rules run. Each entry is one of:
   suggests widgets for fields in views, as a review would,
   [U1923](rules/U1923.md), which moves `SUPERUSER_ID` imports to
   `odoo.api`, and [U2035](rules/U2035.md), which turns
-  `_rec_names_search` lists into tuples; a code prefix such as `ODOO`
-  selects them too, and `upgrade-check` runs U1923 and U2035 only when
-  `select` names them);
+  `_rec_names_search` lists into tuples; and the style checks OCA's CI
+  does not enforce: [PO007](rules/PO007.md), which every OCA repository
+  disables, and [XML002](rules/XML002.md), [XML003](rules/XML003.md),
+  [XML009](rules/XML009.md) and [XML024](rules/XML024.md), newer than the
+  hooks OCA runs; and [MOD009](rules/MOD009.md), which
+  [W8113](rules/W8113.md) covers. A code prefix such as `ODOO` selects
+  them too, and `upgrade-check` runs U1923 and U2035 only when `select`
+  names them);
 - a code such as `C8101`, or a name such as `manifest-required-author`;
 - a code prefix such as `C81`, `E` or `ODOO`.
 
@@ -216,6 +221,17 @@ logo), `sha256:<hex>` or a file; `paths` gives the modules under a glob their
 own icon (the longest matching glob wins). Paths are relative to the
 configuration file. Without the table the rule does nothing.
 
+### `missing-depends`
+
+[ODOO001](rules/ODOO001.md) reports stored computes without
+`@api.depends`. Non-stored computes without dependencies are a deliberate
+pattern (counts, SQL queries); report them too with:
+
+```toml
+[tool.odoo-lint.rules.missing-depends]
+non-stored = true
+```
+
 ### Other rule options
 
 Rules ported from pylint-odoo take the same options, under
@@ -234,6 +250,10 @@ Each rule's page under [rules](rules/index.md) lists its options:
 [C8106](rules/C8106.md), [C8111](rules/C8111.md), [C8112](rules/C8112.md),
 [C8114](rules/C8114.md), [C8115](rules/C8115.md), [C8116](rules/C8116.md),
 [C8117](rules/C8117.md), [C8118](rules/C8118.md) and [C8119](rules/C8119.md).
+
+One default differs: [C8116](rules/C8116.md) leaves `"installable": True`
+alone, as OCA writes it in every manifest. pylint-odoo's behaviour is
+`keys-values-true = ["active", "installable"]`.
 
 ## Suppressing a violation in the code
 

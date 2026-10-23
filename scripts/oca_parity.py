@@ -206,7 +206,11 @@ def odl_rules(odl: str) -> dict[str, dict]:
 def odl_counts(odl: str, test_repo: Path, version: str) -> Counter[str]:
     """Violations per rule name when linting a test repo for ``version``."""
     empty_config = CACHE / "odoo-lint.toml"
-    empty_config.write_text("")
+    # Upstream's defaults where odoo-lint's differ.
+    empty_config.write_text(
+        "[rules.manifest-superfluous-key]\n"
+        'keys-values-true = ["active", "installable"]\n'
+    )
     output = run_odl(
         odl,
         "check",
@@ -214,7 +218,7 @@ def odl_counts(odl: str, test_repo: Path, version: str) -> Counter[str]:
         "--config",
         str(empty_config),
         "--select",
-        "ALL,MOD008",  # MOD008 is opt-in
+        "ALL,MOD008,MOD009,PO007,XML002,XML003,XML009,XML024",  # opt-in rules
         "--version",
         version,
         "--output-format",

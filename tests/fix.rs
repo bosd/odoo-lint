@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 const MANIFEST: &str = r#"{
     "name": "Fix",
     "license": "AGPL-3",
-    "installable": True,
+    "active": True,
     "application": False,
 }
 "#;

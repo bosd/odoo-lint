@@ -212,12 +212,12 @@ def test_diff_and_fix(project: Path) -> None:
     module = make_module(project, "acme_sale", "Acme Corp")
     manifest = module / "__manifest__.py"
     original = manifest.read_text()
-    manifest.write_text(original.replace("}\n", "    'installable': True,\n}\n"))
+    manifest.write_text(original.replace("}\n", "    'active': True,\n}\n"))
     changed = manifest.read_text()
 
     diff = run_odl("check", str(project / "addons"), "--select", "C8116", "--diff")
     assert diff.returncode == 1
-    assert "-    'installable': True," in diff.stdout
+    assert "-    'active': True," in diff.stdout
     assert "1 fix(es) would change 1 file(s)." in diff.stderr
     assert manifest.read_text() == changed
 

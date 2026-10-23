@@ -4,5 +4,5 @@
     "author": "Odoo Community Association (OCA)",
     "website": "https://github.com/OCA/server-tools",
     "depends": ["base"],
-    "installable": True,
+    "application": False,
 }

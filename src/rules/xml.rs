@@ -280,6 +280,11 @@ module look different from each other.
 ## Fix safety
 
 Safe: the declaration is added as the first line.
+
+## Opt-in
+
+`ALL` does not include this check, a matter of style that OCA's CI does
+not run. Enable it with `select = ["ALL", "XML002"]`.
 "#,
     check: Check::Xml(check_header),
     min_odoo: None,
@@ -303,6 +308,11 @@ One declaration for all files keeps diffs and tooling simple.
 ## Fix safety
 
 Safe: the declaration is replaced.
+
+## Opt-in
+
+`ALL` does not include this check, a matter of style that OCA's CI does
+not run. Enable it with `select = ["ALL", "XML003"]`.
 "#,
     check: Check::Xml(check_header),
     min_odoo: None,
@@ -618,6 +628,11 @@ Use instead:
 ## Fix safety
 
 Safe: the attributes are moved; values and layout are kept.
+
+## Opt-in
+
+`ALL` does not include this check, a matter of style that OCA's CI does
+not run. Enable it with `select = ["ALL", "XML009"]`.
 "#,
     check: Check::Xml(check_tag_position),
     min_odoo: None,
@@ -1375,6 +1390,11 @@ from text. Use `<field name="sequence" eval="10" />`.
 ## Fix safety
 
 Safe: the field gets the same value.
+
+## Opt-in
+
+`ALL` does not include this check: Odoo reads the number either way, and
+OCA's CI does not run it. Enable it with `select = ["ALL", "XML024"]`.
 "#,
     check: Check::Xml(check_field_eval),
     min_odoo: None,

@@ -125,6 +125,8 @@ pub struct RulesConfig {
     pub po_translation_missing: Option<LanguagesConfig>,
     /// MOD012: the icon of the modules, and the outdated ones it replaces.
     pub module_icon: Option<ModuleIconConfig>,
+    /// ODOO001: whether non-stored computes need `@api.depends` too.
+    pub missing_depends: Option<MissingDependsConfig>,
 }
 
 /// `RulesConfig` with nothing configured, for rules to fall back on.
@@ -157,7 +159,15 @@ pub static NO_RULES_CONFIG: RulesConfig = RulesConfig {
     manifest_website: None,
     po_translation_missing: None,
     module_icon: None,
+    missing_depends: None,
 };
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct MissingDependsConfig {
+    /// Report non-stored computes as well (default: stored ones only).
+    pub non_stored: Option<bool>,
+}
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]

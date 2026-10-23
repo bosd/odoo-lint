@@ -13,7 +13,7 @@ use ruff_text_size::Ranged;
 const DEFAULT_REQUIRED_KEYS: &[&str] = &["license"];
 const DEFAULT_REQUIRED_KEYS_APP: &[&str] = &["currency", "images", "license", "support"];
 const DEFAULT_DEPRECATED_KEYS: &[&str] = &["description"];
-const DEFAULT_KEYS_VALUES_TRUE: &[&str] = &["active", "installable"];
+const DEFAULT_KEYS_VALUES_TRUE: &[&str] = &["active"];
 
 pub const MANIFEST_REQUIRED_KEY: Rule = Rule {
     code: "C8102",
@@ -83,7 +83,8 @@ pub const MANIFEST_SUPERFLUOUS_KEY: Rule = Rule {
 
 Reports manifest keys whose value is the default anyway: a falsy value such as
 `False`, `""` or `[]`, or a truthy value for keys that default to `True`
-(`active` and `installable`).
+(`active`). `"installable": True` is left alone by default: OCA writes it in
+every manifest, and its migration tools flip it.
 
 ## Why is this bad?
 
@@ -94,7 +95,7 @@ spot.
 
 ```python
 {
-    "installable": True,
+    "active": True,
     "application": False,
 }
 ```
@@ -105,7 +106,7 @@ Use instead: remove both keys.
 
 ```toml
 [tool.odoo-lint.rules.manifest-superfluous-key]
-# Keys whose default value is True
+# Keys whose default value is True (default: ["active"])
 keys-values-true = ["active", "installable"]
 ```
 
@@ -299,8 +300,8 @@ mod tests {
         let messages: Vec<_> = v.iter().map(|v| (v.line, v.message.as_str())).collect();
         assert_eq!(
             messages,
+            // `installable` only when configured: OCA writes it everywhere.
             vec![
-                (2, "Manifest superfluous key \"installable\". It is the same as the default value: True. Better remove it"),
                 (3, "Manifest superfluous key \"application\". It is the same as the default value: False. Better remove it"),
                 (4, "Manifest superfluous key \"demo\". It is the same as the default value: []. Better remove it"),
             ]
