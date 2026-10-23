@@ -182,6 +182,47 @@ fn po_fixes() {
 }
 
 #[test]
+fn po_duplicates_merge_one_reference_per_line() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "acme_fix/__manifest__.py", MANIFEST);
+    let pot = write(
+        dir.path(),
+        "acme_fix/i18n/acme_fix.pot",
+        r#"msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. module: acme_fix
+#: model:ir.model,name:acme_fix.model_acme_machine
+msgid "Machine"
+msgstr ""
+
+#. module: acme_fix
+#: model:ir.model.fields,field_description:acme_fix.field_sale_order__machine_id
+#: model_terms:ir.ui.view,arch_db:acme_fix.view_order_form
+msgid "Machine"
+msgstr ""
+"#,
+    );
+
+    let result = fix_paths(&[dir.path().to_path_buf()], &settings(&["PO005"]), FixMode::Safe);
+    for (path, _, new) in &result.changed {
+        fs::write(path, new).unwrap();
+    }
+    assert!(
+        fs::read_to_string(&pot).unwrap().ends_with(
+            "#. module: acme_fix\n\
+             #: model:ir.model,name:acme_fix.model_acme_machine\n\
+             #: model:ir.model.fields,field_description:acme_fix.field_sale_order__machine_id\n\
+             #: model_terms:ir.ui.view,arch_db:acme_fix.view_order_form\n\
+             msgid \"Machine\"\nmsgstr \"\"\n"
+        ),
+        "{}",
+        fs::read_to_string(&pot).unwrap()
+    );
+}
+
+#[test]
 fn env_translation_drops_the_unused_import() {
     let cases = [
         // Every use fixed: `_` leaves the import.
