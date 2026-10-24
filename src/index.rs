@@ -33,6 +33,44 @@ pub struct Field {
     pub groups: Option<String>,
     /// The line of its definition in its class's file (0 when unknown).
     pub line: usize,
+    /// What the definition says about its label, for translation templates.
+    pub label: FieldLabel,
+}
+
+/// The label attributes a field definition sets, each `None` when it leaves
+/// it to an earlier definition (or to Odoo's default).
+#[derive(Debug, Clone, Default)]
+pub struct FieldLabel {
+    /// `string`, positional or keyword.
+    pub string: Option<String>,
+    pub help: Option<String>,
+    /// The dotted path of a related field.
+    pub related: Option<String>,
+    pub selection: Option<Selection>,
+    /// `selection_add`: each value, with its label when it has one.
+    pub selection_add: Vec<(String, Option<String>)>,
+    pub export_string_translation: Option<bool>,
+}
+
+/// The `selection` of a field definition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Selection {
+    /// A literal list of `(value, label)` pairs.
+    List(Vec<(String, String)>),
+    /// A method or a name: known only when Odoo runs.
+    Dynamic,
+}
+
+/// A database constraint a class declares, with the message Odoo shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Constraint {
+    /// The key of `_sql_constraints`, or the attribute name without its `_`
+    /// for `models.Constraint` (19.0).
+    pub name: String,
+    pub message: Option<String>,
+    /// Whether it is a table object (`models.Constraint`, 19.0) rather than
+    /// an entry of `_sql_constraints`.
+    pub table_object: bool,
 }
 
 impl Field {
@@ -64,6 +102,17 @@ pub struct ModelClass {
     /// Whether the class has bases other than Odoo's model classes (a
     /// Python mixin), whose methods the index does not know.
     pub foreign_bases: bool,
+    /// Whether a base is one of Odoo's model classes: components
+    /// (`AbstractComponent`) have a `_name` too.
+    pub odoo_model: bool,
+    /// `_description`, when it is a literal.
+    pub description: Option<String>,
+    /// `_table`, when it is a literal.
+    pub table: Option<String>,
+    /// `_auto` and `_log_access`, when they are literals.
+    pub auto: Option<bool>,
+    pub log_access: Option<bool>,
+    pub constraints: Vec<Constraint>,
 }
 
 #[derive(Debug)]
@@ -80,6 +129,10 @@ pub struct ModuleIndex {
     pub name: String,
     pub path: PathBuf,
     pub depends: Vec<String>,
+    /// The dependencies whose installation installs the module
+    /// (`auto_install`): all of `depends` for `True`, `None` when it is not
+    /// installed automatically.
+    pub auto_install: Option<Vec<String>>,
     pub classes: Vec<ModelClass>,
     /// The access rights (`ir.model.access`) of its data files.
     pub access: Vec<Access>,
@@ -175,6 +228,148 @@ fn string(expr: &Expr) -> Option<String> {
     expr.as_string_literal_expr().map(|s| s.value.to_str().to_string())
 }
 
+/// A value a field definition uses, as far as it can be known without
+/// running the code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Literal {
+    Str(String),
+    Bool(bool),
+    /// A list or a tuple.
+    Seq(Vec<Literal>),
+    /// Anything else: a call, a method, a number, ...
+    Other,
+}
+
+impl Literal {
+    fn into_string(self) -> Option<String> {
+        match self {
+            Self::Str(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// `(value, label)` pairs of a selection; values that are not text are
+    /// left out. `None` when it is not a list.
+    fn into_pairs(self) -> Option<Vec<(String, Option<String>)>> {
+        let Self::Seq(items) = self else { return None };
+        Some(
+            items
+                .into_iter()
+                .filter_map(|item| {
+                    let Self::Seq(pair) = item else { return None };
+                    let mut pair = pair.into_iter();
+                    let value = pair.next()?.into_string()?;
+                    Some((value, pair.next().and_then(Self::into_string)))
+                })
+                .collect(),
+        )
+    }
+}
+
+/// Where a field class takes `string` as a positional argument.
+fn string_position(kind: &str) -> usize {
+    match kind {
+        "Many2one" | "Selection" | "Reference" => 1,
+        "One2many" => 2,
+        "Many2many" => 4,
+        _ => 0,
+    }
+}
+
+/// What a class body sees of an expression.
+type Eval<'e> = dyn Fn(&Expr) -> Literal + 'e;
+
+fn field_label(kind: &str, call: &ruff_python_ast::ExprCall, eval: &Eval) -> FieldLabel {
+    let keyword = |name: &str| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == name))
+            .map(|k| eval(&k.value))
+    };
+    let positional = |at: usize| call.arguments.args.get(at).map(eval);
+    let selection = matches!(kind, "Selection" | "Reference")
+        .then(|| keyword("selection").or_else(|| positional(0)))
+        .flatten()
+        .map(|literal| match literal.into_pairs() {
+            Some(pairs) => Selection::List(
+                pairs
+                    .into_iter()
+                    .map(|(value, label)| (value, label.unwrap_or_default()))
+                    .collect(),
+            ),
+            None => Selection::Dynamic,
+        });
+    FieldLabel {
+        string: keyword("string")
+            .or_else(|| positional(string_position(kind)))
+            .and_then(Literal::into_string),
+        help: keyword("help").and_then(Literal::into_string),
+        related: keyword("related").and_then(Literal::into_string),
+        selection,
+        selection_add: keyword("selection_add")
+            .and_then(Literal::into_pairs)
+            .unwrap_or_default(),
+        export_string_translation: keyword("export_string_translation").and_then(|l| l.as_bool()),
+    }
+}
+
+/// The constraints of a class: `_sql_constraints` entries and
+/// `models.Constraint` / `models.UniqueIndex` attributes.
+fn class_constraints(class: &StmtClassDef, eval: &Eval) -> Vec<Constraint> {
+    let mut found = Vec::new();
+    if let Some(Literal::Seq(entries)) = class_value(class, "_sql_constraints").map(eval) {
+        for entry in entries {
+            let Literal::Seq(entry) = entry else { continue };
+            let mut entry = entry.into_iter();
+            let Some(name) = entry.next().and_then(Literal::into_string) else {
+                continue;
+            };
+            found.push(Constraint {
+                name,
+                message: entry.nth(1).and_then(Literal::into_string),
+                table_object: false,
+            });
+        }
+    }
+    for stmt in &class.body {
+        let Stmt::Assign(assign) = stmt else { continue };
+        let [Expr::Name(target)] = assign.targets.as_slice() else {
+            continue;
+        };
+        let Some(name) = target.id.strip_prefix('_') else {
+            continue;
+        };
+        let Expr::Call(call) = &*assign.value else { continue };
+        let Expr::Attribute(func) = &*call.func else { continue };
+        if !matches!(func.attr.as_str(), "Constraint" | "UniqueIndex") {
+            continue;
+        }
+        let message = call
+            .arguments
+            .keywords
+            .iter()
+            .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "message"))
+            .map(|k| &k.value)
+            .or_else(|| call.arguments.args.get(1))
+            .map(eval)
+            .and_then(Literal::into_string);
+        found.push(Constraint {
+            name: name.to_string(),
+            message,
+            table_object: true,
+        });
+    }
+    found
+}
+
 fn strings(expr: &Expr) -> Vec<String> {
     match expr {
         Expr::StringLiteral(_) => string(expr).into_iter().collect(),
@@ -217,7 +412,146 @@ pub(crate) fn class_models(class: &StmtClassDef) -> Vec<String> {
     class_value(class, "_inherit").map(strings).unwrap_or_default()
 }
 
-fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
+/// The module-level names of a module's Python files, so that a field can
+/// use a constant (`selection=STATES`), also one of another file of the
+/// module (`from .stock import STATES`, `stock.STATES`).
+#[derive(Default)]
+struct Constants<'a> {
+    assigned: HashMap<PathBuf, HashMap<&'a str, &'a Expr>>,
+    /// `from .x import NAME [as ALIAS]`: alias to (file, name).
+    imported: HashMap<PathBuf, HashMap<&'a str, (PathBuf, &'a str)>>,
+    /// `from . import x`: alias to the file of module `x`.
+    modules: HashMap<PathBuf, HashMap<&'a str, PathBuf>>,
+}
+
+impl<'a> Constants<'a> {
+    fn add(&mut self, file: &Path, suite: &'a [Stmt]) {
+        let mut assigned = HashMap::new();
+        let mut imported = HashMap::new();
+        let mut modules = HashMap::new();
+        for stmt in suite {
+            match stmt {
+                Stmt::Assign(assign) => {
+                    for target in &assign.targets {
+                        if let Expr::Name(name) = target {
+                            assigned.insert(name.id.as_str(), &*assign.value);
+                        }
+                    }
+                }
+                Stmt::ImportFrom(import) if import.level > 0 => {
+                    let package = import.module.as_ref().map(|m| m.as_str());
+                    for alias in &import.names {
+                        let local = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
+                        let submodule = match package {
+                            Some(package) => format!("{package}.{}", alias.name),
+                            None => alias.name.to_string(),
+                        };
+                        if let Some(module_file) =
+                            relative_file(file, import.level, Some(&submodule)).filter(|f| f.is_file())
+                        {
+                            modules.insert(local, module_file);
+                        } else if let Some(target) = relative_file(file, import.level, package) {
+                            imported.insert(local, (target, alias.name.as_str()));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.assigned.insert(file.to_path_buf(), assigned);
+        self.imported.insert(file.to_path_buf(), imported);
+        self.modules.insert(file.to_path_buf(), modules);
+    }
+
+    /// The value of `expr` in `file`, inside `class` when given: literals,
+    /// names of the class body, the file or an imported file, `_()` and
+    /// lists added together.
+    fn eval(&self, file: &Path, class: Option<&StmtClassDef>, expr: &Expr, depth: usize) -> Literal {
+        if depth > 8 {
+            return Literal::Other;
+        }
+        let deeper = |file: &Path, expr: &Expr| self.eval(file, None, expr, depth + 1);
+        match expr {
+            Expr::StringLiteral(literal) => Literal::Str(literal.value.to_str().to_string()),
+            Expr::BooleanLiteral(literal) => Literal::Bool(literal.value),
+            Expr::List(list) => Literal::Seq(list.elts.iter().map(|e| self.eval(file, class, e, depth + 1)).collect()),
+            Expr::Tuple(tuple) => Literal::Seq(
+                tuple
+                    .elts
+                    .iter()
+                    .map(|e| self.eval(file, class, e, depth + 1))
+                    .collect(),
+            ),
+            Expr::BinOp(binary) if binary.op == ruff_python_ast::Operator::Add => {
+                match (
+                    self.eval(file, class, &binary.left, depth + 1),
+                    self.eval(file, class, &binary.right, depth + 1),
+                ) {
+                    (Literal::Seq(mut left), Literal::Seq(right)) => {
+                        left.extend(right);
+                        Literal::Seq(left)
+                    }
+                    (Literal::Str(left), Literal::Str(right)) => Literal::Str(left + &right),
+                    _ => Literal::Other,
+                }
+            }
+            Expr::Call(call) if matches!(&*call.func, Expr::Name(f) if matches!(f.id.as_str(), "_" | "_lt")) => call
+                .arguments
+                .args
+                .first()
+                .map_or(Literal::Other, |arg| self.eval(file, class, arg, depth + 1)),
+            Expr::Name(name) => {
+                let id = name.id.as_str();
+                if let Some(value) = class.and_then(|c| class_value(c, id)) {
+                    return self.eval(file, class, value, depth + 1);
+                }
+                if let Some(value) = self.assigned.get(file).and_then(|a| a.get(id)) {
+                    return deeper(file, value);
+                }
+                if let Some((target, original)) = self.imported.get(file).and_then(|i| i.get(id)) {
+                    if let Some(value) = self.assigned.get(target).and_then(|a| a.get(original)) {
+                        return deeper(target, value);
+                    }
+                }
+                Literal::Other
+            }
+            Expr::Attribute(attribute) => {
+                let Expr::Name(module) = &*attribute.value else {
+                    return Literal::Other;
+                };
+                let Some(target) = self.modules.get(file).and_then(|m| m.get(module.id.as_str())) else {
+                    return Literal::Other;
+                };
+                match self.assigned.get(target).and_then(|a| a.get(attribute.attr.as_str())) {
+                    Some(value) => deeper(target, value),
+                    None => Literal::Other,
+                }
+            }
+            _ => Literal::Other,
+        }
+    }
+}
+
+/// The file a relative import names: `from ..models.stock import X` in
+/// `wizards/a.py` is `models/stock.py` (or `models/stock/__init__.py`).
+fn relative_file(file: &Path, level: u32, module: Option<&str>) -> Option<PathBuf> {
+    let mut dir = file.parent()?.to_path_buf();
+    for _ in 1..level {
+        dir = dir.parent()?.to_path_buf();
+    }
+    let module = module?;
+    let base = module.split('.').fold(dir, |path, part| path.join(part));
+    let file = base.with_extension("py");
+    if file.is_file() {
+        Some(file)
+    } else {
+        Some(base.join("__init__.py"))
+    }
+}
+
+/// The model class `class` declares, if any; `eval` gives the values its
+/// fields use.
+fn model_class(class: &StmtClassDef, eval: &Eval) -> Option<ModelClass> {
     let name = class_value(class, "_name").and_then(string);
     let inherit = class_value(class, "_inherit").map(strings).unwrap_or_default();
     if name.is_none() && inherit.is_empty() {
@@ -288,6 +622,7 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
                 .iter()
                 .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "groups"))
                 .and_then(|k| string(&k.value));
+            let label = field_label(&kind, call, eval);
             Some(Field {
                 name: target.id.to_string(),
                 kind,
@@ -296,6 +631,7 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
                 groups,
                 // A byte offset until `parse` turns it into a line.
                 line: target.start().to_usize(),
+                label,
             })
         })
         .collect::<Vec<Field>>();
@@ -355,7 +691,14 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
             .iter()
             .any(|b| crate::semantic::dotted_name(b).is_some_and(|d| d.ends_with("AbstractModel")))
     });
+    let odoo_model = class.arguments.as_ref().is_some_and(|a| {
+        a.args.iter().any(|b| {
+            crate::semantic::dotted_name(b)
+                .is_some_and(|d| d.ends_with("Model") || d.ends_with("AbstractModel") || d.ends_with("TransientModel"))
+        })
+    });
     Some(ModelClass {
+        odoo_model,
         abstract_model,
         file: PathBuf::new(),
         line: 0,
@@ -366,6 +709,13 @@ fn model_class(class: &StmtClassDef) -> Option<ModelClass> {
         methods,
         method_lines,
         foreign_bases,
+        description: class_value(class, "_description")
+            .map(eval)
+            .and_then(Literal::into_string),
+        table: class_value(class, "_table").and_then(string),
+        auto: class_value(class, "_auto").and_then(|e| eval(e).as_bool()),
+        log_access: class_value(class, "_log_access").and_then(|e| eval(e).as_bool()),
+        constraints: class_constraints(class, eval),
     })
 }
 
@@ -373,19 +723,33 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
     let manifest_path = MANIFEST_FILE_NAMES.iter().map(|n| path.join(n)).find(|p| p.is_file())?;
     let manifest = Manifest::parse(&std::fs::read_to_string(manifest_path).ok()?)?;
     let depends = manifest.get("depends").map(strings).unwrap_or_default();
+    let auto_install = match manifest.get("auto_install") {
+        Some(Expr::BooleanLiteral(b)) if b.value => Some(depends.clone()),
+        Some(expr @ (Expr::List(_) | Expr::Tuple(_))) => Some(strings(expr)),
+        _ => None,
+    };
     let name = path.canonicalize().ok()?.file_name()?.to_string_lossy().into_owned();
     let mut model_classes = Vec::new();
-    for file in indexed_files(path) {
-        let Ok(source) = std::fs::read_to_string(file.path()) else {
-            continue;
-        };
-        let Ok(parsed) = parse_module(&source) else { continue };
+    // All files first: a field may use a constant of another file.
+    let parsed_files: Vec<(PathBuf, String, _)> = indexed_files(path)
+        .filter_map(|file| {
+            let source = std::fs::read_to_string(file.path()).ok()?;
+            let parsed = parse_module(&source).ok()?;
+            Some((file.into_path(), source, parsed))
+        })
+        .collect();
+    let mut constants = Constants::default();
+    for (file, _, parsed) in &parsed_files {
+        constants.add(file, parsed.suite());
+    }
+    for (file, source, parsed) in &parsed_files {
         let line_of = |offset: usize| source[..offset].matches('\n').count() + 1;
         let mut found: Vec<(String, ModelClass)> = classes(parsed.suite())
             .into_iter()
             .filter_map(|class| {
-                let mut model = model_class(class)?;
-                model.file = file.path().to_path_buf();
+                let eval = |expr: &Expr| constants.eval(file, Some(class), expr, 0);
+                let mut model = model_class(class, &eval)?;
+                model.file = file.clone();
                 model.line = line_of(class.name.start().to_usize());
                 for field in &mut model.fields {
                     field.line = line_of(field.line);
@@ -416,6 +780,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     has_domain: false,
                     groups: None,
                     line: 0,
+                    label: FieldLabel::default(),
                 });
             }
         }
@@ -433,6 +798,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
         name,
         path: path.to_path_buf(),
         depends,
+        auto_install,
         classes: model_classes,
         access,
         implied,
@@ -551,6 +917,16 @@ pub fn closure_at(path: &Path, addons_path: &[PathBuf]) -> Option<Closure> {
         methods: Mutex::new(HashMap::new()),
         implied: std::sync::OnceLock::new(),
     })
+}
+
+/// A closure of the given modules, which must include their dependencies.
+pub fn closure_of(modules: Vec<Arc<ModuleIndex>>) -> Closure {
+    Closure {
+        modules,
+        fields: Mutex::new(HashMap::new()),
+        methods: Mutex::new(HashMap::new()),
+        implied: std::sync::OnceLock::new(),
+    }
 }
 
 /// The module in `path` and the modules it depends on, directly or not,
@@ -970,6 +1346,7 @@ impl Closure {
                 has_domain: false,
                 groups: None,
                 line: 0,
+                label: FieldLabel::default(),
             });
         }
         visiting.remove(model);
