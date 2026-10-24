@@ -130,6 +130,19 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Write each module's translation template (i18n/<module>.pot) from its source
+    #[command(hide = true)]
+    Pot {
+        /// Modules, folders with modules, or files of modules (as hooks pass them)
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// Write nothing; exit with 1 when a template is out of date (for CI)
+        #[arg(long)]
+        check: bool,
+        /// Write the templates into this folder as <module>.pot instead of each module's i18n/
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
+    },
     /// Write requirements.txt from the Python external_dependencies of the addons in a folder
     Requirements {
         /// The folder with the addons
@@ -217,6 +230,28 @@ fn main() -> ExitCode {
                 }
                 if check && !changes.is_empty() {
                     eprintln!("Run `odl readme` to update {} file(s).", changes.len());
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::from(2)
+            }
+        },
+        Commands::Pot {
+            paths,
+            check,
+            output_dir,
+        } => match pot(&paths, check, output_dir.as_deref()) {
+            Ok(changes) => {
+                for change in &changes {
+                    let verb = if change.written { "wrote" } else { "out of date:" };
+                    eprintln!("{verb} {}", change.path.display());
+                }
+                if check && !changes.is_empty() {
+                    eprintln!("Run `odl pot` to update {} file(s).", changes.len());
                     ExitCode::from(1)
                 } else {
                     ExitCode::SUCCESS
@@ -566,6 +601,15 @@ fn readme(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<odoo_lint::read
     let target = loaded.settings.target_version.to_string();
     let style = odoo_lint::readme::style(&loaded.settings.config, &target).map_err(std::io::Error::other)?;
     odoo_lint::readme::run_with(paths, check, &style)
+}
+
+fn pot(
+    paths: &[PathBuf],
+    check: bool,
+    output_dir: Option<&std::path::Path>,
+) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
+    let loaded = Settings::load(&paths[0], None, CliOverrides::default()).map_err(std::io::Error::other)?;
+    odoo_lint::pot::run(paths, check, output_dir, loaded.settings.target_version)
 }
 
 fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> ExitCode {
