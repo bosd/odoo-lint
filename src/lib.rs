@@ -16,6 +16,7 @@ pub mod mcp;
 pub mod odoo_version;
 pub mod output;
 pub mod po;
+pub mod pot;
 pub mod pyliteral;
 pub mod readme;
 pub mod readme_obs;
