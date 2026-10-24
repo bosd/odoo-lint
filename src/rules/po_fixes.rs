@@ -39,17 +39,22 @@ pub fn first_field_line(source: &str, starts: &[usize], entry: &PoEntry) -> usiz
 }
 
 /// Byte range of an entry in the source: from its first line to the first
-/// line of the next entry (so the blank line after it is included).
+/// line of the next entry (so the blank line after it is included). The last
+/// entry takes the blank line before it instead, so removing it leaves no
+/// blank line at the end of the file.
 pub fn entry_span(po: &PoFile, source: &str, starts: &[usize], entry: &PoEntry) -> (usize, usize) {
-    let start = line_offset(starts, entry.linenum.max(1));
+    let mut start = line_offset(starts, entry.linenum.max(1));
     let next = po
         .entries
         .iter()
         .map(|e| e.linenum)
         .filter(|&l| l > entry.linenum)
         .min()
-        .map_or(source.len(), |l| line_offset(starts, l));
-    (start, next)
+        .map(|l| line_offset(starts, l));
+    if next.is_none() && source[..start].ends_with("\n\n") {
+        start -= 1;
+    }
+    (start, next.unwrap_or(source.len()))
 }
 
 #[cfg(test)]
@@ -78,6 +83,6 @@ mod tests {
             "#. module: m\n#: code:a.py:0\nmsgid \"A\"\nmsgstr \"a\"\n\n"
         );
         let (start, end) = entry_span(&po, source, &starts, &po.entries[1]);
-        assert_eq!(&source[start..end], "#. module: m\nmsgid \"B\"\nmsgstr \"\"\n");
+        assert_eq!(&source[start..end], "\n#. module: m\nmsgid \"B\"\nmsgstr \"\"\n");
     }
 }

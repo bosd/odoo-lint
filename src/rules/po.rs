@@ -452,7 +452,9 @@ fn merge_duplicates(ctx: &PoContext, entries: &[&PoEntry]) -> Option<Fix> {
     }
     if !extra.is_empty() {
         let at = line_offset(&starts, first_field_line(ctx.source, &starts, first));
-        edits.push(Edit::insert(at, format!("#: {}\n", extra.join(" "))));
+        // One reference per line, as Odoo's export writes them.
+        let lines: String = extra.iter().map(|r| format!("#: {r}\n")).collect();
+        edits.push(Edit::insert(at, lines));
     }
     Some(Fix::safe("Merge the identical duplicates into one entry", edits))
 }
