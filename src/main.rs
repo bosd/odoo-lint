@@ -136,34 +136,8 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
-    /// Write each module's translation template (i18n/<module>.pot) from its source
-    #[command(hide = true)]
-    Pot {
-        /// Modules, folders with modules, or files of modules (as hooks pass them)
-        #[arg(default_value = ".")]
-        paths: Vec<PathBuf>,
-        /// Write nothing; exit with 1 when a template is out of date (for CI)
-        #[arg(long)]
-        check: bool,
-        /// Write the templates into this folder as <module>.pot instead of each module's i18n/
-        #[arg(long)]
-        output_dir: Option<PathBuf>,
-        /// Folders with the modules' dependencies, Odoo's included; replaces `addons-path` from the config
-        #[arg(long, value_delimiter = ',')]
-        addons_path: Option<Vec<String>>,
-        /// Folders whose modules count as installed too, as in a database with all of them
-        #[arg(long, value_delimiter = ',')]
-        installed: Vec<PathBuf>,
-        /// Install no module automatically (Odoo's --skip-auto-install, as OCA's CI does)
-        #[arg(long)]
-        skip_auto_install: bool,
-        /// Count demo data as installed (Odoo's default up to 18.0)
-        #[arg(long, conflicts_with = "without_demo")]
-        with_demo: bool,
-        /// Count demo data as not installed (Odoo's default from 19.0)
-        #[arg(long)]
-        without_demo: bool,
-    },
+    /// Write each module's translation template (i18n/<module>.pot) from its source; with --merge, update its .po files
+    Pot(PotArgs),
     /// Write requirements.txt from the Python external_dependencies of the addons in a folder
     Requirements {
         /// The folder with the addons
@@ -187,6 +161,41 @@ enum Commands {
         #[arg(long, value_enum, default_value_t)]
         output_format: RuleFormat,
     },
+}
+
+/// The options of `odl pot`.
+#[derive(clap::Args)]
+struct PotArgs {
+    /// Modules, folders with modules, or files of modules (as hooks pass them)
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+    /// Write nothing; exit with 1 when a template is out of date (for CI)
+    #[arg(long)]
+    check: bool,
+    /// Write the templates into this folder as <module>.pot instead of each module's i18n/
+    #[arg(long)]
+    output_dir: Option<PathBuf>,
+    /// Folders with the modules' dependencies, Odoo's included; replaces `addons-path` from the config
+    #[arg(long, value_delimiter = ',')]
+    addons_path: Option<Vec<String>>,
+    /// Folders whose modules count as installed too, as in a database with all of them
+    #[arg(long, value_delimiter = ',')]
+    installed: Vec<PathBuf>,
+    /// Install no module automatically (Odoo's --skip-auto-install, as OCA's CI does)
+    #[arg(long)]
+    skip_auto_install: bool,
+    /// Count demo data as installed (Odoo's default up to 18.0)
+    #[arg(long, conflicts_with = "without_demo")]
+    with_demo: bool,
+    /// Count demo data as not installed (Odoo's default from 19.0)
+    #[arg(long)]
+    without_demo: bool,
+    /// Also update the module's .po files: new messages untranslated, removed ones obsolete (#~)
+    #[arg(long, conflicts_with = "output_dir")]
+    merge: bool,
+    /// With --merge, drop removed messages instead of keeping them as obsolete
+    #[arg(long, requires = "merge")]
+    no_obsolete: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
@@ -277,26 +286,15 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
-        Commands::Pot {
-            paths,
-            check,
-            output_dir,
-            addons_path,
-            installed,
-            skip_auto_install,
-            with_demo,
-            without_demo,
-        } => match pot(
-            &paths,
-            check,
-            output_dir.as_deref(),
-            addons_path,
-            &installed,
-            skip_auto_install,
-            (with_demo || without_demo).then_some(with_demo),
-        ) {
+        Commands::Pot(args) => match pot(&args) {
             Ok(changes) => {
+                let mut outdated = 0;
                 for change in &changes {
+                    if let Some(reason) = &change.skipped {
+                        eprintln!("skipped {}: {reason}", change.path.display());
+                        continue;
+                    }
+                    outdated += 1;
                     let verb = if change.written { "wrote" } else { "out of date:" };
                     let note = if change.incomplete {
                         " (dependencies not found on the addons path: labels may be missing)"
@@ -305,8 +303,9 @@ fn main() -> ExitCode {
                     };
                     eprintln!("{verb} {}{note}", change.path.display());
                 }
-                if check && !changes.is_empty() {
-                    eprintln!("Run `odl pot` to update {} file(s).", changes.len());
+                if args.check && outdated > 0 {
+                    let command = if args.merge { "odl pot --merge" } else { "odl pot" };
+                    eprintln!("Run `{command}` to update {outdated} file(s).");
                     ExitCode::from(1)
                 } else {
                     ExitCode::SUCCESS
@@ -672,29 +671,33 @@ fn readme(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<odoo_lint::read
     odoo_lint::readme::run_with(paths, check, &style)
 }
 
-fn pot(
-    paths: &[PathBuf],
-    check: bool,
-    output_dir: Option<&std::path::Path>,
-    addons_path: Option<Vec<String>>,
-    installed: &[PathBuf],
-    skip_auto_install: bool,
-    demo: Option<bool>,
-) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
+fn pot(args: &PotArgs) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
     let overrides = CliOverrides {
-        addons_path,
+        addons_path: args.addons_path.clone(),
         ..CliOverrides::default()
     };
-    let settings = Settings::load(&paths[0], None, overrides)
+    let settings = Settings::load(&args.paths[0], None, overrides)
         .map_err(std::io::Error::other)?
         .settings;
     let installation = odoo_lint::pot::Installation {
         addons_path: &settings.addons_path,
-        installed,
-        skip_auto_install,
-        demo,
+        installed: &args.installed,
+        skip_auto_install: args.skip_auto_install,
+        demo: (args.with_demo || args.without_demo).then_some(args.with_demo),
     };
-    odoo_lint::pot::run(paths, check, output_dir, settings.target_version, &installation)
+    let merge = args.merge.then_some(if args.no_obsolete {
+        odoo_lint::pot::Obsolete::Drop
+    } else {
+        odoo_lint::pot::Obsolete::Keep
+    });
+    odoo_lint::pot::run(
+        &args.paths,
+        args.check,
+        args.output_dir.as_deref(),
+        settings.target_version,
+        &installation,
+        merge,
+    )
 }
 
 fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> ExitCode {

@@ -38,12 +38,12 @@ fn writes_then_checks_the_template() {
     );
     let paths = [dir.path().to_path_buf()];
 
-    let changes = run(&paths, true, None, OdooVersion::new(19, 0), &NOTHING_ELSE).unwrap();
+    let changes = run(&paths, true, None, OdooVersion::new(19, 0), &NOTHING_ELSE, None).unwrap();
     assert_eq!(changes.len(), 1);
     assert!(!changes[0].written);
     assert!(!dir.path().join("acme/i18n/acme.pot").exists());
 
-    let changes = run(&paths, false, None, OdooVersion::new(19, 0), &NOTHING_ELSE).unwrap();
+    let changes = run(&paths, false, None, OdooVersion::new(19, 0), &NOTHING_ELSE, None).unwrap();
     assert!(changes[0].written);
     let pot = fs::read_to_string(dir.path().join("acme/i18n/acme.pot")).unwrap();
     // The series comes from the manifest version, not the default.
@@ -56,7 +56,7 @@ fn writes_then_checks_the_template() {
         "{pot}"
     );
 
-    assert!(run(&paths, true, None, OdooVersion::new(19, 0), &NOTHING_ELSE)
+    assert!(run(&paths, true, None, OdooVersion::new(19, 0), &NOTHING_ELSE, None)
         .unwrap()
         .is_empty());
 }
@@ -103,7 +103,7 @@ class ResPartner(models.Model):
 "#,
         );
         let paths = [dir.path().to_path_buf()];
-        run(&paths, false, None, OdooVersion::new(18, 0), &NOTHING_ELSE).unwrap();
+        run(&paths, false, None, OdooVersion::new(18, 0), &NOTHING_ELSE, None).unwrap();
         fs::read_to_string(dir.path().join("acme/i18n/acme.pot")).unwrap()
     }
 
@@ -276,7 +276,7 @@ class IrUiView(models.Model):
             skip_auto_install: false,
             demo: None,
         };
-        run(&paths, false, None, OdooVersion::new(19, 0), &installation).unwrap();
+        run(&paths, false, None, OdooVersion::new(19, 0), &installation, None).unwrap();
         fs::read_to_string(dir.path().join("acme/i18n/acme.pot")).unwrap()
     }
 
@@ -326,5 +326,123 @@ class IrUiView(models.Model):
             )),
             "{pot}"
         );
+    }
+}
+
+mod merge {
+    use super::*;
+    use odoo_lint::pot::Obsolete;
+
+    /// A module whose `nl.po` translates a message it still has and one it
+    /// lost, merged with its new template.
+    fn merged(obsolete: Obsolete) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "acme/__manifest__.py",
+            "{'name': 'Acme', 'version': '19.0.1.0.0'}\n",
+        );
+        write(
+            dir.path(),
+            "acme/models/partner.py",
+            "from odoo import _\n\n\ndef check():\n    return _(\"Kept\"), _(\"New\")\n",
+        );
+        write(
+            dir.path(),
+            "acme/i18n/nl.po",
+            "msgid \"\"\nmsgstr \"\"\n\"Language: nl\\n\"\n\n\
+             #. module: acme\nmsgid \"Kept\"\nmsgstr \"Behouden\"\n\n\
+             #. module: acme\nmsgid \"Gone\"\nmsgstr \"Weg\"\n",
+        );
+        let paths = [dir.path().to_path_buf()];
+        run(
+            &paths,
+            false,
+            None,
+            OdooVersion::new(19, 0),
+            &NOTHING_ELSE,
+            Some(obsolete),
+        )
+        .unwrap();
+        fs::read_to_string(dir.path().join("acme/i18n/nl.po")).unwrap()
+    }
+
+    #[test]
+    fn keeps_translations_and_adds_new_messages() {
+        let po = merged(Obsolete::Keep);
+        assert!(
+            po.contains(
+                "#. module: acme\n#. odoo-python\n#: code:addons/acme/models/partner.py:0\n\
+                 msgid \"Kept\"\nmsgstr \"Behouden\"\n\n\
+                 #. module: acme\n#. odoo-python\n#: code:addons/acme/models/partner.py:0\n\
+                 msgid \"New\"\nmsgstr \"\"\n"
+            ),
+            "{po}"
+        );
+    }
+
+    #[test]
+    fn keeps_removed_translations_as_obsolete() {
+        let po = merged(Obsolete::Keep);
+        assert!(po.ends_with("#~ msgid \"Gone\"\n#~ msgstr \"Weg\"\n"), "{po}");
+    }
+
+    #[test]
+    fn check_mode_reports_outdated_po_files_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "acme/__manifest__.py",
+            "{'name': 'Acme', 'version': '19.0.1.0.0'}\n",
+        );
+        write(
+            dir.path(),
+            "acme/models/a.py",
+            "from odoo import _\n\n\ndef f():\n    return _(\"New\")\n",
+        );
+        let po = "msgid \"\"\nmsgstr \"\"\n\"Language: nl\\n\"\n";
+        write(dir.path(), "acme/i18n/nl.po", po);
+        let paths = [dir.path().to_path_buf()];
+        let changes = run(
+            &paths,
+            true,
+            None,
+            OdooVersion::new(19, 0),
+            &NOTHING_ELSE,
+            Some(Obsolete::Keep),
+        )
+        .unwrap();
+        assert!(changes.iter().any(|c| c.path.ends_with("nl.po") && !c.written));
+        assert_eq!(fs::read_to_string(dir.path().join("acme/i18n/nl.po")).unwrap(), po);
+    }
+
+    #[test]
+    fn leaves_a_po_file_that_does_not_parse_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "acme/__manifest__.py",
+            "{'name': 'Acme', 'version': '19.0.1.0.0'}\n",
+        );
+        let po = "msgid \"\"\nmsgstr \"\"\n\nmsgstr \"no msgid\"\n";
+        write(dir.path(), "acme/i18n/nl.po", po);
+        let paths = [dir.path().to_path_buf()];
+        let changes = run(
+            &paths,
+            false,
+            None,
+            OdooVersion::new(19, 0),
+            &NOTHING_ELSE,
+            Some(Obsolete::Keep),
+        )
+        .unwrap();
+        assert!(changes.iter().any(|c| c.path.ends_with("nl.po") && c.skipped.is_some()));
+        assert_eq!(fs::read_to_string(dir.path().join("acme/i18n/nl.po")).unwrap(), po);
+    }
+
+    #[test]
+    fn drops_removed_translations_when_asked() {
+        let po = merged(Obsolete::Drop);
+        assert!(!po.contains("Gone"), "{po}");
     }
 }
