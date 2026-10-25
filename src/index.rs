@@ -50,6 +50,33 @@ pub struct FieldLabel {
     /// `selection_add`: each value, with its label when it has one.
     pub selection_add: Vec<(String, Option<String>)>,
     pub export_string_translation: Option<bool>,
+    /// `translate`: `None` when the definition does not set it.
+    pub translate: Option<Translate>,
+    /// `sanitize` of an HTML field: `None` when the definition does not set it.
+    pub sanitize: Option<Sanitize>,
+}
+
+/// The `sanitize` of an HTML field, as far as it decides how its values are
+/// translated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sanitize {
+    Yes,
+    No,
+    /// `sanitize='email_outgoing'`: sanitized, yet translated as a whole.
+    EmailOutgoing,
+}
+
+/// How a field's values are translated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Translate {
+    /// Not translated (`translate=False`).
+    No,
+    /// The whole value is one term (`translate=True`).
+    Whole,
+    /// The terms of an XML value (`xml_translate`, views).
+    Xml,
+    /// The terms of an HTML value (`html_translate`).
+    Html,
 }
 
 /// The `selection` of a field definition.
@@ -318,6 +345,34 @@ fn field_label(kind: &str, call: &ruff_python_ast::ExprCall, eval: &Eval) -> Fie
             .and_then(Literal::into_pairs)
             .unwrap_or_default(),
         export_string_translation: keyword("export_string_translation").and_then(|l| l.as_bool()),
+        translate: call
+            .arguments
+            .keywords
+            .iter()
+            .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "translate"))
+            .and_then(|k| translate_mode(&k.value)),
+        sanitize: keyword("sanitize").and_then(|value| match value {
+            Literal::Bool(true) => Some(Sanitize::Yes),
+            Literal::Bool(false) => Some(Sanitize::No),
+            Literal::Str(mode) if mode == "email_outgoing" => Some(Sanitize::EmailOutgoing),
+            Literal::Str(_) => Some(Sanitize::Yes),
+            _ => None,
+        }),
+    }
+}
+
+/// The translation mode a `translate=` value names.
+fn translate_mode(expr: &Expr) -> Option<Translate> {
+    let name = match expr {
+        Expr::BooleanLiteral(b) => return Some(if b.value { Translate::Whole } else { Translate::No }),
+        Expr::Name(name) => name.id.as_str(),
+        Expr::Attribute(attribute) => attribute.attr.as_str(),
+        _ => return None,
+    };
+    match name {
+        "xml_translate" => Some(Translate::Xml),
+        "html_translate" => Some(Translate::Html),
+        _ => None,
     }
 }
 
@@ -1395,6 +1450,8 @@ pub struct DataFile {
     pub path: PathBuf,
     /// Its place in Odoo's load order, from 1.
     pub rank: usize,
+    /// Whether it is demo data (`demo`, `demo_xml`).
+    pub demo: bool,
 }
 
 /// Manifest keys of data files, in the order Odoo loads them: data, then demo.
@@ -1412,7 +1469,11 @@ fn data_files(path: &Path, manifest: &Manifest) -> Vec<DataFile> {
                 continue;
             }
             let rank = files.len() + 1;
-            files.push(DataFile { path: file, rank });
+            files.push(DataFile {
+                path: file,
+                rank,
+                demo: key.starts_with("demo"),
+            });
         }
     }
     files
@@ -1516,6 +1577,7 @@ fn xml_ids(
         .map(|e| DataFile {
             path: e.path().to_path_buf(),
             rank: 0,
+            demo: false,
         })
         .collect::<Vec<_>>();
     for file in files.iter().chain(others.iter()) {
