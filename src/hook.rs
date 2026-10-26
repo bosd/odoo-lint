@@ -27,7 +27,7 @@ pub fn edited_file(event: &Value) -> Option<PathBuf> {
 
 fn is_linted(path: &Path) -> bool {
     path.extension()
-        .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml")
+        .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml" || e == "js")
 }
 
 /// The violations in `path`, if it is a file of an Odoo module.
@@ -42,7 +42,15 @@ pub fn lint_edited(path: &Path) -> Option<Vec<Violation>> {
         return None;
     }
     let settings = Settings::load(path, None, CliOverrides::default()).ok()?.settings;
-    Some(linter::lint_paths(&[file], &settings))
+    // Module rules also report on other files (the manifest, a README): only
+    // the edited file's findings are about what the agent just did.
+    let mut violations = linter::lint_paths(std::slice::from_ref(&file), &settings);
+    let edited = file.canonicalize().unwrap_or_else(|_| file.clone());
+    violations.retain(|v| {
+        let reported = Path::new(&v.file_path);
+        reported == file || reported.canonicalize().is_ok_and(|p| p == edited)
+    });
+    Some(violations)
 }
 
 /// What to tell the model about the violations in `path`.
@@ -134,5 +142,11 @@ mod tests {
         assert!(context.contains("C8116"), "{context}");
         assert!(context.contains("[fixable]"), "{context}");
         assert_eq!(output["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+
+        // The manifest's finding is not the model file's.
+        let model = module.join("models/partner.py");
+        fs::write(&model, "from odoo import models\n").unwrap();
+        let found = lint_edited(&model).unwrap();
+        assert!(found.iter().all(|v| v.code != "C8116"), "{found:?}");
     }
 }

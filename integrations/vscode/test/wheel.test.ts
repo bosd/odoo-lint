@@ -28,6 +28,17 @@ test("picks the wheel for each platform", () => {
   assert.equal(picked("win32", "x64"), files[6].filename);
 });
 
+test("picks a musllinux wheel on musl", () => {
+  assert.equal(
+    pickWheel(files, "linux", "x64", true)?.filename,
+    files[5].filename,
+  );
+  assert.equal(
+    pickWheel(files, "linux", "arm64", true)?.filename,
+    files[4].filename,
+  );
+});
+
 test("has no wheel for other platforms", () => {
   assert.equal(pickWheel(files, "win32", "arm64"), undefined);
   assert.equal(pickWheel(files, "freebsd", "x64"), undefined);

@@ -181,7 +181,7 @@ impl Server {
     fn lint(&self, path: &Path) -> Option<(Settings, Vec<Violation>)> {
         let linted = path
             .extension()
-            .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml");
+            .is_some_and(|e| e == "py" || e == "po" || e == "pot" || e == "xml" || e == "js");
         if !linted {
             return None;
         }
@@ -464,32 +464,36 @@ impl Server {
         let module = linter::modules_of(std::slice::from_ref(&path), &self.sources)
             .into_iter()
             .next()?;
-        let usages = crate::usages::references(
+        let usages = crate::usages::references_with(
             &module,
             &settings.addons_path,
             &path,
             &text,
             offset,
             params.context.include_declaration,
+            &self.sources,
         );
+        // The text the offsets were found in: the open file as the editor
+        // has it, the others from the same sources.
+        let open_file = path.canonicalize().unwrap_or_else(|_| path.clone());
         let mut contents: HashMap<PathBuf, String> = HashMap::new();
         let locations = usages
             .into_iter()
             .filter_map(|usage| {
                 let uri = Url::from_file_path(&usage.path).ok()?;
-                let content = match self.documents.get(&uri) {
-                    Some((text, _)) => text.clone(),
-                    None => contents
+                let content = if usage.path.canonicalize().ok().as_ref() == Some(&open_file) {
+                    &text
+                } else {
+                    contents
                         .entry(usage.path.clone())
-                        .or_insert_with(|| std::fs::read_to_string(&usage.path).unwrap_or_default())
-                        .clone(),
+                        .or_insert_with(|| self.sources.read_to_string(&usage.path).unwrap_or_default())
                 };
-                if usage.end > content.len() {
+                if !content.is_char_boundary(usage.start) || !content.is_char_boundary(usage.end) {
                     return None;
                 }
                 let range = Range::new(
-                    self.encoding.position(&content, usage.start),
-                    self.encoding.position(&content, usage.end),
+                    self.encoding.position(content, usage.start),
+                    self.encoding.position(content, usage.end),
                 );
                 Some(lsp_types::Location { uri, range })
             })
@@ -498,29 +502,35 @@ impl Server {
     }
 
     fn handle_request(&self, request: Request) -> Result<()> {
+        /// The request's params, or the `InvalidParams` answer to send:
+        /// one bad request must not end the session.
+        fn parse<P: serde::de::DeserializeOwned>(request: &Request) -> std::result::Result<P, Response> {
+            serde_json::from_value(request.params.clone()).map_err(|err| {
+                Response::new_err(
+                    request.id.clone(),
+                    ErrorCode::InvalidParams as i32,
+                    format!("{}: {err}", request.method),
+                )
+            })
+        }
+        let id = request.id.clone();
         let response = match request.method.as_str() {
             CodeActionRequest::METHOD => {
-                let params: CodeActionParams = serde_json::from_value(request.params)?;
-                Response::new_ok(request.id, self.code_actions(&params))
+                parse::<CodeActionParams>(&request).map(|params| Response::new_ok(id, self.code_actions(&params)))
             }
-            Completion::METHOD => {
-                let params: lsp_types::CompletionParams = serde_json::from_value(request.params)?;
-                Response::new_ok(request.id, self.completion(&params))
-            }
-            References::METHOD => {
-                let params: lsp_types::ReferenceParams = serde_json::from_value(request.params)?;
-                Response::new_ok(request.id, self.references(&params))
-            }
-            GotoDefinition::METHOD => {
-                let params: lsp_types::GotoDefinitionParams = serde_json::from_value(request.params)?;
-                Response::new_ok(request.id, self.definition(&params.text_document_position_params))
-            }
-            method => Response::new_err(
-                request.id,
+            Completion::METHOD => parse::<lsp_types::CompletionParams>(&request)
+                .map(|params| Response::new_ok(id, self.completion(&params))),
+            References::METHOD => parse::<lsp_types::ReferenceParams>(&request)
+                .map(|params| Response::new_ok(id, self.references(&params))),
+            GotoDefinition::METHOD => parse::<lsp_types::GotoDefinitionParams>(&request)
+                .map(|params| Response::new_ok(id, self.definition(&params.text_document_position_params))),
+            method => Ok(Response::new_err(
+                id,
                 ErrorCode::MethodNotFound as i32,
                 format!("unsupported request: {method}"),
-            ),
-        };
+            )),
+        }
+        .unwrap_or_else(|error| error);
         self.connection.sender.send(Message::Response(response))?;
         Ok(())
     }
@@ -683,6 +693,19 @@ mod tests {
         fs::write(module.join("README.rst"), "LSP\n").unwrap();
         fs::write(dir.join("odoo-lint.toml"), "target-version = \"19.0\"\n").unwrap();
         module.join("models/partner.py")
+    }
+
+    #[test]
+    fn a_request_with_bad_params_does_not_end_the_session() {
+        let mut client = Client::start(&["utf-16"]);
+        // `references` without `position` and `context`.
+        let result = client.request(
+            "textDocument/references",
+            json!({"textDocument": {"uri": "file:///x.py"}}),
+        );
+        assert!(result.is_null());
+        // The server still answers, and shuts down cleanly.
+        client.stop();
     }
 
     #[test]

@@ -7,16 +7,21 @@ export interface PypiFile {
   digests: { sha256: string };
 }
 
-/** Fragments of the wheel file name that run on a platform, or undefined. */
+/**
+ * Fragments of the wheel file name that run on a platform, or undefined.
+ * A Linux with musl (Alpine) needs a musllinux wheel.
+ */
 export function wheelTags(
   platform: string,
   arch: string,
+  musl = false,
 ): string[] | undefined {
+  const linux = musl ? "musllinux" : "manylinux";
   switch (`${platform}-${arch}`) {
     case "linux-x64":
-      return ["manylinux", "x86_64"];
+      return [linux, "x86_64"];
     case "linux-arm64":
-      return ["manylinux", "aarch64"];
+      return [linux, "aarch64"];
     case "darwin-arm64":
       return ["macosx", "arm64"];
     case "darwin-x64":
@@ -32,8 +37,9 @@ export function pickWheel(
   files: PypiFile[],
   platform: string,
   arch: string,
+  musl = false,
 ): PypiFile | undefined {
-  const tags = wheelTags(platform, arch);
+  const tags = wheelTags(platform, arch, musl);
   if (!tags) {
     return undefined;
   }
