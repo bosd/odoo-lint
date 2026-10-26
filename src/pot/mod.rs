@@ -7,7 +7,9 @@
 //! constraint messages, with values from the module and its dependencies.
 
 mod code;
+mod markup;
 mod models;
+mod records;
 
 use crate::index::ModuleIndex;
 use crate::manifest::Manifest;
@@ -155,6 +157,9 @@ pub struct Installation<'p> {
     /// OCA's CI: only the modules installed with a new database (`base`,
     /// `web` and what they install automatically) come without asking.
     pub skip_auto_install: bool,
+    /// Whether demo data is installed; `None` for Odoo's default: with demo
+    /// data up to 18.0, without from 19.0.
+    pub demo: Option<bool>,
 }
 
 /// A module Odoo installs automatically once `triggers` are installed.
@@ -337,8 +342,11 @@ fn generate_with(
         .position(|m| m.name == module)
         .map_or(modules.len(), |at| at + 1);
     let at_load = crate::index::closure_of(modules[..loaded].to_vec());
-    let installed = crate::index::closure_of(modules);
+    let installed = crate::index::closure_of(modules.clone());
     terms.extend(model_terms(module, &at_load, &installed, version));
+    let models = models::Models::new(&installed, version);
+    let demo = installation.demo.unwrap_or(version.major < 19);
+    terms.extend(records::record_terms(module, &modules, &models, demo));
     Some(Template {
         content: write(module, version, &terms),
         incomplete: !complete,

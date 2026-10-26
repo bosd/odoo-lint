@@ -8,7 +8,7 @@
 //! their values from every installed module, as the database has them.
 
 use super::Term;
-use crate::index::{Closure, Field, ModelClass, Selection};
+use crate::index::{Closure, Field, ModelClass, Sanitize, Selection, Translate};
 use crate::odoo_version::OdooVersion;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
@@ -28,6 +28,8 @@ struct Resolved {
     help: Option<String>,
     related: Option<String>,
     export: Option<bool>,
+    translate: Option<Translate>,
+    sanitize: Option<Sanitize>,
     /// The modules that define the field (Odoo's `field._modules`).
     modules: BTreeSet<String>,
     /// The labels of a literal selection, by value.
@@ -64,6 +66,12 @@ impl Resolved {
         if label.export_string_translation.is_some() {
             self.export = label.export_string_translation;
         }
+        if label.translate.is_some() {
+            self.translate = label.translate;
+        }
+        if label.sanitize.is_some() {
+            self.sanitize = label.sanitize;
+        }
         self.modules.insert(module.to_string());
         // `_selection_modules`: a `selection` starts over, `selection_add`
         // adds the values that come with a label.
@@ -95,8 +103,18 @@ impl Resolved {
 
 type Fields = BTreeMap<String, Resolved>;
 
+/// Where a record keeps the value of a field, and how it is translated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Stored {
+    /// On the record itself.
+    Here(Translate),
+    /// On its `_inherits` parent of this model, whose record gets the XML id
+    /// `<id>_<parent model with underscores>`.
+    Parent(String, Translate),
+}
+
 /// The models of a closure, each with its classes in load order.
-struct Models<'c> {
+pub(super) struct Models<'c> {
     defs: HashMap<String, Vec<Def<'c>>>,
     /// From 19.0 `id` and `display_name` are fields of `BaseModel`, so every
     /// model has them; before, the class defining a model adds them.
@@ -129,7 +147,7 @@ const LOG_FIELDS: &[(&str, &str)] = &[
 
 impl<'c> Models<'c> {
     /// The models of `closure`, whose modules are in load order.
-    fn new(closure: &'c Closure, version: OdooVersion) -> Self {
+    pub(super) fn new(closure: &'c Closure, version: OdooVersion) -> Self {
         let mut defs: HashMap<String, Vec<Def>> = HashMap::new();
         for module in closure.modules() {
             for class in module.classes.iter().filter(|c| c.odoo_model) {
@@ -315,6 +333,37 @@ impl<'c> Models<'c> {
                 return found;
             }
         }
+    }
+
+    /// Where a record of `model` keeps its value of `field`, when the value
+    /// is translated.
+    pub(super) fn stored(&self, model: &str, field: &str) -> Option<Stored> {
+        let fields = self.fields(model)?;
+        let resolved = fields.get(field)?;
+        if let Some((parent, parent_field)) = &resolved.inherited_from {
+            return match self.stored(parent, parent_field)? {
+                Stored::Here(translate) => Some(Stored::Parent(parent.clone(), translate)),
+                Stored::Parent(..) => None,
+            };
+        }
+        // A sanitized HTML field with `translate=True` uses `html_translate`
+        // (`Html._get_attrs`), unless it is an outgoing email.
+        let html_translated = resolved.kind == "Html"
+            && matches!(resolved.sanitize, None | Some(Sanitize::Yes))
+            && resolved.translate == Some(Translate::Whole);
+        match resolved.translate {
+            Some(Translate::No) | None => None,
+            _ if html_translated => Some(Stored::Here(Translate::Html)),
+            Some(translate) => Some(Stored::Here(translate)),
+        }
+    }
+
+    /// Whether the values of `field` are sanitized into XML
+    /// (`sanitize='email_outgoing'`), as mail templates are.
+    pub(super) fn sanitized_as_xml(&self, model: &str, field: &str) -> bool {
+        self.fields(model)
+            .and_then(|fields| fields.get(field).map(|f| f.sanitize == Some(Sanitize::EmailOutgoing)))
+            .unwrap_or(false)
     }
 
     /// The final value of `_description`, else the model's name.

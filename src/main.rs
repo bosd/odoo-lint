@@ -151,6 +151,12 @@ enum Commands {
         /// Install no module automatically (Odoo's --skip-auto-install, as OCA's CI does)
         #[arg(long)]
         skip_auto_install: bool,
+        /// Count demo data as installed (Odoo's default up to 18.0)
+        #[arg(long, conflicts_with = "without_demo")]
+        with_demo: bool,
+        /// Count demo data as not installed (Odoo's default from 19.0)
+        #[arg(long)]
+        without_demo: bool,
     },
     /// Write requirements.txt from the Python external_dependencies of the addons in a folder
     Requirements {
@@ -256,6 +262,8 @@ fn main() -> ExitCode {
             addons_path,
             installed,
             skip_auto_install,
+            with_demo,
+            without_demo,
         } => match pot(
             &paths,
             check,
@@ -263,6 +271,7 @@ fn main() -> ExitCode {
             addons_path,
             &installed,
             skip_auto_install,
+            (with_demo || without_demo).then_some(with_demo),
         ) {
             Ok(changes) => {
                 for change in &changes {
@@ -634,6 +643,7 @@ fn pot(
     addons_path: Option<Vec<String>>,
     installed: &[PathBuf],
     skip_auto_install: bool,
+    demo: Option<bool>,
 ) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
     let overrides = CliOverrides {
         addons_path,
@@ -646,6 +656,7 @@ fn pot(
         addons_path: &settings.addons_path,
         installed,
         skip_auto_install,
+        demo,
     };
     odoo_lint::pot::run(paths, check, output_dir, settings.target_version, &installation)
 }
