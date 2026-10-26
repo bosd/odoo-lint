@@ -4,7 +4,9 @@
 //! the modules its `depends` reach define them.
 //!
 //! Modules are parsed on first use and cached for the run, so only the
-//! dependencies of the checked modules are read, not all of Odoo.
+//! dependencies of the checked modules are read, not all of Odoo. A hint
+//! about where a missing model or field lives searches the whole addons
+//! path, but parses only the modules whose Python mentions it.
 
 use crate::checker::ModuleInfo;
 use crate::manifest::{Manifest, MANIFEST_FILE_NAMES};
@@ -1354,29 +1356,58 @@ impl Closure {
     }
 }
 
+/// The module folders in `dirs`, in addons path order.
+pub fn addon_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
+    dirs.iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.flatten().map(|entry| entry.path()))
+        .filter(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
+        .collect()
+}
+
+/// The modules in `dirs` whose Python mentions every one of `words`, in
+/// addons path order. A model or field is declared with its name in the
+/// source, so a text search rules out most of the addons path before any
+/// module is parsed.
+pub fn modules_mentioning(dirs: &[PathBuf], words: &[&str]) -> Vec<Arc<ModuleIndex>> {
+    use rayon::prelude::*;
+    addon_dirs(dirs)
+        .par_iter()
+        .filter(|path| mentions(path, words))
+        .filter_map(|path| module_index(path))
+        .collect()
+}
+
+fn mentions(module: &Path, words: &[&str]) -> bool {
+    let mut missing: Vec<&str> = words.to_vec();
+    for file in indexed_files(module) {
+        let Ok(source) = std::fs::read_to_string(file.path()) else {
+            continue;
+        };
+        missing.retain(|word| !source.contains(word));
+        if missing.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
 /// The modules in `dirs` that give `model` a field `field`: where to look
 /// when a module uses a field its dependencies do not have.
 pub fn modules_defining(dirs: &[PathBuf], model: &str, field: &str) -> Vec<String> {
-    let mut found: Vec<String> = Vec::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()) {
-                continue;
-            }
-            let Some(module) = module_index(&path) else { continue };
-            let defines = module.classes.iter().any(|class| {
+    let mut found: Vec<String> = modules_mentioning(dirs, &[model, field])
+        .into_iter()
+        .filter(|module| {
+            module.classes.iter().any(|class| {
                 let on_model = class.name.as_deref() == Some(model)
                     || (class.name.is_none() && class.inherit.iter().any(|i| i == model));
                 on_model && class.fields.iter().any(|f| f.name == field)
-            });
-            if defines && !found.contains(&module.name) {
-                found.push(module.name.clone());
-            }
-        }
-    }
+            })
+        })
+        .map(|module| module.name.clone())
+        .collect();
     found.sort();
+    found.dedup();
     found
 }
 
