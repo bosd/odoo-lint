@@ -583,6 +583,9 @@ pub fn serve(connection: Connection) -> Result<()> {
         sources: Sources::default(),
     };
     while let Ok(message) = server.connection.receiver.recv() {
+        // Files may have changed since the last message: check each module
+        // again, once.
+        crate::index::revalidate_cache();
         match message {
             Message::Request(request) => {
                 if server.connection.handle_shutdown(&request)? {

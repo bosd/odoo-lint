@@ -8,9 +8,9 @@ A reference to an XML id that does not exist, comes from outside `depends`, or i
 
 Checks the XML ids a module refers to: `ref="..."`, `parent` and `action`
 of menus, `inherit_id`, `groups`, `t-call`, `%(...)d`, `ref('...')` in
-`eval`, the `:id` columns of CSV files, records that override another
-module's (`id="base.main_company"`), and `env.ref()` and `has_group()` in
-Python.
+`eval`, the `:id` columns of CSV files, and `env.ref()` and `has_group()` in
+Python. A record with another module's id (`id="base.main_company"`) is not
+checked: Odoo creates it when it is missing.
 
 It reports an id that does not exist, one from a module that `depends` does
 not reach, and one of the module itself that is defined in a later data
@@ -21,7 +21,9 @@ file (or further down, or only in demo data).
 Odoo resolves the reference while it loads the record: the module fails to
 install with "External ID not found". Outside `depends`, it works only on a
 database where the other module happens to be installed. In Python, the
-error comes when the code runs.
+error comes when the code runs. A `groups` of an element in a view is the
+exception: for a missing group Odoo only logs a warning, and the element
+is shown to no one.
 
 ## Configuration
 
