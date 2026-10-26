@@ -253,3 +253,36 @@ fn references_of_fields_and_xml_ids() {
         ]
     );
 }
+
+#[test]
+fn references_read_unsaved_files_from_the_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, python, views) = setup(dir.path());
+    let text = fs::read_to_string(&python).unwrap();
+    let offset = text.find("base.group_user").unwrap() + 6;
+    let module = modules_of(std::slice::from_ref(&python), &Sources::default())
+        .into_iter()
+        .next()
+        .unwrap();
+    // The view has an unsaved line on top, with a character of two bytes.
+    let edited = format!("<!-- é -->\n{}", fs::read_to_string(&views).unwrap());
+    let sources = Sources::default();
+    sources.set(views.clone(), edited.clone());
+    let lines: Vec<usize> = odoo_lint::usages::references_with(
+        &module,
+        std::slice::from_ref(&core),
+        &python,
+        &text,
+        offset,
+        false,
+        &sources,
+    )
+    .into_iter()
+    .filter(|usage| usage.path.ends_with("views/views.xml"))
+    .map(|usage| {
+        assert_eq!(&edited[usage.start..usage.end], "group_user");
+        edited[..usage.start].matches('\n').count() + 1
+    })
+    .collect();
+    assert_eq!(lines, [8, 16]);
+}
