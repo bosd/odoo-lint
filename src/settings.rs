@@ -228,6 +228,14 @@ impl Settings {
             Some(v) => v.parse()?,
             None => DEFAULT_ODOO_VERSION,
         };
+        // On the command line an unknown rule is a typo; in a config it is
+        // usually a pylint-odoo check copied from a `.pylintrc`.
+        let unknown = |selector: &&String| !ALL.iter().any(|rule| selector_matches(selector, rule));
+        if let Some(selector) = cli.select.iter().flatten().chain(&cli.ignore).find(unknown) {
+            return Err(format!(
+                "'{selector}' does not match any rule (run `odl rule` to list them)"
+            ));
+        }
         let select = cli
             .select
             .or_else(|| config.select.clone())
@@ -252,6 +260,13 @@ impl Settings {
             if !ALL.iter().any(|rule| selector_matches(selector, rule)) {
                 warnings.push(format!("'{selector}' does not match any rule odoo-lint implements"));
             }
+        }
+
+        if !select.is_empty() && select.iter().all(|selector| unknown(&selector)) {
+            return Err(format!(
+                "`select` ({}) matches no rule, so nothing would be checked",
+                select.join(", ")
+            ));
         }
 
         let project_root = config_path
@@ -478,6 +493,30 @@ mod tests {
         let (_, warnings) = Settings::new(config, None, CliOverrides::default()).unwrap();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("C0103"));
+    }
+
+    #[test]
+    fn unknown_selectors_on_the_command_line_are_errors() {
+        let cli = |select: Option<Vec<String>>, ignore: Vec<String>| CliOverrides {
+            select,
+            ignore,
+            ..CliOverrides::default()
+        };
+        let config = OdooLintConfig::default;
+        let err = Settings::new(config(), None, cli(Some(vec!["BOGUS".into()]), vec![])).unwrap_err();
+        assert!(err.contains("BOGUS"), "{err}");
+        assert!(Settings::new(config(), None, cli(None, vec!["W999".into()])).is_err());
+        assert!(Settings::new(config(), None, cli(Some(vec!["W83".into()]), vec![])).is_ok());
+    }
+
+    #[test]
+    fn a_selection_of_no_rule_is_an_error() {
+        let config = OdooLintConfig {
+            select: Some(vec!["C0103".into(), "W0611".into()]),
+            ..Default::default()
+        };
+        let err = Settings::new(config, None, CliOverrides::default()).unwrap_err();
+        assert!(err.contains("matches no rule"), "{err}");
     }
 
     #[test]

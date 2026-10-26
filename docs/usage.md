@@ -7,7 +7,7 @@ Lint addons directories or single files.
 ```bash
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
-          [--fix] [--unsafe-fixes] [--diff] [--force-exclude]
+          [--fix] [--unsafe-fixes] [--diff] [--force-exclude] [-v] [-q]
           [--exit-zero] [--addons-path DIRS]
 ```
 
@@ -17,7 +17,7 @@ path is where the [configuration](configuration.md) search starts. A path
 that does not exist is an error (exit code `2`); a file odoo-lint does not
 lint (a `README.md`, say) is skipped.
 
-`-v`, `--version`, `--odoo-version VERSION`
+`--version`, `--odoo-version VERSION`
 : Target Odoo version, for example `17.0`. Overrides `target-version` from the
 configuration. Without either, the Odoo version of the project's
 `Framework :: Odoo :: X` classifier is used, else `17.0`.
@@ -33,7 +33,9 @@ the checks across modules; replaces `addons-path` from the configuration.
 
 `--select RULES`
 : Comma-separated codes, names or code prefixes to run; replaces `select`
-from the configuration.
+from the configuration. A selector that matches no rule is an error here (a
+typo would turn the check off); in the configuration it is a warning, so a
+list copied from a `.pylintrc` works.
 
 `--ignore RULES`
 : Comma-separated rules to skip; added to `ignore` from the configuration.
@@ -59,6 +61,17 @@ excluded file is linted when it is named explicitly.
 `--exit-zero`
 : Exit with `0` even when there are violations, so a hook or CI job reports
 them without failing. Invalid configuration or usage still exits with `2`.
+
+`-v`, `--verbose`
+: Also print the Odoo version the rules follow and the configuration used.
+
+`-q`, `--quiet`
+: Print only the findings, without the summary line.
+
+With an addons path, `odl check` warns about what makes the checks across
+modules skip a module: an addons path folder that does not exist or holds no
+module (the Odoo checkout itself instead of its `addons` and `odoo/addons`),
+and dependencies it cannot find.
 
 ### Output formats
 

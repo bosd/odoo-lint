@@ -22,7 +22,7 @@ enum Commands {
         #[arg(default_value = ".")]
         paths: Vec<PathBuf>,
         /// Target Odoo version, e.g. 17.0; overrides `target-version` from the config
-        #[arg(short, long, visible_alias = "odoo-version")]
+        #[arg(long, visible_alias = "odoo-version")]
         version: Option<String>,
         /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
         #[arg(long)]
@@ -54,6 +54,12 @@ enum Commands {
         /// Show the fixes as a diff instead of writing them
         #[arg(long)]
         diff: bool,
+        /// Also print the Odoo version and the config used
+        #[arg(short, long, conflicts_with = "quiet")]
+        verbose: bool,
+        /// Print only the findings, without the summary
+        #[arg(short, long)]
+        quiet: bool,
     },
     /// Report what modules need to run on a newer Odoo version, per version step
     UpgradeCheck {
@@ -71,7 +77,7 @@ enum Commands {
         ignore: Vec<String>,
         /// Output format
         #[arg(long, value_enum, default_value_t)]
-        output_format: RuleFormat,
+        output_format: ReportFormat,
         /// List every finding under its module
         #[arg(long)]
         show_findings: bool,
@@ -184,6 +190,15 @@ enum Commands {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+enum ReportFormat {
+    /// A table per version step
+    #[default]
+    Text,
+    /// JSON with the modules and their findings per version step
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 enum RuleFormat {
     /// Table of rules, or the Markdown documentation of one rule
     #[default]
@@ -193,6 +208,13 @@ enum RuleFormat {
 }
 
 fn main() -> ExitCode {
+    // Stop quietly when the reader goes away (`odl check | head`), as other
+    // command-line tools do, instead of panicking on the failed write.
+    #[cfg(unix)]
+    // SAFETY: restores the default action before any thread is started.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let cli = Cli::parse();
     match cli.command {
         Commands::UpgradeCheck {
@@ -212,7 +234,7 @@ fn main() -> ExitCode {
             target,
             config,
             ignore,
-            json: output_format == RuleFormat::Json,
+            json: output_format == ReportFormat::Json,
             show_findings,
             fix,
             unsafe_fixes,
@@ -389,6 +411,8 @@ fn main() -> ExitCode {
             force_exclude,
             exit_zero,
             addons_path,
+            verbose,
+            quiet,
         } => {
             let missing = linter::missing_paths(&paths);
             if !missing.is_empty() {
@@ -416,14 +440,19 @@ fn main() -> ExitCode {
                 eprintln!("warning: {warning}");
             }
 
-            if output_format == OutputFormat::Text {
-                eprintln!("🚀 Running odl check (Odoo {})...", settings.target_version);
-                match &config_path {
-                    Some(config_path) => eprintln!("⚙️  Using config {}", config_path.display()),
-                    None => eprintln!(
-                        "⚙️  No config found (odoo-lint.toml or [tool.odoo-lint] in pyproject.toml); using the defaults"
-                    ),
+            if verbose {
+                if settings.target_explicit {
+                    eprintln!("Odoo version: {}", settings.target_version);
+                } else {
+                    eprintln!("Odoo version: each module's manifest, else {}", settings.target_version);
                 }
+                match &config_path {
+                    Some(config_path) => eprintln!("Config: {}", config_path.display()),
+                    None => eprintln!("Config: none found (odoo-lint.toml or [tool.odoo-lint] in pyproject.toml)"),
+                }
+            }
+            for warning in linter::addons_path_warnings(&paths, &settings) {
+                eprintln!("warning: {warning}");
             }
             let mode = if unsafe_fixes { FixMode::Unsafe } else { FixMode::Safe };
             if diff {
@@ -447,7 +476,7 @@ fn main() -> ExitCode {
                 (linter::lint_paths(&paths, &settings), None)
             };
             print!("{}", output::render(output_format, &violations));
-            if output_format == OutputFormat::Text {
+            if output_format == OutputFormat::Text && !quiet {
                 if let Some(fixed) = fixed {
                     println!("Fixed {fixed} violation(s).");
                 }

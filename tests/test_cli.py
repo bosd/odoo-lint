@@ -3,6 +3,7 @@
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -66,17 +67,17 @@ def test_clean_project(project: Path) -> None:
     make_module(project, "acme_sale", "Acme Corp")
     make_module(project, "sale_extra", OCA)
 
-    result = run_odl("check", str(project / "addons"))
+    result = run_odl("check", "-v", str(project / "addons"))
 
     assert result.returncode == 0, result.stdout
-    assert "(Odoo 16.0)" in result.stderr
+    assert "Odoo version: 16.0" in result.stderr
 
 
 def test_author_mapping_violation(project: Path) -> None:
     """A module matching a mapping pattern must use the mapped author."""
     make_module(project, "acme_sale", OCA)
 
-    result = run_odl("check", str(project / "addons"), "--version", "18.0")
+    result = run_odl("check", "-v", str(project / "addons"), "--version", "18.0")
 
     assert result.returncode == 1
     line = result.stdout.splitlines()[0]
@@ -84,7 +85,7 @@ def test_author_mapping_violation(project: Path) -> None:
         "__manifest__.py:3:4: C8101: One of the following authors must be "
         "present in manifest: 'Acme Corp' (manifest-required-author)"
     )
-    assert "(Odoo 18.0)" in result.stderr
+    assert "Odoo version: 18.0" in result.stderr
 
 
 def test_pylint_disable_comment(project: Path) -> None:
@@ -372,3 +373,85 @@ def test_exit_zero(project: Path) -> None:
         ).returncode
         == 2
     )
+
+
+def test_unknown_selector_is_an_error(project: Path) -> None:
+    """A typo in `--select` must not turn the check off."""
+    make_module(project, "sale_x", OCA)
+    result = run_odl("check", str(project / "addons"), "--select", "BOGUS")
+    assert result.returncode == 2
+    assert "BOGUS" in result.stderr
+
+
+def test_quiet_by_default_verbose_on_request(project: Path) -> None:
+    """No banner without `--verbose`; `--quiet` drops the summary."""
+    make_module(project, "sale_x", OCA)
+    addons = str(project / "addons")
+    result = run_odl("check", addons)
+    assert result.returncode == 0
+    assert result.stderr == ""
+    verbose = run_odl("check", "-v", addons)
+    assert "Odoo version: 16.0" in verbose.stderr
+    assert "pyproject.toml" in verbose.stderr
+    quiet = run_odl("check", "-q", addons)
+    assert quiet.stdout == ""
+
+
+def test_addons_path_problems_are_reported(project: Path) -> None:
+    """A wrong addons path would silently turn the checks across modules off."""
+    module = make_module(project, "sale_x", OCA)
+    (module / "__manifest__.py").write_text(
+        f"{{'name': 'x', 'author': '{OCA}', 'license': 'AGPL-3', "
+        "'depends': ['sale']}\n"
+    )
+    empty = project / "empty"
+    empty.mkdir()
+    result = run_odl(
+        "check",
+        str(project / "addons"),
+        "--addons-path",
+        f"{empty},{project / 'missing'}",
+    )
+    assert f"{empty} holds no module" in result.stderr
+    assert "does not exist" in result.stderr
+    assert "sale_x: `base`, `sale` not found on the addons path" in result.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGPIPE is POSIX")
+def test_closed_pipe_is_not_a_crash() -> None:
+    """`odl rule | head -1` stops quietly."""
+    assert ODL is not None
+    # More output than a pipe buffers, so odl is still writing.
+    proc = subprocess.Popen(
+        [ODL, "rule", "--output-format", "json"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdout is not None
+    proc.stdout.readline()
+    proc.stdout.close()
+    _, stderr = proc.communicate()
+    assert b"panicked" not in stderr
+
+
+def test_findings_across_modules_keep_the_given_path(tmp_path: Path) -> None:
+    """ODOO005 reports `addons/...` like every other rule, not an absolute path."""
+    assert ODL is not None
+    base = tmp_path / "core" / "base"
+    base.mkdir(parents=True)
+    (base / "__manifest__.py").write_text("{'name': 'base'}\n")
+    module = make_module(tmp_path, "sale_x", OCA)
+    (module / "__init__.py").write_text("from . import models\n")
+    (module / "models.py").write_text(
+        "from odoo import models\n\n\nclass P(models.Model):\n"
+        "    _name = 'x.y'\n\n    def f(self):\n"
+        "        return self.env.ref('base.missing')\n"
+    )
+    result = subprocess.run(
+        [ODL, "check", "addons", "--addons-path", "core", "--select", "ODOO005"],
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
+        cwd=tmp_path,
+    )
+    assert result.stdout.startswith(str(Path("addons/sale_x/models.py"))), result

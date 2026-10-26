@@ -9,10 +9,10 @@ odl upgrade-check --target 19.0
 
 ```text
 acme_sale (17.0 → 19.0)
-  18.0  W8161   prefer-env-translation                     12  12 automatic
-  18.0  XML015  xml-deprecated-oe-chatter                   1  1 by hand
-  19.0  W8165   deprecated-self-cr                          3  3 automatic
-  19.0  XML016  xml-deprecated-res-groups-category-id       1  1 to review
+  18.0  W8161   prefer-env-translation                   12 automatic
+  18.0  XML015  xml-deprecated-oe-chatter                1 by hand
+  19.0  W8165   deprecated-self-cr                       3 automatic
+  19.0  XML016  xml-deprecated-res-groups-category-id    1 to review
   17 changes: 15 automatic, 1 to review, 1 by hand
 
 note: acme_report depends on report_xlsx, which odl cannot find for Odoo 19.0
