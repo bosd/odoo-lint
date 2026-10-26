@@ -61,6 +61,20 @@ fn writes_then_checks_the_template() {
         .is_empty());
 }
 
+#[test]
+fn writes_no_template_for_a_module_without_terms() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "acme/__manifest__.py",
+        "{'name': 'Acme', 'version': '18.0.1.0.0'}\n",
+    );
+    let paths = [dir.path().to_path_buf()];
+    let changes = run(&paths, false, None, OdooVersion::new(19, 0), &NOTHING_ELSE, None).unwrap();
+    assert!(changes.is_empty());
+    assert!(!dir.path().join("acme/i18n").exists());
+}
+
 mod model_terms {
     use super::*;
 
@@ -92,14 +106,29 @@ class AcmeOrder(models.Model):
     _sql_constraints = [("name_uniq", "unique(name)", "The name must be unique.")]
 
     name = fields.Char(help="What the order is called.")
+    partner_id = fields.Many2one("res.partner", help="Replaced below.")
     partner_id = fields.Many2one("res.partner")
+    parent_id = fields.Many2one("acme.order")
+    parent_partner_id = fields.Many2one(related="parent_id.partner_id")
+    parent_ref = fields.Char(related="parent_partner_id.ref")
     state = fields.Selection(STATES)
+    kind = fields.Selection((("rush", "Rush order"),))
 
 
 class ResPartner(models.Model):
     _inherit = "res.partner"
 
+    ref = fields.Char(string="Reference")
+
     order_count = fields.Integer(string="Orders")
+    order_note = fields.Char("Note", help="Kept for translators.", export_string_translation=False)
+
+
+class AcmeArchive(AcmeOrder):
+    """Acme Archive"""
+
+    _name = "acme.archive"
+    _description = __doc__
 "#,
         );
         let paths = [dir.path().to_path_buf()];
@@ -121,12 +150,36 @@ class ResPartner(models.Model):
     }
 
     #[test]
+    fn describes_a_model_by_its_docstring_on_a_python_subclass() {
+        let pot = template();
+        assert!(
+            pot.contains(&entry("ir.model,name:acme.model_acme_archive", "Acme Archive")),
+            "{pot}"
+        );
+    }
+
+    #[test]
     fn labels_a_field_from_its_name() {
         let pot = template();
         assert!(
             pot.contains(&entry(
                 "ir.model.fields,field_description:acme.field_acme_order__partner_id",
                 "Partner"
+            )),
+            "{pot}"
+        );
+    }
+
+    #[test]
+    fn labels_a_related_field_through_a_related_many2one() {
+        let pot = template();
+        assert!(
+            pot.contains(&format!(
+                "acme.field_acme_order__parent_ref\n{}",
+                entry(
+                    "ir.model.fields,field_description:acme.field_res_partner__ref",
+                    "Reference"
+                )
             )),
             "{pot}"
         );
@@ -142,6 +195,8 @@ class ResPartner(models.Model):
             )),
             "{pot}"
         );
+        // The second assignment replaces the first.
+        assert!(!pot.contains("Replaced below."), "{pot}");
     }
 
     #[test]
@@ -154,6 +209,12 @@ class ResPartner(models.Model):
             )),
             "{pot}"
         );
+    }
+
+    #[test]
+    fn leaves_out_a_tuple_selection_odoo_does_not_reflect() {
+        let pot = template();
+        assert!(!pot.contains("Rush order"), "{pot}");
     }
 
     #[test]
@@ -179,6 +240,19 @@ class ResPartner(models.Model):
         let pot = template();
         assert!(pot.contains("acme.field_acme_order__display_name"), "{pot}");
         assert!(!pot.contains("acme.field_res_partner__display_name"), "{pot}");
+    }
+
+    #[test]
+    fn keeps_the_help_of_a_label_left_out_of_the_export() {
+        let pot = template();
+        assert!(
+            pot.contains(&entry(
+                "ir.model.fields,help:acme.field_res_partner__order_note",
+                "Kept for translators."
+            )),
+            "{pot}"
+        );
+        assert!(!pot.contains("msgid \"Note\""), "{pot}");
     }
 
     #[test]
@@ -265,6 +339,10 @@ class IrUiView(models.Model):
     <record id="cron_cleanup" model="ir.cron">
         <field name="name">Clean up orders</field>
     </record>
+    <record id="cron_shared" model="ir.cron">
+        <field name="ir_actions_server_id" ref="base.some_action"/>
+        <field name="name">Shared action</field>
+    </record>
 </odoo>
 "#,
         );
@@ -326,6 +404,8 @@ class IrUiView(models.Model):
             )),
             "{pot}"
         );
+        // That record exists already: the name is written there.
+        assert!(!pot.contains("cron_shared"), "{pot}");
     }
 }
 

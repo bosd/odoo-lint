@@ -136,6 +136,9 @@ pub struct ModelClass {
     /// Whether a base is one of Odoo's model classes: components
     /// (`AbstractComponent`) have a `_name` too.
     pub odoo_model: bool,
+    /// The last name of each base that is not one of Odoo's model classes:
+    /// a base that is a model class of the module makes this one a model too.
+    pub python_bases: Vec<String>,
     /// `_description`, when it is a literal.
     pub description: Option<String>,
     /// `_table`, when it is a literal.
@@ -282,8 +285,10 @@ fn string(expr: &Expr) -> Option<String> {
 enum Literal {
     Str(String),
     Bool(bool),
-    /// A list or a tuple.
+    /// A list.
     Seq(Vec<Literal>),
+    /// A tuple: Odoo reflects the values of a list selection only.
+    Tuple(Vec<Literal>),
     /// Anything else: a call, a method, a number, ...
     Other,
 }
@@ -303,15 +308,22 @@ impl Literal {
         }
     }
 
+    /// The items of a list or a tuple.
+    fn into_items(self) -> Option<Vec<Literal>> {
+        match self {
+            Self::Seq(items) | Self::Tuple(items) => Some(items),
+            _ => None,
+        }
+    }
+
     /// `(value, label)` pairs of a selection; values that are not text are
-    /// left out. `None` when it is not a list.
+    /// left out. `None` when it is not a list or a tuple.
     fn into_pairs(self) -> Option<Vec<(String, Option<String>)>> {
-        let Self::Seq(items) = self else { return None };
         Some(
-            items
+            self.into_items()?
                 .into_iter()
                 .filter_map(|item| {
-                    let Self::Seq(pair) = item else { return None };
+                    let pair = item.into_items()?;
                     let mut pair = pair.into_iter();
                     let value = pair.next()?.into_string()?;
                     Some((value, pair.next().and_then(Self::into_string)))
@@ -346,7 +358,12 @@ fn field_label(kind: &str, call: &ruff_python_ast::ExprCall, eval: &Eval) -> Fie
     let selection = matches!(kind, "Selection" | "Reference")
         .then(|| keyword("selection").or_else(|| positional(0)))
         .flatten()
-        .map(|literal| match literal.into_pairs() {
+        // A tuple is set up as it is, like a method.
+        .map(|literal| match literal {
+            Literal::Tuple(_) => None,
+            literal => literal.into_pairs(),
+        })
+        .map(|pairs| match pairs {
             Some(pairs) => Selection::List(
                 pairs
                     .into_iter()
@@ -401,9 +418,9 @@ fn translate_mode(expr: &Expr) -> Option<Translate> {
 /// `models.Constraint` / `models.UniqueIndex` attributes.
 fn class_constraints(class: &StmtClassDef, eval: &Eval) -> Vec<Constraint> {
     let mut found = Vec::new();
-    if let Some(Literal::Seq(entries)) = class_value(class, "_sql_constraints").map(eval) {
+    if let Some(entries) = class_value(class, "_sql_constraints").and_then(|e| eval(e).into_items()) {
         for entry in entries {
-            let Literal::Seq(entry) = entry else { continue };
+            let Some(entry) = entry.into_items() else { continue };
             let mut entry = entry.into_iter();
             let Some(name) = entry.next().and_then(Literal::into_string) else {
                 continue;
@@ -551,7 +568,7 @@ impl<'a> Constants<'a> {
             Expr::StringLiteral(literal) => Literal::Str(literal.value.to_str().to_string()),
             Expr::BooleanLiteral(literal) => Literal::Bool(literal.value),
             Expr::List(list) => Literal::Seq(list.elts.iter().map(|e| self.eval(file, class, e, depth + 1)).collect()),
-            Expr::Tuple(tuple) => Literal::Seq(
+            Expr::Tuple(tuple) => Literal::Tuple(
                 tuple
                     .elts
                     .iter()
@@ -567,6 +584,10 @@ impl<'a> Constants<'a> {
                         left.extend(right);
                         Literal::Seq(left)
                     }
+                    (Literal::Tuple(mut left), Literal::Tuple(right)) => {
+                        left.extend(right);
+                        Literal::Tuple(left)
+                    }
                     (Literal::Str(left), Literal::Str(right)) => Literal::Str(left + &right),
                     _ => Literal::Other,
                 }
@@ -578,6 +599,16 @@ impl<'a> Constants<'a> {
                 .map_or(Literal::Other, |arg| self.eval(file, class, arg, depth + 1)),
             Expr::Name(name) => {
                 let id = name.id.as_str();
+                // `_description = __doc__`: the class docstring.
+                if let Some(class) = class.filter(|_| id == "__doc__") {
+                    return match class.body.first() {
+                        Some(Stmt::Expr(doc)) => match &*doc.value {
+                            Expr::StringLiteral(literal) => Literal::Str(literal.value.to_str().to_string()),
+                            _ => Literal::Other,
+                        },
+                        _ => Literal::Other,
+                    };
+                }
                 if let Some(value) = class.and_then(|c| class_value(c, id)) {
                     return self.eval(file, class, value, depth + 1);
                 }
@@ -711,6 +742,14 @@ fn model_class(class: &StmtClassDef, eval: &Eval) -> Option<ModelClass> {
             })
         })
         .collect::<Vec<Field>>();
+    // A name assigned twice is the last assignment, as in Python.
+    let mut seen = HashSet::new();
+    let mut fields: Vec<Field> = fields
+        .into_iter()
+        .rev()
+        .filter(|f| seen.insert(f.name.clone()))
+        .collect();
+    fields.reverse();
     // `fields.Many2one(..., delegate=True)` is an `_inherits` too.
     for stmt in &class.body {
         let value = match stmt {
@@ -773,8 +812,21 @@ fn model_class(class: &StmtClassDef, eval: &Eval) -> Option<ModelClass> {
                 .is_some_and(|d| d.ends_with("Model") || d.ends_with("AbstractModel") || d.ends_with("TransientModel"))
         })
     });
+    let python_bases = class
+        .arguments
+        .as_ref()
+        .map(|a| {
+            a.args
+                .iter()
+                .filter_map(crate::semantic::dotted_name)
+                .filter(|d| !(d.ends_with("Model") || d.ends_with("AbstractModel") || d.ends_with("TransientModel")))
+                .map(|d| d.rsplit('.').next().unwrap_or(&d).to_string())
+                .collect()
+        })
+        .unwrap_or_default();
     Some(ModelClass {
         odoo_model,
+        python_bases,
         abstract_model,
         file: PathBuf::new(),
         line: 0,
@@ -818,7 +870,7 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
     for (file, _, parsed) in &parsed_files {
         constants.add(file, parsed.suite());
     }
-    let per_file: Vec<Vec<ModelClass>> = parsed_files
+    let per_file: Vec<Vec<(String, ModelClass)>> = parsed_files
         .par_iter()
         .map(|(file, source, parsed)| {
             let lines = LineIndex::from_source_text(source);
@@ -863,10 +915,32 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
                     });
                 }
             }
-            found.into_iter().map(|(_, model)| model).collect()
+            found
         })
         .collect();
-    let model_classes: Vec<ModelClass> = per_file.into_iter().flatten().collect();
+    // The Python name of each class in `model_classes`.
+    let (class_names, mut model_classes): (Vec<String>, Vec<ModelClass>) = per_file.into_iter().flatten().unzip();
+    // `class Child(Parent)` where `Parent` is a model class of the module.
+    loop {
+        let models: HashSet<&str> = class_names
+            .iter()
+            .zip(&model_classes)
+            .filter(|(_, m)| m.odoo_model)
+            .map(|(n, _)| n.as_str())
+            .collect();
+        let children: Vec<usize> = (0..model_classes.len())
+            .filter(|&i| {
+                let m = &model_classes[i];
+                !m.odoo_model && m.python_bases.iter().any(|b| models.contains(b.as_str()))
+            })
+            .collect();
+        if children.is_empty() {
+            break;
+        }
+        for i in children {
+            model_classes[i].odoo_model = true;
+        }
+    }
     let data_files = data_files(path, &manifest);
     let (xml_ids, xml_id_lines) = xml_ids(&name, path, &data_files, &model_classes);
     let views = views(&name, &data_files);

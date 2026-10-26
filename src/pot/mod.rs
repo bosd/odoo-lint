@@ -16,9 +16,10 @@ use crate::index::ModuleIndex;
 use crate::manifest::Manifest;
 use crate::odoo_version::OdooVersion;
 use crate::po::{PoEntry, PoFile};
+use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 pub use code::{code_terms, javascript_terms, python_terms, qweb_terms, spreadsheet_terms};
 pub use merge::{merge, Obsolete};
@@ -71,9 +72,12 @@ impl Term {
     }
 }
 
-/// Whether Odoo exports a term: it needs a letter, so `:` or `.00` are left out.
+/// Whether Odoo exports a term: it needs a letter, so `:` or `.00` are left
+/// out. Python's `isalpha()` is a letter category (`\p{L}`), not Unicode's
+/// wider Alphabetic: `Ⅳ` is no letter.
 fn exported(term: &str) -> bool {
-    term.trim().chars().any(char::is_alphabetic)
+    static LETTER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{L}").unwrap());
+    LETTER.is_match(term)
 }
 
 /// The template of `module` as Odoo's `PoFileWriter` writes it, without the
@@ -157,7 +161,9 @@ pub struct Installation<'p> {
     pub installed: &'p [PathBuf],
     /// Odoo's `--skip-auto-install` when installing the modules, as in
     /// OCA's CI: only the modules installed with a new database (`base`,
-    /// `web` and what they install automatically) come without asking.
+    /// `web` and what they install automatically) come without asking. OCA
+    /// creates that database without the option: its templates match these
+    /// automatic modules, not `base` alone.
     pub skip_auto_install: bool,
     /// Whether demo data is installed; `None` for Odoo's default: with demo
     /// data up to 18.0, without from 19.0.
@@ -223,20 +229,23 @@ impl Installation<'_> {
         };
         // Installs the automatic modules whose triggers are installed, until
         // none is left.
-        let auto_install = |found: &mut Modules| loop {
-            let ready: Vec<&AutoInstall> = auto_installs
-                .iter()
-                .filter(|a| !found.contains_key(&a.name))
-                .filter(|a| a.triggers.iter().all(|t| found.contains_key(t)))
-                .collect();
-            if ready.is_empty() {
-                break;
-            }
-            for auto in ready {
-                add(&auto.path, found);
-                // A module that cannot be read must not be retried forever.
-                if !found.contains_key(&auto.name) {
-                    return;
+        let auto_install = |found: &mut Modules| {
+            // A module that cannot be read must not be retried forever.
+            let mut unreadable: BTreeSet<&str> = BTreeSet::new();
+            loop {
+                let ready: Vec<&AutoInstall> = auto_installs
+                    .iter()
+                    .filter(|a| !found.contains_key(&a.name) && !unreadable.contains(a.name.as_str()))
+                    .filter(|a| a.triggers.iter().all(|t| found.contains_key(t)))
+                    .collect();
+                if ready.is_empty() {
+                    break;
+                }
+                for auto in ready {
+                    add(&auto.path, found);
+                    if !found.contains_key(&auto.name) {
+                        unreadable.insert(&auto.name);
+                    }
                 }
             }
         };
@@ -320,6 +329,8 @@ pub struct Template {
     /// Whether dependencies of the module were not found on the addons
     /// path, so labels they define may be missing or wrong.
     pub incomplete: bool,
+    /// Whether the module has no terms: Odoo then exports nothing.
+    pub empty: bool,
 }
 
 /// The template of the module in `dir`, installed as `installation` says.
@@ -352,6 +363,7 @@ fn generate_with(
     Some(Template {
         content: write(module, version, &terms),
         incomplete: !complete,
+        empty: terms.is_empty(),
     })
 }
 
@@ -387,7 +399,11 @@ pub fn run(
         let Some(module) = dir.file_name().and_then(|n| n.to_str()).map(str::to_string) else {
             continue;
         };
-        let Some(Template { content, incomplete }) = generate_with(&dir, default_version, installation, &auto_installs)
+        let Some(Template {
+            content,
+            incomplete,
+            empty,
+        }) = generate_with(&dir, default_version, installation, &auto_installs)
         else {
             continue;
         };
@@ -413,7 +429,10 @@ pub fn run(
             });
             Ok(())
         };
-        update(path, &content, incomplete)?;
+        // No template is created for nothing; one that exists is updated.
+        if !empty || path.exists() {
+            update(path, &content, incomplete)?;
+        }
         if let (Some(obsolete), None) = (merge_po, output_dir) {
             let Ok(template) = PoFile::parse(&content) else {
                 continue;
@@ -454,6 +473,14 @@ fn po_files(dir: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exports_terms_with_a_letter_as_python_sees_it() {
+        assert!(exported("Ok"));
+        assert!(exported("日本"));
+        assert!(!exported(" .00 "));
+        assert!(!exported("Ⅳ"));
+    }
 
     #[test]
     fn write_groups_by_msgid_and_sorts_like_odoo() {

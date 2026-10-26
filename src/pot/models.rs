@@ -302,9 +302,25 @@ impl<'c> Models<'c> {
             if parts.peek().is_none() {
                 return self.label(&current, part, depth + 1);
             }
-            current = self.fields(&current)?.get(part)?.comodel.clone()?;
+            current = self.comodel(&current, part, depth + 1)?;
         }
         None
+    }
+
+    /// The comodel of a relational field, also of one that only says
+    /// `related=...`.
+    pub(super) fn comodel(&self, model: &str, name: &str, depth: usize) -> Option<String> {
+        let fields = self.fields(model)?;
+        let field = fields.get(name)?;
+        if let Some(comodel) = &field.comodel {
+            return Some(comodel.clone());
+        }
+        let path = field.related.as_deref().filter(|_| depth <= 8)?;
+        let mut current = model.to_string();
+        for part in path.split('.') {
+            current = self.comodel(&current, part, depth + 1)?;
+        }
+        Some(current)
     }
 
     /// `models` and the models that inherit from them, directly or not
@@ -502,12 +518,15 @@ pub fn model_terms(module: &str, at_load: &Closure, installed: &Closure, version
                 || field.modules.contains(module)
                 || (extends && models.id_fields_on_base && ID_FIELDS.iter().any(|(id, _)| id == name))
                 || introduced.iter().any(|parent| parent.contains_key(name));
-            if !has_id || field.export == Some(false) {
+            if !has_id {
                 continue;
             }
             if let Some((string, help)) = values.label(model, name, 0).or_else(|| models.label(model, name, 0)) {
                 let xml_id = format!("{module}.field_{xml_model}__{name}");
-                terms.push(model_term(string, "ir.model.fields,field_description", xml_id.clone()));
+                // `export_string_translation=False` leaves out the label only.
+                if field.export != Some(false) {
+                    terms.push(model_term(string, "ir.model.fields,field_description", xml_id.clone()));
+                }
                 if let Some(help) = help.filter(|h| !h.is_empty()) {
                     terms.push(model_term(help, "ir.model.fields,help", xml_id));
                 }
