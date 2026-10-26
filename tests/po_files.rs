@@ -1,15 +1,11 @@
 //! Which `.po` files the PO rules lint: the module's, not its documentation's.
 
+mod common;
+
+use common::write;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::Path;
-
-fn write(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-}
 
 const PO: &str = "msgid \"\"\nmsgstr \"\"\n\"Content-Type: text/plain; charset=UTF-8\\n\"\n\n#: ../../guides/code_overview.rst:84\nmsgid \"Hello\"\nmsgstr \"Bonjour\"\n";
 

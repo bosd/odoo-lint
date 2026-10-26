@@ -1,6 +1,9 @@
 //! XML checks end to end: which files a module loads, version gating per
 //! module, reporting positions and fixes.
 
+mod common;
+
+use common::write;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
 use odoo_lint::linter::lint_paths;
@@ -16,20 +19,13 @@ fn settings(select: &[&str]) -> Settings {
     settings
 }
 
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
-}
-
 /// A module loading `files` (name, contents) as `data`.
 fn module(root: &Path, version: &str, files: &[(&str, &str)]) -> PathBuf {
     let data: Vec<String> = files.iter().map(|(name, _)| format!("'{name}'")).collect();
     write(
         root,
         "acme_xml/__manifest__.py",
-        &format!(
+        format!(
             "{{'name': 'XML', 'version': '{version}', 'license': 'AGPL-3', 'data': [{}]}}\n",
             data.join(", ")
         ),

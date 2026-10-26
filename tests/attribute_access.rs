@@ -1,18 +1,14 @@
 //! Go to definition and find references on attribute access
 //! (`order.partner_id`), with the model of the records the code shows.
 
+mod common;
+
+use common::write;
 use odoo_lint::definition::{definition, Definition};
 use odoo_lint::linter::modules_of;
 use odoo_lint::sources::Sources;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
-}
 
 const BASE: &str = "from odoo import fields, models
 

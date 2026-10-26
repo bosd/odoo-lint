@@ -1,5 +1,8 @@
 //! End-to-end tests of `--fix`: a module on disk, fixed in memory.
 
+mod common;
+
+use common::write;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
 use odoo_lint::odoo_version::OdooVersion;
@@ -43,13 +46,6 @@ fn settings(select: &[&str]) -> Settings {
     settings.target_version = OdooVersion::new(19, 0);
     settings.select = select.iter().map(|s| s.to_string()).collect();
     settings
-}
-
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
 }
 
 /// The new contents of `path` after fixing, or its contents if unchanged.
