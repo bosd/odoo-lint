@@ -106,7 +106,7 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
             }
         }
         for (file, fix) in &chosen {
-            for edit in &fix.edits {
+            for edit in fix.all_edits() {
                 let target = edit.path.clone().unwrap_or_else(|| file.clone());
                 edits_by_file.entry(target).or_default().push(edit);
             }

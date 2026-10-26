@@ -154,9 +154,9 @@ fn check_required_author(ctx: &ManifestContext, reporter: &mut Reporter) {
         }
         None => {
             let fix = add_default(ctx, "author").or_else(|| {
-                configured
-                    .then(|| add_value(ctx, "author", &toml::Value::String(required[0].clone())))
-                    .flatten()
+                // `authors = []` configures no author to add.
+                let first = required.first().filter(|_| configured)?;
+                add_value(ctx, "author", &toml::Value::String(first.clone()))
             });
             (ctx.manifest.dict().start(), fix)
         }
@@ -200,6 +200,13 @@ mod tests {
             v[0].message,
             "One of the following authors must be present in manifest: 'Odoo Community Association (OCA)'"
         );
+    }
+
+    #[test]
+    fn an_empty_author_list_does_not_panic() {
+        let s = settings("[rules.manifest-required-author]\nauthors = []\n");
+        let found = run_manifest_rule(&MANIFEST_REQUIRED_AUTHOR, "{'name': 'x'}\n", "sale_x", &s);
+        assert!(found.iter().all(|v| v.fix.is_none()));
     }
 
     #[test]
