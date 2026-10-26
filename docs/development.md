@@ -24,7 +24,7 @@ odl check ─> settings ─> linter ─> rules ─> fixer ─> output
   library (`src/lib.rs`).
 - `src/config.rs` reads `odoo-lint.toml` or `[tool.odoo-lint]`;
   `src/settings.rs` adds the command line options and decides which rules
-  run (`select`, `ignore`, `OPT_IN`).
+  run (`select`, `ignore`; `OPT_IN` is in `src/rules/mod.rs`).
 - `src/linter.rs` collects the files (`.py`, `.xml`, `.js`, `.po`, `.pot`),
   finds the module of each one, parses it and runs the enabled rules, in
   parallel (rayon). Suppression comments are applied here
@@ -83,8 +83,9 @@ Rules live in `src/rules/`, grouped by what they check:
 
 2. Register it in `ALL` in `src/rules/mod.rs`. `ALL` is sorted by code; a
    test fails otherwise. If `ALL` should not select it, add its code to
-   `OPT_IN` in `src/settings.rs` and to the table in
-   [Configuration](configuration.md#opt-in-rules).
+   `OPT_IN` in `src/rules/mod.rs` and to the table in
+   [Configuration](configuration.md#opt-in-rules); a test checks the two
+   agree. A check across modules goes in `ACROSS_MODULES` next to it.
 3. Options go in `RulesConfig` in `src/config.rs` (and in
    `NO_RULES_CONFIG` next to it), under the rule's name, with
    pylint-odoo's option names and defaults for ported rules.

@@ -146,18 +146,10 @@ impl Default for Settings {
     }
 }
 
-/// Rules `ALL` leaves out: policies many projects do not share, style that
-/// OCA's CI does not enforce, and MOD009, which W8113 covers; enabled by
-/// selecting them by code, name or code prefix.
-pub const OPT_IN: &[&str] = &[
-    "MOD008", "MOD009", "MOD011", "MOD013", "ODOO012", "PO007", "U1923", "U2035", "XML002", "XML003", "XML009",
-    "XML024", "XML103",
-];
-
 /// Whether a `select` entry matches `rule`: `ALL` (without the opt-in
 /// rules), an exact code or name, or a code prefix such as `C81` or `ODOO`.
 pub fn selector_matches(selector: &str, rule: &Rule) -> bool {
-    (selector.eq_ignore_ascii_case("all") && !OPT_IN.contains(&rule.code)) || names(selector, rule)
+    (selector.eq_ignore_ascii_case("all") && !rule.is_opt_in()) || names(selector, rule)
 }
 
 /// Whether an `ignore` or `per-file-ignores` entry matches `rule`: as
