@@ -261,3 +261,32 @@ fn env_translation_drops_the_unused_import() {
         );
     }
 }
+
+#[test]
+fn xml_eval_fix_replaces_a_start_tag_over_several_lines_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "acme_fix/__manifest__.py",
+        "{'name': 'Fix', 'license': 'AGPL-3', 'version': '18.0.1.0.0', 'data': ['views/v.xml']}\n",
+    );
+    write(dir.path(), "acme_fix/__init__.py", "");
+    let view = write(
+        dir.path(),
+        "acme_fix/views/v.xml",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<odoo>\n    <record id=\"r\" model=\"res.partner\">\n        <field\n            name=\"active\">True</field>\n    </record>\n</odoo>\n",
+    );
+
+    let result = fix_paths(&[dir.path().to_path_buf()], &settings(&["XML023"]), FixMode::Safe);
+    for (path, _, new) in &result.changed {
+        fs::write(path, new).unwrap();
+    }
+
+    assert!(
+        fs::read_to_string(&view)
+            .unwrap()
+            .contains("        <field\n            name=\"active\" eval=\"True\" />\n"),
+        "{}",
+        fs::read_to_string(&view).unwrap()
+    );
+}
