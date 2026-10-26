@@ -58,6 +58,14 @@ fn odoo(root: &Path) -> PathBuf {
         "'data': ['security/groups.xml']",
         "from odoo import fields, models\n\n\nclass Picking(models.Model):\n    _name = 'stock.picking'\n    name = fields.Char()\n",
     );
+    // `_name` with the same `_inherit` extends the model: not a source of it.
+    module(
+        &core,
+        "stock_extra",
+        &["stock"],
+        "",
+        "from odoo import models\n\n\nclass Picking(models.Model):\n    _name = 'stock.picking'\n    _inherit = ['stock.picking', 'mail.thread']\n",
+    );
     // Loaded with `base`, whether a module depends on it or not.
     module(&core, "web", &["base"], "'data': ['views/layout.xml']", "");
     write(

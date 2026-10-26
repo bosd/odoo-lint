@@ -1,6 +1,8 @@
 //! Inline suppression comments, compatible with Ruff and pylint:
 //!
-//! - `# noqa` / `# noqa: C8101, print-used` suppress on that line;
+//! - `# noqa` / `# noqa: C8101, print-used` suppress on that line; after a
+//!   string over several lines, from the line the string starts on, as in
+//!   Ruff;
 //! - `# pylint: disable=...` after code suppresses on that line;
 //! - `# pylint: disable=...` on its own line suppresses until the end of the
 //!   enclosing block (until the end of the file at column 0);
@@ -32,6 +34,38 @@ impl Suppressions {
     pub fn from_tokens(source: &str, tokens: &Tokens, line_index: &LineIndex) -> Self {
         let lines: Vec<&str> = source.lines().collect();
         let mut suppressions = Self::default();
+        let line_of = |offset| line_index.line_index(offset).get();
+        // The first line of each string that ends on a later line, by that
+        // last line.
+        let mut string_starts: Vec<(usize, usize)> = Vec::new();
+        let mut f_string_start = None;
+        let mut depth = 0usize;
+        for token in tokens.iter() {
+            let range = match token.kind() {
+                TokenKind::String => Some((token.start(), token.end())),
+                TokenKind::FStringStart | TokenKind::TStringStart => {
+                    if depth == 0 {
+                        f_string_start = Some(token.start());
+                    }
+                    depth += 1;
+                    None
+                }
+                TokenKind::FStringEnd | TokenKind::TStringEnd => {
+                    depth = depth.saturating_sub(1);
+                    match (depth, f_string_start) {
+                        (0, Some(start)) => Some((start, token.end())),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some((start, end)) = range {
+                let (first, last) = (line_of(start), line_of(end));
+                if first < last {
+                    string_starts.push((last, first));
+                }
+            }
+        }
         for token in tokens.iter().filter(|t| t.kind() == TokenKind::Comment) {
             let comment = &source[token.range()];
             let line = line_index.line_index(token.start()).get();
@@ -39,6 +73,11 @@ impl Suppressions {
             let indent = indentation(line_text);
             let standalone = line_text.trim_start().starts_with('#');
             for directive in parse_comment(comment) {
+                if let Directive::Noqa(rules) = &directive {
+                    for (_, first) in string_starts.iter().filter(|(last, _)| *last == line) {
+                        suppressions.ranges.push((*first, line, rules.clone()));
+                    }
+                }
                 suppressions.apply(directive, line, standalone, indent, &lines);
             }
         }
@@ -174,6 +213,14 @@ mod tests {
         assert!(s.is_suppressed(2, "W8116", "print-used"));
         assert!(!s.is_suppressed(3, "W8116", "print-used"));
         assert!(!s.is_suppressed(1, "W8138", "except-pass"));
+    }
+
+    #[test]
+    fn noqa_after_a_string_over_lines() {
+        let s = suppressions("x = _(\"\"\"Long\ntext\"\"\")  # noqa: W8161\ny = f'''{a}\nb'''  # noqa\n");
+        assert!(s.is_suppressed(1, "W8161", "prefer-env-translation"));
+        assert!(s.is_suppressed(3, "W8116", "print-used"));
+        assert!(!s.is_suppressed(1, "W8116", "print-used"));
     }
 
     #[test]

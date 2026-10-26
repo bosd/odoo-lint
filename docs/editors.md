@@ -6,37 +6,8 @@ and a _Fix all_ source action (`source.fixAll.odoo-lint`) for the safe
 ones. Unsaved changes are linted as they are; files outside an Odoo addon
 are left alone, so the server can run for every Python project.
 
-It lints Python (`.py`), XML (`.xml`) and translation (`.po`, `.pot`)
-files. JavaScript is linted by `odl check` only, not by the server.
-
 It needs `odl` on PATH, or in the project's virtual environment:
-`uv tool install odoo-linter`. The VS Code and Zed extensions can download
-it themselves.
-
-## VS Code
-
-Install _odoo-lint_ (`bosd.odoo-lint`) from the
-[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bosd.odoo-lint)
-or [Open VSX](https://open-vsx.org/extension/bosd/odoo-lint), for VS Code
-and the editors based on it. It starts in workspaces with a
-`__manifest__.py` and runs, in this order:
-
-1. `odoo-lint.path` from the settings;
-2. `odl` in the workspace's `.venv`, then on `PATH`;
-3. the latest release from PyPI, downloaded once and checked against PyPI's
-   SHA-256. Set `odoo-lint.download` to `false` to turn this off.
-
-To apply the safe fixes on save, in `settings.json`:
-
-```json
-"editor.codeActionsOnSave": {
-  "source.fixAll.odoo-lint": "explicit"
-}
-```
-
-_odoo-lint: Restart Server_ and _odoo-lint: Show Logs_ are in the command
-palette. The extension's source is in
-[`integrations/vscode`](https://github.com/bosd/odoo-lint/tree/main/integrations/vscode).
+`uv tool install odoo-linter`.
 
 ## Go to definition
 
@@ -135,7 +106,7 @@ Neovim 0.11 and later:
 ```lua
 vim.lsp.config("odoo_lint", {
   cmd = { "odl", "server" },
-  filetypes = { "python", "xml", "po" },
+  filetypes = { "python", "po", "xml", "javascript" },
   root_markers = { "pyproject.toml", "odoo-lint.toml", ".git" },
 })
 vim.lsp.enable("odoo_lint")
@@ -159,7 +130,7 @@ name = "xml"
 language-servers = ["odoo-lint"]
 ```
 
-Keep the servers you already use in the lists.
+Keep the servers you already use in the list.
 
 ## OpenCode
 
@@ -171,7 +142,7 @@ OpenCode feeds diagnostics back to the model. In `opencode.json`:
   "lsp": {
     "odoo-lint": {
       "command": ["odl", "server"],
-      "extensions": [".py", ".po", ".pot", ".xml"]
+      "extensions": [".py", ".po", ".pot", ".xml", ".js"]
     }
   }
 }
@@ -180,6 +151,8 @@ OpenCode feeds diagnostics back to the model. In `opencode.json`:
 ## Other editors
 
 Any editor with a generic LSP client can run `odl server` over stdin and
-stdout. It supports full document sync, `textDocument/publishDiagnostics`
-and `textDocument/codeAction`, and the UTF-8, UTF-16 and UTF-32 position
-encodings.
+stdout. It supports full document sync, `textDocument/publishDiagnostics`,
+`textDocument/codeAction`, `textDocument/definition`,
+`textDocument/completion` and `textDocument/references`, and the UTF-8,
+UTF-16 and UTF-32 position encodings. It lints Python, XML, JavaScript and
+`.po`/`.pot` files of addons.

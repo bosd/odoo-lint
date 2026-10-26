@@ -226,15 +226,39 @@ fn read(module: &Path) -> Assets {
     assets
 }
 
-/// The assets of the module at `path`, read once per run.
+/// The number of a module's asset files and their newest change.
+type Print = (usize, Option<std::time::SystemTime>);
+
+fn print(module: &Path) -> Print {
+    let mut found: Print = (0, None);
+    for file in files(&module.join("static"), "js")
+        .into_iter()
+        .chain(files(&module.join("static"), "xml"))
+    {
+        found.0 += 1;
+        let modified = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+        found.1 = found.1.max(modified);
+    }
+    found
+}
+
+/// The assets of the module at `path`, read once per run; in a long-running
+/// process (the language server) again when its asset files change.
 pub fn module_assets(path: &Path) -> Arc<Assets> {
-    static CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<Assets>>>> = LazyLock::new(Default::default);
+    type Cached = (Arc<Assets>, Option<Print>);
+    static CACHE: LazyLock<Mutex<HashMap<PathBuf, Cached>>> = LazyLock::new(Default::default);
     let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if let Some(found) = CACHE.lock().expect("assets cache").get(&key) {
-        return found.clone();
+    let current = crate::index::revalidating().then(|| print(&key));
+    if let Some((found, seen)) = CACHE.lock().expect("assets cache").get(&key) {
+        if current.is_none() || current == *seen {
+            return found.clone();
+        }
     }
     let assets = Arc::new(read(&key));
-    CACHE.lock().expect("assets cache").insert(key, assets.clone());
+    CACHE
+        .lock()
+        .expect("assets cache")
+        .insert(key, (assets.clone(), current));
     assets
 }
 
@@ -245,4 +269,39 @@ pub fn has_field_widget<'a>(assets: impl IntoIterator<Item = &'a Assets>, name: 
     assets
         .into_iter()
         .any(|a| a.field_widgets.contains(name) || a.field_widgets.iter().any(|k| k.ends_with(&suffix)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn widget_file(module: &Path, name: &str, modified: SystemTime) {
+        let file = module.join("static/src/widget.js");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &file,
+            format!("registry.category(\"fields\").add(\"{name}\", Widget);\n"),
+        )
+        .unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+    }
+
+    #[test]
+    fn assets_are_read_again_when_they_change_in_a_long_running_process() {
+        crate::index::revalidate_cache();
+        let dir = tempfile::tempdir().unwrap();
+        let module = dir.path().join("acme_widgets");
+        let then = SystemTime::now() - Duration::from_secs(60);
+        widget_file(&module, "old_widget", then);
+        assert!(module_assets(&module).field_widgets.contains("old_widget"));
+
+        widget_file(&module, "new_widget", then + Duration::from_secs(30));
+        assert!(module_assets(&module).field_widgets.contains("new_widget"));
+    }
 }

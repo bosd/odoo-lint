@@ -35,6 +35,8 @@ lax-css indents rules and puts each declaration on a line of its own. odl
 checks that only whitespace moved where it does not matter: between tokens,
 around `{`, `}`, `;` and `,`, after `:` and inside parentheses. A space
 before `:` or `(` (`a :hover`, `url (x)`) or between two selectors stays.
+The one other change is the `;` it adds after a block's last declaration,
+as prettier does.
 Unlike prettier it does not break long selectors over lines, and it joins
 those prettier broke inside `:not(...)`. On OCA/web 18.0 that changed 7 of
 54 stylesheets, by 51 lines.

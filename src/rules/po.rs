@@ -67,8 +67,9 @@ when it exports translations.
 
 ## Why is this bad?
 
-Odoo uses the comment to know which module a translation belongs to; entries
-without it are not imported.
+Odoo uses the comment to know which module a translation belongs to. Odoo 18
+and 19 fail on an entry without it, so the whole file is not loaded (with
+the module's `.pot`, which Odoo merges in first).
 
 ## Fix safety
 
