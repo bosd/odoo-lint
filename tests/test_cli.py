@@ -25,12 +25,12 @@ authors = "Odoo Community Association (OCA)"
 """
 
 
-def run_odl(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run `odl` and capture its output."""
+def run_odl(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """Run `odl` (in `cwd`) and capture its output."""
     assert ODL is not None
     # odl writes UTF-8; Windows would otherwise decode with the ANSI code page.
     return subprocess.run(
-        [ODL, *args], capture_output=True, encoding="utf-8", check=False
+        [ODL, *args], capture_output=True, encoding="utf-8", check=False, cwd=cwd
     )
 
 
@@ -246,6 +246,76 @@ def test_force_exclude(project: Path) -> None:
 
     skipped = run_odl("check", manifest, "--select", "C8101", "--force-exclude")
     assert skipped.returncode == 0, skipped.stdout
+
+    # A folder given on the command line too, by a pattern for the folder only.
+    (project / "pyproject.toml").write_text(config.replace("legacy_*", "legacy_sale"))
+    folder = run_odl("check", str(module), "--select", "C8101", "--force-exclude")
+    assert folder.returncode == 0, folder.stdout
+
+
+def excluded_legacy_module(project: Path) -> Path:
+    """A module `exclude` names, with a C8101 violation."""
+    module = make_module(project, "legacy_sale", "Someone Else")
+    config = CONFIG.replace(
+        'target-version = "16.0"\n',
+        'target-version = "16.0"\nexclude = ["addons/legacy_*"]\n',
+    )
+    (project / "pyproject.toml").write_text(config)
+    return module
+
+
+def test_exclude_applies_from_a_subdirectory(project: Path) -> None:
+    """`exclude` patterns are relative to the config, not to the cwd."""
+    excluded_legacy_module(project)
+
+    result = run_odl("check", ".", "--select", "C8101", cwd=project / "addons")
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_exclude_applies_with_a_relative_config(project: Path) -> None:
+    """A relative `--config` is resolved like a discovered one."""
+    excluded_legacy_module(project)
+
+    result = run_odl(
+        "check", ".", "--select", "C8101", "--config", "pyproject.toml", cwd=project
+    )
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_missing_path_is_an_error(project: Path) -> None:
+    """A path that does not exist exits with 2 instead of passing as clean."""
+    result = run_odl("check", str(project / "nope.py"))
+
+    assert result.returncode == 2
+    assert "no such file or directory" in result.stderr
+
+
+def test_explicit_file_of_another_kind_is_skipped(project: Path) -> None:
+    """Hooks may pass every changed file; only addon files are linted."""
+    (project / "README.md").write_text("# Notes\n\nsome text\n")
+
+    result = run_odl("check", str(project / "README.md"))
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_ignore_all_turns_off_opt_in_rules(project: Path) -> None:
+    """`ALL` in `ignore` also covers the rules `ALL` in `select` leaves out."""
+    module = make_module(project, "sale_extra", OCA)
+    manifest = module / "__manifest__.py"
+    manifest.write_text(
+        manifest.read_text().replace("}", "    'data': ['views.xml'],\n}")
+    )
+    (module / "views.xml").write_text("<odoo/>\n")
+    target = str(module / "views.xml")
+
+    reported = run_odl("check", target, "--select", "XML002")
+    ignored = run_odl("check", target, "--select", "XML002", "--ignore", "ALL")
+
+    assert reported.returncode == 1, reported.stdout
+    assert ignored.returncode == 0, ignored.stdout
 
 
 def test_upgrade_check(project: Path) -> None:

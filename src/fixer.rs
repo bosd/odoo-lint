@@ -106,12 +106,13 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
             }
         }
         for (file, fix) in &chosen {
-            for edit in &fix.edits {
+            for edit in fix.all_edits() {
                 let target = edit.path.clone().unwrap_or_else(|| file.clone());
                 edits_by_file.entry(target).or_default().push(edit);
             }
         }
         let mut changed_units = HashSet::new();
+        let mut changed_paths: HashSet<PathBuf> = HashSet::new();
         for (path, edits) in edits_by_file {
             let Some(text) = current_text(sources, &path) else {
                 continue;
@@ -123,10 +124,21 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
                     originals.insert(path.clone(), before);
                 }
                 changed_units.insert(units.get(&path).cloned().unwrap_or_else(|| path.clone()));
+                changed_paths.insert(path.clone());
                 sources.set(path, new_text);
             }
         }
-        fixed += chosen.len();
+        // A fix whose edits changed nothing (already applied) is not counted.
+        fixed += chosen
+            .iter()
+            .filter(|(file, fix)| {
+                fix.copy.is_some()
+                    || fix
+                        .edits
+                        .iter()
+                        .any(|e| changed_paths.contains(e.path.as_ref().unwrap_or(file)))
+            })
+            .count();
         if changed_units.is_empty() {
             break;
         }
@@ -137,14 +149,23 @@ pub fn fix_paths_with(paths: &[PathBuf], settings: &Settings, mode: FixMode, sou
             .cloned()
             .collect();
         let relinted: HashSet<String> = relint.iter().map(|f| f.to_string_lossy().into_owned()).collect();
-        violations.retain(|v| !relinted.contains(&v.file_path));
+        // Module rules report on files that are not linted themselves (a
+        // manifest, a README): drop everything of a changed unit.
+        violations.retain(|v| {
+            !relinted.contains(&v.file_path) && !changed_units.iter().any(|u| Path::new(&v.file_path).starts_with(u))
+        });
         violations.extend(lint_files_with(&relint, settings, sources));
         violations.sort();
+        violations.dedup();
     }
     let mut changed: Vec<(PathBuf, String, String)> = originals
         .into_iter()
         .filter_map(|(path, old)| {
-            let new = sources.read_to_string(&path).ok()?;
+            let mut new = sources.read_to_string(&path).ok()?;
+            // PO files are fixed with universal newlines: keep a CRLF file CRLF.
+            if is_po(&path) && old.contains("\r\n") && !new.contains("\r\n") {
+                new = new.replace('\n', "\r\n");
+            }
             (new != old).then_some((path, old, new))
         })
         .collect();

@@ -767,7 +767,7 @@ fn fix_http_routing(
             ok = false;
             return;
         }
-        let env = if self_is_a_record(ctx, scopes) || self_has_env(ctx, scopes) {
+        let env = if self_is_a_record(ctx, scopes, name.start()) || self_has_env(ctx, scopes) {
             "self.env"
         } else if request_imported {
             "request.env"

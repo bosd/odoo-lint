@@ -136,10 +136,13 @@ pub fn collect_files_matching(
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
+        // Patterns usually name folders: check the path's folders too.
+        if settings.force_exclude && root.ancestors().any(|p| settings.is_excluded(p)) {
+            continue;
+        }
         if root.is_file() {
-            // Patterns usually name folders: check the file's folders too.
-            let excluded = settings.force_exclude && root.ancestors().any(|p| settings.is_excluded(p));
-            if !excluded {
+            // Hooks may pass every changed file: only lint what odoo-lint reads.
+            if root.extension().is_some_and(matches) {
                 files.push(root.clone());
             }
             continue;
@@ -163,9 +166,21 @@ pub fn collect_files_matching(
                 .map(|e| e.into_path()),
         );
     }
+    // `a.py` and `./a.py` are the same file.
+    for file in &mut files {
+        *file = file
+            .components()
+            .filter(|c| *c != std::path::Component::CurDir)
+            .collect();
+    }
     files.sort();
     files.dedup();
     files
+}
+
+/// The paths of `paths` that do not exist: a typo must not pass as clean.
+pub fn missing_paths(paths: &[PathBuf]) -> Vec<&PathBuf> {
+    paths.iter().filter(|p| !p.exists()).collect()
 }
 
 fn is_linted_extension(extension: &std::ffi::OsStr) -> bool {

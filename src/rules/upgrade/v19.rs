@@ -126,7 +126,8 @@ _code_uniq = models.Constraint("unique(code)", "The code must be unique.")
 
 Safe, as Odoo's script `18.1-00-sql-constraint` does it, when the list holds
 only `(name, definition, message)` tuples with a literal name and the file
-uses `models.`. Otherwise there is no fix.
+uses `models.`. Otherwise there is no fix, also for a name that starts with
+`_`: its attribute would start with `__`, which Python renames in a class.
 "#,
     check: Check::Python(check_sql_constraints),
     min_odoo: ODOO_19,
@@ -134,7 +135,8 @@ uses `models.`. Otherwise there is no fix.
 };
 
 fn check_sql_constraints(ctx: &PythonContext, reporter: &mut Reporter) {
-    let identifier = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").expect("valid");
+    // `_x` would become `__x`, which Python renames in a class body.
+    let identifier = Regex::new(r"^[A-Za-z][A-Za-z0-9_]*$").expect("valid");
     for class in classes(ctx.parsed.suite()) {
         for stmt in &class.body {
             let Stmt::Assign(assign) = stmt else { continue };
@@ -1183,7 +1185,8 @@ pub const XML_SEARCH_GROUP: Rule = Rule {
 ## What it does
 
 Reports `expand` and `string` on `<group>` in search views, such as
-`<group expand="0" string="Group By">`.
+`<group expand="0" string="Group By">`. In a view that extends a search view,
+a `<group>` with filters, or inside a `<filter position="...">`, is one.
 
 ## Why is this bad?
 
@@ -1202,7 +1205,11 @@ Safe: the attributes are removed.
 fn check_search_group(ctx: &XmlContext, reporter: &mut XmlReporter) {
     for file in ctx.files {
         for node in arch_elements(file) {
-            if !is(node, "group") || !node.ancestors().any(|a| is(a, "search")) {
+            // An inherited search view need not have `<search>`: its groups
+            // hold filters, or go next to one.
+            let in_search = node.ancestors().any(|a| is(a, "search") || is(a, "filter"))
+                || node.descendants().any(|d| is(d, "filter"));
+            if !is(node, "group") || !in_search {
                 continue;
             }
             let mut edits = Vec::new();
@@ -1402,5 +1409,19 @@ fn check_manifest_old_data_keys(ctx: &ManifestContext, reporter: &mut Reporter) 
                 format!("`{key}` is ignored since Odoo 19.0; move its files to `{target}`"),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::checker::run_python_rule;
+
+    #[test]
+    fn a_constraint_name_with_an_underscore_gets_no_fix() {
+        let source = "from odoo import models\n\n\nclass A(models.Model):\n    _name = 'a'\n    _sql_constraints = [('_code_uniq', 'unique(code)', 'Unique.')]\n";
+        let found = run_python_rule(&SQL_CONSTRAINTS, source);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].fix.is_none());
     }
 }

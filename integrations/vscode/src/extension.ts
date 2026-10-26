@@ -30,6 +30,7 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
     documentSelector: [
       { scheme: "file", language: "python" },
       { scheme: "file", language: "xml" },
+      { scheme: "file", language: "javascript" },
       { scheme: "file", pattern: "**/*.{po,pot}" },
     ],
     outputChannel: log,

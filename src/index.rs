@@ -17,7 +17,7 @@ use ruff_python_parser::parse_module;
 use ruff_text_size::Ranged;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
@@ -52,6 +52,33 @@ pub struct FieldLabel {
     /// `selection_add`: each value, with its label when it has one.
     pub selection_add: Vec<(String, Option<String>)>,
     pub export_string_translation: Option<bool>,
+    /// `translate`: `None` when the definition does not set it.
+    pub translate: Option<Translate>,
+    /// `sanitize` of an HTML field: `None` when the definition does not set it.
+    pub sanitize: Option<Sanitize>,
+}
+
+/// The `sanitize` of an HTML field, as far as it decides how its values are
+/// translated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sanitize {
+    Yes,
+    No,
+    /// `sanitize='email_outgoing'`: sanitized, yet translated as a whole.
+    EmailOutgoing,
+}
+
+/// How a field's values are translated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Translate {
+    /// Not translated (`translate=False`).
+    No,
+    /// The whole value is one term (`translate=True`).
+    Whole,
+    /// The terms of an XML value (`xml_translate`, views).
+    Xml,
+    /// The terms of an HTML value (`html_translate`).
+    Html,
 }
 
 /// The `selection` of a field definition.
@@ -175,8 +202,9 @@ const MAGIC_FIELDS: &[&str] = &[
     "__last_update",
 ];
 
-/// A module's index and the fingerprint of the files it was built from.
-type Cached = (Option<Arc<ModuleIndex>>, Fingerprint);
+/// A module's index, the fingerprint of the files it was built from, and
+/// the generation (see [`revalidate_cache`]) it was last checked in.
+type Cached = (Option<Arc<ModuleIndex>>, Fingerprint, u64);
 
 static CACHE: LazyLock<Mutex<HashMap<PathBuf, Cached>>> = LazyLock::new(Default::default);
 
@@ -184,10 +212,21 @@ static CACHE: LazyLock<Mutex<HashMap<PathBuf, Cached>>> = LazyLock::new(Default:
 /// process (the language server) files change between runs.
 static REVALIDATE: AtomicBool = AtomicBool::new(false);
 
+/// Bumped by [`revalidate_cache`]: a module checked in the current
+/// generation is not checked again.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
 /// Re-read a module whenever its Python files or manifest change, instead of
-/// once per process.
+/// once per process. Files may have changed since the last call: each module
+/// is checked again once, the next time it is used.
 pub fn revalidate_cache() {
     REVALIDATE.store(true, Ordering::Relaxed);
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Whether caches must check their files for changes (see [`revalidate_cache`]).
+pub(crate) fn revalidating() -> bool {
+    REVALIDATE.load(Ordering::Relaxed)
 }
 
 /// The number of indexed files of a module and their newest change.
@@ -320,6 +359,34 @@ fn field_label(kind: &str, call: &ruff_python_ast::ExprCall, eval: &Eval) -> Fie
             .and_then(Literal::into_pairs)
             .unwrap_or_default(),
         export_string_translation: keyword("export_string_translation").and_then(|l| l.as_bool()),
+        translate: call
+            .arguments
+            .keywords
+            .iter()
+            .find(|k| k.arg.as_ref().is_some_and(|a| a.as_str() == "translate"))
+            .and_then(|k| translate_mode(&k.value)),
+        sanitize: keyword("sanitize").and_then(|value| match value {
+            Literal::Bool(true) => Some(Sanitize::Yes),
+            Literal::Bool(false) => Some(Sanitize::No),
+            Literal::Str(mode) if mode == "email_outgoing" => Some(Sanitize::EmailOutgoing),
+            Literal::Str(_) => Some(Sanitize::Yes),
+            _ => None,
+        }),
+    }
+}
+
+/// The translation mode a `translate=` value names.
+fn translate_mode(expr: &Expr) -> Option<Translate> {
+    let name = match expr {
+        Expr::BooleanLiteral(b) => return Some(if b.value { Translate::Whole } else { Translate::No }),
+        Expr::Name(name) => name.id.as_str(),
+        Expr::Attribute(attribute) => attribute.attr.as_str(),
+        _ => return None,
+    };
+    match name {
+        "xml_translate" => Some(Translate::Xml),
+        "html_translate" => Some(Translate::Html),
+        _ => None,
     }
 }
 
@@ -811,6 +878,13 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
 pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
     let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let revalidate = REVALIDATE.load(Ordering::Relaxed);
+    let generation = GENERATION.load(Ordering::Relaxed);
+    // A closure is built many times per lint run: walk the files once.
+    if let Some((found, _, checked)) = CACHE.lock().expect("index cache").get(&key) {
+        if !revalidate || *checked == generation {
+            return found.clone();
+        }
+    }
     // The manifest counts too: `depends` live there.
     let current = revalidate.then(|| {
         let mut print = fingerprint(&key);
@@ -820,8 +894,9 @@ pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
         print.newest = print.newest.max(modified);
         print
     });
-    if let Some((found, print)) = CACHE.lock().expect("index cache").get(&key) {
+    if let Some((found, print, checked)) = CACHE.lock().expect("index cache").get_mut(&key) {
         if current.is_none_or(|current| current == *print) {
+            *checked = generation;
             return found.clone();
         }
     }
@@ -829,7 +904,7 @@ pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
     CACHE
         .lock()
         .expect("index cache")
-        .insert(key, (parsed.clone(), current.unwrap_or_default()));
+        .insert(key, (parsed.clone(), current.unwrap_or_default(), generation));
     parsed
 }
 
@@ -1426,6 +1501,8 @@ pub struct DataFile {
     pub path: PathBuf,
     /// Its place in Odoo's load order, from 1.
     pub rank: usize,
+    /// Whether it is demo data (`demo`, `demo_xml`).
+    pub demo: bool,
 }
 
 /// Manifest keys of data files, in the order Odoo loads them: data, then demo.
@@ -1443,7 +1520,11 @@ fn data_files(path: &Path, manifest: &Manifest) -> Vec<DataFile> {
                 continue;
             }
             let rank = files.len() + 1;
-            files.push(DataFile { path: file, rank });
+            files.push(DataFile {
+                path: file,
+                rank,
+                demo: key.starts_with("demo"),
+            });
         }
     }
     files
@@ -1547,6 +1628,7 @@ fn xml_ids(
         .map(|e| DataFile {
             path: e.path().to_path_buf(),
             rank: 0,
+            demo: false,
         })
         .collect::<Vec<_>>();
     for file in files.iter().chain(others.iter()) {
@@ -1709,6 +1791,8 @@ pub struct View {
     pub line: usize,
     /// Full XML id of the view it inherits from.
     pub inherit_id: Option<String>,
+    /// The `model` field of a record view; `None` for a template.
+    pub model: Option<String>,
     /// A primary view starts a new arch; an extension changes its parent's.
     pub primary: bool,
     pub priority: i64,
@@ -1755,7 +1839,8 @@ fn views(module: &str, files: &[DataFile]) -> Vec<View> {
             };
             if node.has_tag_name("template") {
                 let inherit_id = node.attribute("inherit_id").map(|i| qualify(module, i));
-                let primary = inherit_id.is_none() || node.attribute("primary").is_some_and(truthy);
+                // `_tag_template` takes exactly `primary="True"`.
+                let primary = inherit_id.is_none() || node.attribute("primary") == Some("True");
                 // Odoo's `_tag_template`: `<t t-name>` for a primary view,
                 // `<data>` with the specs for an extension.
                 let (inner_start, inner_end) = inner_range(&text, node);
@@ -1777,6 +1862,7 @@ fn views(module: &str, files: &[DataFile]) -> Vec<View> {
                     position,
                     line: line_of(node.range().start),
                     inherit_id,
+                    model: None,
                     primary,
                     priority: node
                         .attribute("priority")
@@ -1822,6 +1908,7 @@ fn views(module: &str, files: &[DataFile]) -> Vec<View> {
                 position,
                 line: line_of(node.range().start),
                 inherit_id,
+                model: value("model").filter(|m| !m.is_empty()),
                 primary,
                 priority: value("priority").and_then(|p| p.parse().ok()).unwrap_or(16),
                 active: value("active").is_none_or(|a| truthy(&a)),
@@ -1873,6 +1960,8 @@ mod tests {
         };
         assert_eq!(fields(&module_index(&module).unwrap()), vec!["a"]);
         std::fs::write(module.join("b.py"), format!("{model}\n    b = fields.Char()\n")).unwrap();
+        // Checked once per generation: the server starts one per message.
+        revalidate_cache();
         let mut found = fields(&module_index(&module).unwrap());
         found.sort();
         assert_eq!(found, vec!["a", "b"]);

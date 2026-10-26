@@ -42,4 +42,7 @@ models = ["ir.config_parameter"]
 ## Limits
 
 A many2one is not reported: Odoo reads its `display_name` as superuser.
+Extensions of the Users and Groups forms (`base.view_users_form`,
+`base.view_groups_form`) are not checked: only the Settings menus open
+them.
 A field with `groups` counts as restricted, whichever groups they are.

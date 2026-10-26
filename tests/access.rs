@@ -15,7 +15,16 @@ fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
 }
 
 const BASE_MANIFEST: &str =
-    "{'name': 'base', 'depends': [], 'data': ['security/groups.xml', 'security/ir.model.access.csv']}\n";
+    "{'name': 'base', 'depends': [], 'data': ['security/groups.xml', 'security/ir.model.access.csv', 'views/users.xml']}\n";
+
+/// The Users form, which only the Settings menus open.
+const BASE_VIEWS: &str = r#"<odoo>
+    <record id="view_users_form" model="ir.ui.view">
+        <field name="model">acme.product</field>
+        <field name="arch" type="xml"><form><sheet/></form></field>
+    </record>
+</odoo>
+"#;
 
 const BASE_MODELS: &str = r#"from odoo import fields, models
 
@@ -110,6 +119,13 @@ const VIEWS: &str = r#"<odoo>
             <form><field name="field_ids"/></form>
         </field>
     </record>
+    <record id="users_form" model="ir.ui.view">
+        <field name="model">acme.product</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <sheet position="inside"><field name="field_ids"/></sheet>
+        </field>
+    </record>
 </odoo>
 "#;
 
@@ -120,6 +136,7 @@ fn setup(dir: &Path) -> (PathBuf, PathBuf) {
     write(&core, "base/models.py", BASE_MODELS);
     write(&core, "base/security/groups.xml", GROUPS);
     write(&core, "base/security/ir.model.access.csv", BASE_ACCESS);
+    write(&core, "base/views/users.xml", BASE_VIEWS);
     let addons = dir.join("addons");
     write(
         &addons,

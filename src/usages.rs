@@ -7,6 +7,7 @@ use crate::checker::ModuleInfo;
 use crate::definition::{python_target_in, resolve, xml_target_in, Definition, Target};
 use crate::index::{closure, closure_at, Closure};
 use crate::manifest::MANIFEST_FILE_NAMES;
+use crate::sources::Sources;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -94,6 +95,28 @@ pub fn references(
     offset: usize,
     include_declaration: bool,
 ) -> Vec<Usage> {
+    references_with(
+        module,
+        addons_path,
+        file,
+        text,
+        offset,
+        include_declaration,
+        &Sources::default(),
+    )
+}
+
+/// [`references`], reading the other files from `sources`: the editor's
+/// unsaved text, so the offsets match what it shows.
+pub fn references_with(
+    module: &ModuleInfo,
+    addons_path: &[PathBuf],
+    file: &Path,
+    text: &str,
+    offset: usize,
+    include_declaration: bool,
+    sources: &Sources,
+) -> Vec<Usage> {
     let mut dirs: Vec<PathBuf> = module.path.parent().map(PathBuf::from).into_iter().collect();
     dirs.extend(addons_path.iter().cloned());
     let target = match file.extension().and_then(|e| e.to_str()) {
@@ -126,7 +149,7 @@ pub fn references(
             let content = if path.canonicalize().ok().as_ref() == Some(&open_file) {
                 text.to_string()
             } else {
-                match std::fs::read_to_string(&path) {
+                match sources.read_to_string(&path) {
                     Ok(content) => content,
                     Err(_) => continue,
                 }
