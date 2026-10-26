@@ -390,6 +390,13 @@ fn main() -> ExitCode {
             exit_zero,
             addons_path,
         } => {
+            let missing = linter::missing_paths(&paths);
+            if !missing.is_empty() {
+                for path in missing {
+                    eprintln!("error: {}: no such file or directory", path.display());
+                }
+                return ExitCode::from(2);
+            }
             let overrides = CliOverrides {
                 target_version: version,
                 select,

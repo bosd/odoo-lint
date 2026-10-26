@@ -8,18 +8,28 @@ Lint addons directories or single files.
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
           [--fix] [--unsafe-fixes] [--diff] [--force-exclude]
+          [--exit-zero] [--addons-path DIRS]
 ```
 
 `PATHS`
 : Directories or files to lint. Defaults to the current directory. The first
-path is where the [configuration](configuration.md) search starts.
+path is where the [configuration](configuration.md) search starts. A path
+that does not exist is an error (exit code `2`); a file odoo-lint does not
+lint (a `README.md`, say) is skipped.
 
 `-v`, `--version`, `--odoo-version VERSION`
 : Target Odoo version, for example `17.0`. Overrides `target-version` from the
-configuration. Defaults to `17.0`.
+configuration. Without either, the Odoo version of the project's
+`Framework :: Odoo :: X` classifier is used, else `17.0`.
 
 `--config FILE`
 : Use this `odoo-lint.toml` or `pyproject.toml` instead of searching for one.
+Its folder is the project root that `exclude` and `per-file-ignores` patterns
+are relative to, wherever odoo-lint runs from.
+
+`--addons-path DIRS`
+: Comma-separated folders with the addons the checked modules depend on, for
+the checks across modules; replaces `addons-path` from the configuration.
 
 `--select RULES`
 : Comma-separated codes, names or code prefixes to run; replaces `select`
@@ -42,8 +52,8 @@ from the configuration.
 when a file would change.
 
 `--force-exclude`
-: Apply `exclude` from the configuration to files given on the command line
-too. Git hooks pass the changed files one by one; without this flag, an
+: Apply `exclude` from the configuration to files and folders given on the
+command line too. Git hooks pass the changed files one by one; without this flag, an
 excluded file is linted when it is named explicitly.
 
 `--exit-zero`

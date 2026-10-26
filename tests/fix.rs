@@ -261,3 +261,17 @@ fn env_translation_drops_the_unused_import() {
         );
     }
 }
+
+#[test]
+fn module_findings_are_not_reported_twice_after_a_fix() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "acme_fix/__manifest__.py", MANIFEST);
+    write(dir.path(), "acme_fix/__init__.py", "");
+    write(dir.path(), "acme_fix/dump.sql", "SELECT 1;\n");
+
+    let result = fix_paths(&[dir.path().to_path_buf()], &settings(&["ALL"]), FixMode::Safe);
+
+    let codes: Vec<&str> = result.remaining.iter().map(|v| v.code.as_str()).collect();
+    let sql = codes.iter().filter(|c| **c == "ODOO002").count();
+    assert_eq!(sql, 1, "{codes:?}");
+}
