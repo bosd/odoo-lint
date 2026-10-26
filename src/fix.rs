@@ -74,15 +74,26 @@ pub struct Fix {
     /// edits cannot write. The caller copies it when it writes the fixes.
     #[serde(skip)]
     pub copy: Option<(PathBuf, PathBuf)>,
+    /// Edits that only belong with the fixes of the rule's other findings in
+    /// the file, such as dropping an import the last of them stops using:
+    /// `odl check --fix` and fix-all apply them, a single quick fix does not.
+    #[serde(skip)]
+    pub cleanup: Vec<Edit>,
 }
 
 impl Fix {
+    /// The edits `odl check --fix` applies: the fix's own and its cleanup.
+    pub fn all_edits(&self) -> impl Iterator<Item = &Edit> {
+        self.edits.iter().chain(&self.cleanup)
+    }
+
     pub fn safe(title: impl Into<String>, edits: Vec<Edit>) -> Self {
         Self {
             applicability: Applicability::Safe,
             title: title.into(),
             edits,
             copy: None,
+            cleanup: Vec::new(),
         }
     }
 
@@ -92,6 +103,7 @@ impl Fix {
             title: title.into(),
             edits,
             copy: None,
+            cleanup: Vec::new(),
         }
     }
 
@@ -127,8 +139,7 @@ pub fn select_non_overlapping<'a>(fixes: impl IntoIterator<Item = (PathBuf, &'a 
     let mut taken: HashMap<PathBuf, Vec<&Edit>> = HashMap::new();
     for (file, fix) in fixes {
         let targets: Vec<(PathBuf, &Edit)> = fix
-            .edits
-            .iter()
+            .all_edits()
             .map(|e| (e.path.clone().unwrap_or_else(|| file.clone()), e))
             .collect();
         let conflict = targets.iter().any(|(path, edit)| {

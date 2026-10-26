@@ -9,6 +9,7 @@ const NOTHING_ELSE: Installation = Installation {
     addons_path: &[],
     installed: &[],
     skip_auto_install: false,
+    demo: None,
 };
 
 fn write(root: &Path, relative: &str, content: &str) {
@@ -184,5 +185,146 @@ class ResPartner(models.Model):
     fn leaves_out_fields_the_extension_does_not_define() {
         let pot = template();
         assert!(!pot.contains("acme.field_res_partner__create_uid"), "{pot}");
+    }
+}
+
+mod record_terms {
+    use super::*;
+
+    /// A module with data records, and a stand-in `base` that declares the
+    /// translated fields they set.
+    fn template() -> String {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "base/__manifest__.py",
+            "{'name': 'Base', 'version': '19.0.1.0.0'}\n",
+        );
+        write(
+            dir.path(),
+            "base/models/models.py",
+            r#"from odoo import fields, models
+from odoo.tools.translate import xml_translate
+
+
+class IrActionsActions(models.Model):
+    _name = "ir.actions.actions"
+    _description = "Actions"
+    name = fields.Char(translate=True)
+
+
+class IrActionsActWindow(models.Model):
+    _name = "ir.actions.act_window"
+    _inherit = "ir.actions.actions"
+    _description = "Window Action"
+
+
+class IrActionsServer(models.Model):
+    _name = "ir.actions.server"
+    _inherit = "ir.actions.actions"
+    _description = "Server Action"
+
+
+class IrCron(models.Model):
+    _name = "ir.cron"
+    _description = "Scheduled Action"
+    _inherits = {"ir.actions.server": "ir_actions_server_id"}
+    ir_actions_server_id = fields.Many2one("ir.actions.server", delegate=True)
+
+
+class IrUiMenu(models.Model):
+    _name = "ir.ui.menu"
+    _description = "Menu"
+    name = fields.Char(translate=True)
+
+
+class IrUiView(models.Model):
+    _name = "ir.ui.view"
+    _description = "View"
+    arch_db = fields.Text(translate=xml_translate)
+"#,
+        );
+        write(
+            dir.path(),
+            "acme/__manifest__.py",
+            "{'name': 'Acme', 'version': '19.0.1.0.0', 'depends': ['base'], 'data': ['views.xml']}\n",
+        );
+        write(
+            dir.path(),
+            "acme/views.xml",
+            r#"<odoo>
+    <record id="action_orders" model="ir.actions.act_window">
+        <field name="name">Orders</field>
+    </record>
+    <menuitem id="menu_orders" action="action_orders"/>
+    <record id="view_order_form" model="ir.ui.view">
+        <field name="arch" type="xml">
+            <form string="Order"><p>Read the <b>terms</b> first</p></form>
+        </field>
+    </record>
+    <record id="cron_cleanup" model="ir.cron">
+        <field name="name">Clean up orders</field>
+    </record>
+</odoo>
+"#,
+        );
+        let paths = [dir.path().join("acme")];
+        let addons_path = [dir.path().to_path_buf()];
+        let installation = Installation {
+            addons_path: &addons_path,
+            installed: &[],
+            skip_auto_install: false,
+            demo: None,
+        };
+        run(&paths, false, None, OdooVersion::new(19, 0), &installation).unwrap();
+        fs::read_to_string(dir.path().join("acme/i18n/acme.pot")).unwrap()
+    }
+
+    fn entry(reference: &str, msgid: &str) -> String {
+        format!("#: {reference}\nmsgid \"{msgid}\"\n")
+    }
+
+    #[test]
+    fn exports_a_translated_field_of_a_record() {
+        let pot = template();
+        // The menu shares the msgid, so both references are on the entry.
+        assert!(
+            pot.contains(
+                "#: model:ir.actions.act_window,name:acme.action_orders\n\
+                 #: model:ir.ui.menu,name:acme.menu_orders\n\
+                 msgid \"Orders\""
+            ),
+            "{pot}"
+        );
+    }
+
+    #[test]
+    fn names_a_menu_after_its_action() {
+        let pot = template();
+        assert!(pot.contains("model:ir.ui.menu,name:acme.menu_orders"), "{pot}");
+    }
+
+    #[test]
+    fn exports_the_terms_of_a_view() {
+        let pot = template();
+        assert!(
+            pot.contains(&entry(
+                "model_terms:ir.ui.view,arch_db:acme.view_order_form",
+                "Read the <b>terms</b> first"
+            )),
+            "{pot}"
+        );
+    }
+
+    #[test]
+    fn exports_a_delegated_field_on_its_parent_record() {
+        let pot = template();
+        assert!(
+            pot.contains(&entry(
+                "model:ir.actions.server,name:acme.cron_cleanup_ir_actions_server",
+                "Clean up orders"
+            )),
+            "{pot}"
+        );
     }
 }

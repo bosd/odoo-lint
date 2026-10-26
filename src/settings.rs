@@ -154,11 +154,21 @@ pub const OPT_IN: &[&str] = &[
     "XML024", "XML103",
 ];
 
-/// Whether a `select`/`ignore` entry matches `rule`: `ALL`, an exact code or
-/// name, or a code prefix such as `C81` or `ODOO`.
+/// Whether a `select` entry matches `rule`: `ALL` (without the opt-in
+/// rules), an exact code or name, or a code prefix such as `C81` or `ODOO`.
 pub fn selector_matches(selector: &str, rule: &Rule) -> bool {
-    (selector.eq_ignore_ascii_case("all") && !OPT_IN.contains(&rule.code))
-        || selector.eq_ignore_ascii_case(rule.code)
+    (selector.eq_ignore_ascii_case("all") && !OPT_IN.contains(&rule.code)) || names(selector, rule)
+}
+
+/// Whether an `ignore` or `per-file-ignores` entry matches `rule`: as
+/// [`selector_matches`], but `ALL` turns the opt-in rules off too.
+pub fn ignore_matches(selector: &str, rule: &Rule) -> bool {
+    selector.eq_ignore_ascii_case("all") || names(selector, rule)
+}
+
+/// Whether `selector` is `rule`'s code, its name or a prefix of its code.
+fn names(selector: &str, rule: &Rule) -> bool {
+    selector.eq_ignore_ascii_case(rule.code)
         || selector.eq_ignore_ascii_case(rule.name)
         || (!selector.is_empty()
             && rule.code.len() > selector.len()
@@ -187,7 +197,9 @@ pub struct Loaded {
 impl Settings {
     pub fn load(start: &Path, config: Option<&Path>, cli: CliOverrides) -> Result<Loaded, String> {
         let (config, config_path) = match config {
-            Some(file) => OdooLintConfig::from_file(file).map(|c| (c, Some(file.to_path_buf()))),
+            // Canonical, as a discovered one is: patterns are relative to its folder.
+            Some(file) => OdooLintConfig::from_file(file)
+                .map(|c| (c, Some(file.canonicalize().unwrap_or_else(|_| file.to_path_buf())))),
             None => OdooLintConfig::discover(start),
         }
         .map_err(|e| e.to_string())?;
@@ -297,28 +309,39 @@ impl Settings {
 
     /// Whether `select` and `ignore` enable `rule`.
     pub fn is_selected(&self, rule: &Rule) -> bool {
-        self.select.iter().any(|s| selector_matches(s, rule)) && !self.ignore.iter().any(|s| selector_matches(s, rule))
+        self.select.iter().any(|s| selector_matches(s, rule)) && !self.ignore.iter().any(|s| ignore_matches(s, rule))
     }
 
     /// `path` relative to the project root. The root is found from a
     /// canonical path (`\\?\C:\...` on Windows, symlinks resolved), so a
     /// path as the user typed it may only match in its canonical form.
     fn relative(&self, path: &Path) -> PathBuf {
-        if let Ok(relative) = path.strip_prefix(&self.project_root) {
+        let as_given = || path.strip_prefix("./").unwrap_or(path).to_path_buf();
+        let root = &self.project_root;
+        // No config: patterns are relative to the working directory.
+        if root.as_os_str().is_empty() || root == Path::new(".") {
+            return as_given();
+        }
+        if let Ok(relative) = path.strip_prefix(root) {
             return relative.to_path_buf();
         }
-        if path.is_relative() {
-            // Relative to the working directory, as Git hooks pass files.
-            return path.strip_prefix("./").unwrap_or(path).to_path_buf();
+        // A relative path is relative to the working directory, wherever
+        // in the project that is (Git hooks pass files that way).
+        let absolute = match std::env::current_dir() {
+            Ok(cwd) if path.is_relative() => cwd.join(path),
+            _ => path.to_path_buf(),
+        };
+        if let Ok(relative) = absolute.strip_prefix(root) {
+            return relative
+                .components()
+                .filter(|c| *c != std::path::Component::CurDir)
+                .collect();
         }
-        if let Some(relative) = path
+        absolute
             .canonicalize()
             .ok()
-            .and_then(|canonical| canonical.strip_prefix(&self.project_root).ok().map(Path::to_path_buf))
-        {
-            return relative;
-        }
-        path.to_path_buf()
+            .and_then(|canonical| canonical.strip_prefix(root).ok().map(Path::to_path_buf))
+            .unwrap_or_else(as_given)
     }
 
     /// Whether `path` matches `pattern`, a glob relative to the project root
@@ -335,10 +358,14 @@ impl Settings {
 
     /// Whether `per-file-ignores` turns `rule` off for `path`.
     pub fn is_ignored_in_file(&self, path: &Path, rule: &Rule) -> bool {
+        // Called per rule per file: skip the path work when there is nothing to match.
+        if self.per_file_ignores.is_empty() {
+            return false;
+        }
         let relative = self.relative(path);
         self.per_file_ignores
             .iter()
-            .any(|(pattern, rules)| pattern.matches(&relative) && rules.iter().any(|s| selector_matches(s, rule)))
+            .any(|(pattern, rules)| pattern.matches(&relative) && rules.iter().any(|s| ignore_matches(s, rule)))
     }
 }
 
@@ -346,6 +373,12 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::rules::find;
+
+    #[test]
+    fn all_in_ignore_also_turns_off_opt_in_rules() {
+        let rule = find("PO007").expect("PO007");
+        assert!(ignore_matches("ALL", rule) && !selector_matches("ALL", rule));
+    }
 
     fn rule(code: &str) -> &'static Rule {
         find(code).unwrap()

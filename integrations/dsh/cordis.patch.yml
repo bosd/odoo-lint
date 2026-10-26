@@ -1,8 +1,8 @@
 # dsh-odoo-lint: odoo-lint for DeepSeek Harness, one bundle, three rows.
 #
 #   odoo-lint-mcp     the `odl mcp` server; its tools reach the model as
-#                     mcp__odoo-lint__check, mcp__odoo-lint__fix and
-#                     mcp__odoo-lint__rule
+#                     mcp__odoo-lint__check, mcp__odoo-lint__fix,
+#                     mcp__odoo-lint__upgrade_check and mcp__odoo-lint__rule
 #   odoo-lint-hooks   lints every addon file after `write`/`edit`, through the
 #                     Claude Code hooks bridge (`odl hook` speaks that format)
 #   odoo-lint-skill   when and how to use them

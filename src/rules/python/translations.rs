@@ -737,7 +737,7 @@ fn check_prefer_env(ctx: &PythonContext, reporter: &mut Reporter) {
             Expr::Call(call)
                 if !call.arguments.args.is_empty() && matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "_") =>
             {
-                calls.push((call, self_is_a_record(ctx, scopes)));
+                calls.push((call, self_is_a_record(ctx, scopes, call.start())));
             }
             _ => {}
         }
@@ -767,15 +767,18 @@ fn check_prefer_env(ctx: &PythonContext, reporter: &mut Reporter) {
             "Better using self.env._ More info at https://github.com/odoo/odoo/pull/174844",
         );
         if fixable {
-            let mut edits = vec![Edit::replace(
+            let edits = vec![Edit::replace(
                 call.func.start().to_usize(),
                 call.func.end().to_usize(),
                 "self.env._",
             )];
+            let mut fix = Fix::safe("Use `self.env._`", edits);
+            // Only together with the other calls: applied alone, the import
+            // would go while they still use it.
             if i == last {
-                edits.extend(import_edit.clone());
+                fix.cleanup.extend(import_edit.clone());
             }
-            violation.fix = Some(Fix::safe("Use `self.env._`", edits));
+            violation.fix = Some(fix);
         }
     }
 }
@@ -824,10 +827,11 @@ fn remove_translation_import(ctx: &PythonContext) -> Option<Edit> {
     })
 }
 
-/// Whether `self` is a record where the scopes end: inside a method of an
-/// Odoo model whose first parameter is `self`, not rebound by an inner
-/// function or lambda.
-pub(crate) fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope]) -> bool {
+/// Whether `self` is a record at `at`, where the scopes end: in the body of
+/// a method of an Odoo model whose first parameter is `self`, not rebound by
+/// an inner function or lambda. Its decorators and parameter defaults are
+/// evaluated when the class is built, where there is no `self`.
+pub(crate) fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope], at: ruff_text_size::TextSize) -> bool {
     let Some(method) = scopes.windows(2).rposition(|pair| {
         matches!(pair, [Scope::Class(class), Scope::Function(_)] if ctx.semantic.odoo_model_kind(class).is_some())
     }) else {
@@ -851,7 +855,11 @@ pub(crate) fn self_is_a_record(ctx: &PythonContext, scopes: &[Scope]) -> bool {
         Scope::Lambda(l) => l.parameters.as_ref().is_some_and(|p| p.includes("self")),
         _ => false,
     });
-    !is_static && !rebound && first.is_some_and(|p| p.parameter.name.as_str() == "self")
+    let in_body = match (function.body.first(), function.body.last()) {
+        (Some(first), Some(last)) => first.start() <= at && at < last.end(),
+        _ => false,
+    };
+    in_body && !is_static && !rebound && first.is_some_and(|p| p.parameter.name.as_str() == "self")
 }
 
 fn check_injection(ctx: &PythonContext, reporter: &mut Reporter) {
@@ -876,6 +884,30 @@ mod tests {
 
     fn codes(rule: &Rule, src: &str) -> usize {
         run_python_rule(rule, src).len()
+    }
+
+    const MODEL: &str = "from odoo import _, models\n\n\nclass A(models.Model):\n    _inherit = \"res.partner\"\n\n";
+
+    #[test]
+    fn prefer_env_has_no_fix_in_a_parameter_default() {
+        let src = format!("{MODEL}    def a(self, label=_(\"Label\")):\n        return label\n");
+        let found = run_python_rule(&PREFER_ENV_TRANSLATION, &src);
+        assert!(found[0].fix.is_none());
+    }
+
+    #[test]
+    fn prefer_env_has_no_fix_in_a_decorator() {
+        let src = format!("{MODEL}    @helper(_(\"Decorated\"))\n    def a(self):\n        return 1\n");
+        let found = run_python_rule(&PREFER_ENV_TRANSLATION, &src);
+        assert!(found[0].fix.is_none());
+    }
+
+    #[test]
+    fn prefer_env_quick_fix_alone_keeps_the_import() {
+        let src = format!("{MODEL}    def a(self):\n        return _(\"A\") + _(\"B\")\n");
+        let found = run_python_rule(&PREFER_ENV_TRANSLATION, &src);
+        let last = found.last().and_then(|v| v.fix.as_ref()).expect("a fix");
+        assert_eq!((last.edits.len(), last.cleanup.len()), (1, 1));
     }
 
     #[test]

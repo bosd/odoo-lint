@@ -14,6 +14,9 @@ const DEFAULT_REQUIRED_KEYS: &[&str] = &["license"];
 const DEFAULT_REQUIRED_KEYS_APP: &[&str] = &["currency", "images", "license", "support"];
 const DEFAULT_DEPRECATED_KEYS: &[&str] = &["description"];
 const DEFAULT_KEYS_VALUES_TRUE: &[&str] = &["active"];
+/// Keys Odoo defaults to `True` even when `keys-values-true` leaves them
+/// out: a falsy value there is a real setting, never superfluous.
+const ODOO_DEFAULTS_TRUE: &[&str] = &["installable"];
 
 pub const MANIFEST_REQUIRED_KEY: Rule = Rule {
     code: "C8102",
@@ -84,7 +87,9 @@ pub const MANIFEST_SUPERFLUOUS_KEY: Rule = Rule {
 Reports manifest keys whose value is the default anyway: a falsy value such as
 `False`, `""` or `[]`, or a truthy value for keys that default to `True`
 (`active`). `"installable": True` is left alone by default: OCA writes it in
-every manifest, and its migration tools flip it.
+every manifest, and its migration tools flip it. `"installable": False` is
+never reported: it keeps a module that is not migrated yet from being
+installed.
 
 ## Why is this bad?
 
@@ -207,6 +212,9 @@ fn check_superfluous_keys(ctx: &ManifestContext, reporter: &mut Reporter) {
         let (key_expr, value): (&Expr, &Expr) = ctx.manifest.entry(key).expect("key comes from entries()");
         let Some(truthy) = is_truthy(value) else { continue };
         let default_true = values_true.iter().any(|k| k == key);
+        if !truthy && ODOO_DEFAULTS_TRUE.contains(&key) {
+            continue;
+        }
         if truthy == default_true {
             let shown = str_of(value).unwrap_or_default();
             let violation = reporter.report(
@@ -306,6 +314,11 @@ mod tests {
                 (4, "Manifest superfluous key \"demo\". It is the same as the default value: []. Better remove it"),
             ]
         );
+    }
+
+    #[test]
+    fn installable_false_is_a_setting_not_a_default() {
+        assert!(run(&MANIFEST_SUPERFLUOUS_KEY, "{\n 'installable': False,\n}\n").is_empty());
     }
 
     #[test]

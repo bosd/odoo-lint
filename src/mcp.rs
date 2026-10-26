@@ -18,8 +18,8 @@ const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "
 const MAX_LISTED: usize = 200;
 
 const INSTRUCTIONS: &str = "odoo-lint checks Odoo addons: Python code, \
-manifests and translation (.po/.pot) files, with pylint-odoo's codes and \
-messages. Run `check` after editing an addon, `fix` to apply automatic \
+manifests, XML data and views, JavaScript and translation (.po/.pot) files, \
+with pylint-odoo's and OCA's codes and messages. Run `check` after editing an addon, `fix` to apply automatic \
 fixes (review unsafe ones with dry_run first), and `rule` to read why a rule \
 matters and how to fix it.";
 
@@ -162,31 +162,40 @@ fn tools() -> Value {
     ])
 }
 
-fn string_list(arguments: &Value, key: &str) -> Vec<String> {
-    arguments
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(Value::as_str).map(str::to_string).collect())
-        .unwrap_or_default()
+/// A list-of-strings argument; absent means empty. Anything else is an
+/// error: a mistyped `"paths": "addons/x"` must not widen the call to `.`.
+fn string_list(arguments: &Value, key: &str) -> Result<Vec<String>, String> {
+    match arguments.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| item.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| format!("`{key}` must be a list of strings")),
+        Some(_) => Err(format!("`{key}` must be a list of strings")),
+    }
 }
 
 /// The paths and settings a tool call asks for.
 fn settings(arguments: &Value) -> Result<(Vec<PathBuf>, Settings), String> {
-    let mut paths: Vec<PathBuf> = string_list(arguments, "paths").into_iter().map(PathBuf::from).collect();
+    let mut paths: Vec<PathBuf> = string_list(arguments, "paths")?
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
     if paths.is_empty() {
         paths.push(PathBuf::from("."));
     }
     if let Some(missing) = paths.iter().find(|p| !p.exists()) {
         return Err(format!("Path not found: {}", missing.display()));
     }
-    let select = string_list(arguments, "select");
+    let select = string_list(arguments, "select")?;
     let overrides = CliOverrides {
         target_version: arguments
             .get("odoo_version")
             .and_then(Value::as_str)
             .map(str::to_string),
         select: (!select.is_empty()).then_some(select),
-        ignore: string_list(arguments, "ignore"),
+        ignore: string_list(arguments, "ignore")?,
         ..CliOverrides::default()
     };
     let loaded = Settings::load(&paths[0], None, overrides)?;
@@ -350,6 +359,16 @@ mod tests {
             json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}),
         ]);
         assert_eq!(responses[0]["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
+    }
+
+    #[test]
+    fn a_mistyped_list_argument_is_an_error() {
+        let responses = exchange(&[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "check", "arguments": {"paths": "addons/sale_extra"}}}),
+        ]);
+        assert_eq!(responses[0]["result"]["isError"], true);
+        let text = responses[0]["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("`paths` must be a list of strings"), "{text}");
     }
 
     #[test]
