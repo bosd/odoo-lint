@@ -62,7 +62,7 @@ nearest `pyproject.toml` (even without a `[tool.odoo-lint]` table), or
 `target-version`, it does not win over the modules' own versions.
 
 Rules that only apply to some Odoo versions (the upgrade rules `U1801`,
-...) follow `target-version` when it is set, here or with `odl check -v`, as
+...) follow `target-version` when it is set, here or with `odl check --version`, as
 pylint-odoo's `valid-odoo-versions` does. Without it, they follow each
 module's own version, from its manifest (`19.0.1.0.0` is 19.0), and the
 default for modules whose manifest version has no Odoo series (`1.0.0`).

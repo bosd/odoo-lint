@@ -980,6 +980,7 @@ dependencies = [
  "globset",
  "lax-css",
  "lax-markup",
+ "libc",
  "lsp-server",
  "lsp-types",
  "oxc_allocator",

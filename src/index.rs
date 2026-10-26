@@ -933,6 +933,20 @@ pub fn closure_of(modules: Vec<Arc<ModuleIndex>>) -> Closure {
 /// looked up next to it and in `addons_path`. A dependency that cannot be
 /// found gives `None` when `strict`, and is skipped otherwise.
 pub fn dependencies(path: &Path, addons_path: &[PathBuf], strict: bool) -> Option<Vec<Arc<ModuleIndex>>> {
+    let (modules, missing) = walk_dependencies(path, addons_path)?;
+    (!strict || missing.is_empty()).then_some(modules)
+}
+
+/// The dependencies of the module in `path`, directly or not, that are
+/// neither next to it nor in `addons_path`: without them the checks across
+/// modules skip it.
+pub fn missing_dependencies(path: &Path, addons_path: &[PathBuf]) -> Vec<String> {
+    walk_dependencies(path, addons_path)
+        .map(|(_, missing)| missing)
+        .unwrap_or_default()
+}
+
+fn walk_dependencies(path: &Path, addons_path: &[PathBuf]) -> Option<(Vec<Arc<ModuleIndex>>, Vec<String>)> {
     let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
     dirs.extend(addons_path.iter().cloned());
     let find = |name: &str| {
@@ -950,21 +964,23 @@ pub fn dependencies(path: &Path, addons_path: &[PathBuf], strict: bool) -> Optio
         queue.push("web".into());
     }
     let mut modules = vec![root];
+    let mut missing = Vec::new();
     while let Some(name) = queue.pop() {
         if !seen.insert(name.clone()) {
             continue;
         }
         let Some(found) = find(&name) else {
             // Trees of only some modules (tests, `base` alone) lack `web`.
-            if strict && name != "web" {
-                return None;
+            if name != "web" {
+                missing.push(name);
             }
             continue;
         };
         queue.extend(found.depends.iter().cloned());
         modules.push(found);
     }
-    Some(modules)
+    missing.sort();
+    Some((modules, missing))
 }
 
 impl Closure {

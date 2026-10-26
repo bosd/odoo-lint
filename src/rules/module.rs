@@ -63,7 +63,19 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
             }
         }
     }
-    reporter.violations
+    // Rules that read the module index see its canonical path: report as
+    // the module was given, like the other findings.
+    let mut violations = reporter.violations;
+    if let Ok(canonical) = module.path.canonicalize() {
+        if canonical != module.path {
+            for v in &mut violations {
+                if let Ok(rest) = Path::new(&v.file_path).strip_prefix(&canonical) {
+                    v.file_path = module.path.join(rest).to_string_lossy().into_owned();
+                }
+            }
+        }
+    }
+    violations
 }
 
 // --- Manifest files ---------------------------------------------------------

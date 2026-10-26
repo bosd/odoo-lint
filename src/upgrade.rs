@@ -376,11 +376,10 @@ pub fn render_text(report: &Report, show_violations: bool) -> String {
         for rule in &module.rules {
             let _ = writeln!(
                 out,
-                "  {:<5} {:<7} {:<40} {:>4}  {}",
+                "  {:<5} {:<7} {:<40} {}",
                 rule.since,
                 rule.code,
                 rule.name,
-                rule.effort.changes,
                 breakdown(&rule.effort)
             );
         }

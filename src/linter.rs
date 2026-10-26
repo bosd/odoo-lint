@@ -258,6 +258,43 @@ pub fn modules_of(files: &[PathBuf], sources: &Sources) -> Vec<Arc<ModuleInfo>> 
     modules
 }
 
+/// What makes the checks across modules skip modules under `paths`
+/// silently: `addons-path` folders that do not exist or hold no module, and
+/// dependencies found neither next to a module nor on the addons path.
+/// Nothing without an addons path, as the user did not ask for those checks.
+pub fn addons_path_warnings(paths: &[PathBuf], settings: &Settings) -> Vec<String> {
+    if settings.addons_path.is_empty() {
+        return Vec::new();
+    }
+    let mut warnings = Vec::new();
+    for dir in &settings.addons_path {
+        if !dir.is_dir() {
+            warnings.push(format!("addons path folder {} does not exist", dir.display()));
+        } else if !std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|entry| MANIFEST_FILE_NAMES.iter().any(|m| entry.path().join(m).is_file()))
+        {
+            warnings.push(format!(
+                "addons path folder {} holds no module; name the folders that hold them (for Odoo: addons and odoo/addons)",
+                dir.display()
+            ));
+        }
+    }
+    for module in modules_of(&collect_files(paths, settings), &Sources::default()) {
+        let missing = crate::index::missing_dependencies(&module.path, &settings.addons_path);
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "{}: `{}` not found on the addons path; checks across modules skip it",
+                module.name,
+                missing.join("`, `")
+            ));
+        }
+    }
+    warnings
+}
+
 /// The unit every file is linted with: its module's folder, or the file itself
 /// outside a module. Rules only look across files within one unit.
 pub fn lint_units(files: &[PathBuf], sources: &Sources) -> HashMap<PathBuf, PathBuf> {
