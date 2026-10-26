@@ -208,10 +208,11 @@ fn lint_js_file(
     settings: &Settings,
     sources: &Sources,
 ) -> Vec<Violation> {
+    let ignores = settings.file_ignores(path);
     let js_rules: Vec<&Rule> = rules
         .iter()
         .copied()
-        .filter(|rule| rule.check.js().is_some() && !settings.is_ignored_in_file(path, rule))
+        .filter(|rule| rule.check.js().is_some() && !ignores.ignores(rule))
         .collect();
     if js_rules.is_empty() || !is_module_js(path) {
         return Vec::new();
@@ -358,11 +359,8 @@ fn lint_file(
         return (Vec::new(), Vec::new());
     };
     let file_path = path.to_string_lossy();
-    let rules: Vec<&Rule> = rules
-        .iter()
-        .copied()
-        .filter(|rule| !settings.is_ignored_in_file(path, rule))
-        .collect();
+    let ignores = settings.file_ignores(path);
+    let rules: Vec<&Rule> = rules.iter().copied().filter(|rule| !ignores.ignores(rule)).collect();
     let line_index = LineIndex::from_source_text(&source);
     let mut reporter = Reporter::new(&file_path, &source, &line_index);
 
@@ -446,11 +444,8 @@ fn lint_file(
 /// Lints a `.po`/`.pot` file. Files are read as UTF-8 with universal
 /// newlines, like OCA's `oca-checks-po` reads them.
 fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings, sources: &Sources) -> Vec<Violation> {
-    let rules: Vec<&Rule> = rules
-        .iter()
-        .copied()
-        .filter(|rule| !settings.is_ignored_in_file(path, rule))
-        .collect();
+    let ignores = settings.file_ignores(path);
+    let rules: Vec<&Rule> = rules.iter().copied().filter(|rule| !ignores.ignores(rule)).collect();
     let file_path = path.to_string_lossy();
     let Ok(bytes) = sources.read(path) else {
         return Vec::new();

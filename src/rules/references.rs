@@ -2,7 +2,7 @@
 //! (ODOO005) and models (ODOO006) that do not exist where a module can see
 //! them. Silent without the dependencies of a module (see `addons-path`).
 
-use crate::index::{closure, module_index, Closure, ModuleIndex, Position};
+use crate::index::{closure, module_index, modules_mentioning, Closure, ModuleIndex, Position};
 use crate::manifest::MANIFEST_FILE_NAMES;
 use crate::rules::module::{ModuleContext, ModuleReporter};
 use crate::rules::{Check, Rule};
@@ -413,21 +413,19 @@ fn check_xml_ids(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
 
 /// The modules in `dirs` that define `model` with `_name`.
 fn modules_defining_model(dirs: &[PathBuf], model: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()) {
-                continue;
-            }
-            let Some(module) = module_index(&path) else { continue };
-            if module.classes.iter().any(|c| c.name.as_deref() == Some(model)) && !found.contains(&module.name) {
-                found.push(module.name.clone());
-            }
-        }
-    }
+    let mut found: Vec<String> = modules_mentioning(dirs, &[model])
+        .into_iter()
+        .filter(|module| {
+            // `_name` with the same `_inherit` extends the model.
+            module
+                .classes
+                .iter()
+                .any(|c| c.name.as_deref() == Some(model) && !c.inherit.iter().any(|i| i == model))
+        })
+        .map(|module| module.name.clone())
+        .collect();
     found.sort();
+    found.dedup();
     found
 }
 

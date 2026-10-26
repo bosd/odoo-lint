@@ -358,14 +358,33 @@ impl Settings {
 
     /// Whether `per-file-ignores` turns `rule` off for `path`.
     pub fn is_ignored_in_file(&self, path: &Path, rule: &Rule) -> bool {
-        // Called per rule per file: skip the path work when there is nothing to match.
+        self.file_ignores(path).ignores(rule)
+    }
+
+    /// The `per-file-ignores` selectors for `path`, matched once so that
+    /// checking every rule against them does not resolve the path again.
+    pub fn file_ignores(&self, path: &Path) -> FileIgnores<'_> {
         if self.per_file_ignores.is_empty() {
-            return false;
+            return FileIgnores(Vec::new());
         }
         let relative = self.relative(path);
-        self.per_file_ignores
-            .iter()
-            .any(|(pattern, rules)| pattern.matches(&relative) && rules.iter().any(|s| ignore_matches(s, rule)))
+        FileIgnores(
+            self.per_file_ignores
+                .iter()
+                .filter(|(pattern, _)| pattern.matches(&relative))
+                .flat_map(|(_, rules)| rules.iter().map(String::as_str))
+                .collect(),
+        )
+    }
+}
+
+/// The `per-file-ignores` selectors that apply to one file.
+pub struct FileIgnores<'a>(Vec<&'a str>);
+
+impl FileIgnores<'_> {
+    /// Whether these selectors turn `rule` off.
+    pub fn ignores(&self, rule: &Rule) -> bool {
+        self.0.iter().any(|s| ignore_matches(s, rule))
     }
 }
 
