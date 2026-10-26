@@ -11,6 +11,10 @@
 | odoo-lint, one thread            | 0.77 s             |
 | pylint 3.1.1 + pylint-odoo 9.1.3 | 25.8 s             |
 
+Measured on 2026-10-08 with odoo-lint 0.1.0-alpha.1, and not measured
+again since; later releases add rules, so run the script below for current
+numbers.
+
 Both lint all of [OCA/sale-workflow](https://github.com/OCA/sale-workflow)
 18.0: 173 modules and 1333 Python files, measured on a 28-thread x86-64
 Linux machine after one warm-up run.

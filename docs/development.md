@@ -12,21 +12,127 @@ uv run nox -s clippy   # a single session
 uv run nox -s docs     # live-reloading documentation
 ```
 
+## Architecture
+
+```text
+odl check ─> settings ─> linter ─> rules ─> fixer ─> output
+               │           │        │
+            config.rs   checker.rs index.rs (checks across modules)
+```
+
+- `src/main.rs`: the command line (clap). Each subcommand calls into the
+  library (`src/lib.rs`).
+- `src/config.rs` reads `odoo-lint.toml` or `[tool.odoo-lint]`;
+  `src/settings.rs` adds the command line options and decides which rules
+  run (`select`, `ignore`, `OPT_IN`).
+- `src/linter.rs` collects the files (`.py`, `.xml`, `.js`, `.po`, `.pot`),
+  finds the module of each one, parses it and runs the enabled rules, in
+  parallel (rayon). Suppression comments are applied here
+  (`src/suppression.rs`).
+- `src/checker.rs` is what a rule sees (`PythonContext`, `ManifestContext`,
+  ...) and the `Reporter` it reports with; `src/diagnostics.rs` holds the
+  `Violation`.
+- `src/fixer.rs` applies the fixes attached to violations, in passes, in
+  memory (`src/sources.rs`), until nothing is left; `--diff` shows the
+  result instead of writing it.
+- `src/output.rs` prints the violations as text, JSON, GitHub annotations,
+  SARIF or a GitLab report.
+- `src/index.rs` is a model of the addons path: per module, its
+  dependencies, models, fields and XML ids, read on first use. Rules that
+  look across modules (most `ODOO0xx` rules) ask it what a module's
+  `depends` reach.
+- `src/server.rs` (`odl server`), `src/mcp.rs` (`odl mcp`) and
+  `src/hook.rs` (`odl hook`) wrap the linter for editors and AI agents;
+  `definition.rs`, `completion.rs` and `usages.rs` add go to definition,
+  completion and references to the server.
+- Subcommands that write files: `src/upgrade.rs` (`upgrade-check`),
+  `src/format.rs` (`format`), `src/readme.rs` and `src/readme_obs.rs`
+  (`readme`), `src/requirements.rs` (`requirements`), `src/badge.rs`
+  (`badge`) and `src/pot/` (`pot`, hidden). `src/po/` is a port of polib's
+  PO parser and writer, used by the PO rules and `pot`.
+
 ## Adding a rule
 
-1. Add `src/rules/<code>_<name>.rs` with a `pub const RULE: Rule` holding the
-   code, name, summary, Markdown documentation, the check function
-   (`Check::Python` or `Check::Manifest`) and optionally the Odoo versions it
-   applies to.
-2. Register it in `ALL` in `src/rules/mod.rs`, sorted by code. The linter
-   runs it for every Python file or once per module manifest.
-3. Regenerate the documentation pages:
+Rules live in `src/rules/`, grouped by what they check:
+
+| Where                                                           | What                                                                 |
+| --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `manifest/`                                                     | manifest keys, values and files (C81xx, ...)                         |
+| `python/`                                                       | Python checks ported from pylint-odoo                                |
+| `xml.rs`                                                        | XML data files (XML0xx from `oca-checks-odoo-module`, XML1xx)        |
+| `module.rs`, `module_conventions.rs`                            | module folders, CSV and conventions (MOD0xx, ODOO002, ODOO003)       |
+| `po.rs`, `po_odoo.rs`, `po_fixes.rs`, `po_languages.rs`         | translation files (PO0xx, PO1xx)                                     |
+| `views.rs`, `records.rs`, `references.rs`, `web_assets.rs`, ... | checks across modules (ODOO0xx)                                      |
+| `owl.rs`                                                        | OWL templates (OWL0xx)                                               |
+| `upgrade/`                                                      | upgrade rules per Odoo version (Uxxxx), with data in `upgrade/data/` |
+
+1. Define a `pub const` of type `Rule` (`src/rules/mod.rs`): `code`, `name`,
+   `summary`, `doc` (Markdown: _What it does_, _Why is this bad?_, an
+   example, and _Fix safety_ when it has a fix), `check` and optionally
+   `min_odoo` and `max_odoo`. `check` says when it runs:
+
+   | `Check` variant | Runs                                                        |
+   | --------------- | ----------------------------------------------------------- |
+   | `Python`        | on the syntax tree of every Python file                     |
+   | `Manifest`      | once per module, on its parsed manifest                     |
+   | `Po`            | on every `.po` and `.pot` file                              |
+   | `Xml`           | once per module, on the XML files its manifest loads        |
+   | `Module`        | once per module, on its folder and manifest                 |
+   | `Js`            | on every JavaScript file of `static/src` and `static/tests` |
+   | `PythonXml`     | a `Python` and an `Xml` check in one rule                   |
+
+2. Register it in `ALL` in `src/rules/mod.rs`. `ALL` is sorted by code; a
+   test fails otherwise. If `ALL` should not select it, add its code to
+   `OPT_IN` in `src/settings.rs` and to the table in
+   [Configuration](configuration.md#opt-in-rules).
+3. Options go in `RulesConfig` in `src/config.rs` (and in
+   `NO_RULES_CONFIG` next to it), under the rule's name, with
+   pylint-odoo's option names and defaults for ported rules.
+4. Regenerate the documentation pages:
 
    ```bash
    UPDATE_DOCS=1 cargo test --test generated_docs
    ```
 
-   CI fails when `docs/rules/` is out of date.
+   CI fails when `docs/rules/` is out of date. Do not edit those pages by
+   hand.
+
+5. Add tests. Small checks have unit tests next to the rule
+   (`checker::run_python_rule` and `run_manifest_rule`). Rules that need a
+   module build one in a temporary folder (`tempfile::tempdir()`), write
+   its manifest and files, and lint it with `odoo_lint::linter::lint_paths`;
+   see the files in `tests/`, one per area.
+
+### Fixes
+
+A fix is a list of `Edit`s (byte ranges of the file, or of another file)
+attached to the violation:
+
+```rust
+reporter.report(&RULE, offset, message).fix =
+    Some(Fix::safe("Use `self.env.cr`", vec![Edit::replace(start, end, "self.env.cr")]));
+```
+
+Choose the `Applicability` (`src/fix.rs`) as Ruff does: `Fix::safe` when
+the result behaves the same or only formatting changes, `Fix::unsafe_` when
+it is probably right but needs review, or loses something (a comment, a
+translation). `--fix` applies only safe fixes. Say which it is in the rule's
+_Fix safety_ section, and test the fix with `fixer::fix_paths`
+(`tests/fix.rs`).
+
+### Rules across modules
+
+A rule that needs to know what another module defines (a field of an
+inherited model, an XML id from a dependency) uses `src/index.rs`:
+`index::closure(module, addons_path)` gives the modules its `depends`
+reach. When a dependency is missing from the addons path, the closure is
+`None` and the rule reports nothing rather than guess.
+
+### Upgrade rules
+
+The rename and removal data of the upgrade rules (`U1590` and later) in
+`src/rules/upgrade/data/` is generated from OpenUpgrade by
+`scripts/gen_upgrade_data.py`; do not edit it by hand.
 
 ### Codes, names and messages
 

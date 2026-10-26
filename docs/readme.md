@@ -75,23 +75,22 @@ fragment is an error, as this style writes Markdown.
 
 ## As a hook
 
-In `hk.pkl`:
+With pre-commit, the `odoo-lint-readme` hook of
+[odoo-lint-pre-commit](integrations.md#pre-commit) runs `odl readme` on the
+staged `readme/*.md` fragments and manifests:
+
+```yaml
+- repo: https://github.com/bosd/odoo-lint-pre-commit
+  rev: v0.1.0a17
+  hooks:
+    - id: odoo-lint-readme
+```
+
+In hk, as a step next to [the odoo-lint step](integrations.md#hk):
 
 ```text
 ["readme"] {
   glob = "modules/custom/**/readme/**/*.md"
   fix = "odl readme {{files}}"
 }
-```
-
-or with pre-commit:
-
-```yaml
-- repo: local
-  hooks:
-    - id: odl-readme
-      name: Module READMEs
-      entry: odl readme
-      language: system
-      files: /readme/.*\.md$
 ```

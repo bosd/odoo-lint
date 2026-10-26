@@ -51,12 +51,24 @@ indent-width = 4
 
 ## As a hook
 
+With pre-commit, the `odoo-lint-format` hook of
+[odoo-lint-pre-commit](integrations.md#pre-commit) runs
+`odl format --force-exclude` on the staged `.xml`, `.scss`, `.css` and
+`.less` files:
+
 ```yaml
-- repo: local
+- repo: https://github.com/bosd/odoo-lint-pre-commit
+  rev: v0.1.0a17
   hooks:
-    - id: odl-format
-      name: Format XML
-      entry: odl format --force-exclude
-      language: system
-      files: \.(xml|scss|css|less)$
+    - id: odoo-lint-format
+```
+
+In hk, as a step next to [the odoo-lint step](integrations.md#hk):
+
+```text
+["odl-format"] {
+  glob = List("**/*.xml", "**/*.scss", "**/*.css", "**/*.less")
+  check = "odl format --check --force-exclude {{files}}"
+  fix = "odl format --force-exclude {{files}}"
+}
 ```

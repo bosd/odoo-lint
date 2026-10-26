@@ -134,6 +134,9 @@ not used here, as it points at the current version.
 `--target VERSION`
 : The Odoo version to upgrade to. Required.
 
+`--config FILE`
+: Use this `odoo-lint.toml` or `pyproject.toml` instead of searching for one.
+
 `--show-findings`
 : List every finding under its module.
 

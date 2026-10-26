@@ -1,4 +1,70 @@
-# CI integration
+# Pre-commit, hk and CI
+
+## pre-commit
+
+[odoo-lint-pre-commit](https://github.com/bosd/odoo-lint-pre-commit) installs
+the prebuilt wheel, with a tag for every release:
+
+```yaml
+repos:
+  - repo: https://github.com/bosd/odoo-lint-pre-commit
+    rev: v0.1.0a17
+    hooks:
+      - id: odoo-lint
+        # args: [--fix]   # also apply the safe fixes
+```
+
+| Hook                     | Runs                                      | Files                               |
+| ------------------------ | ----------------------------------------- | ----------------------------------- |
+| `odoo-lint`              | `odl check --force-exclude`               | `.py`, `.xml`, `.po`, `.pot`, `.js` |
+| `odoo-lint-advisory`     | the same, with `--exit-zero`              | the same                            |
+| `odoo-lint-format`       | [`odl format`](format.md)                 | `.xml`, `.scss`, `.css`, `.less`    |
+| `odoo-lint-requirements` | [`odl requirements`](requirements-txt.md) | `__manifest__.py`, `pyproject.toml` |
+| `odoo-lint-readme`       | [`odl readme`](readme.md)                 | `readme/*.md`, `__manifest__.py`    |
+
+`odoo-lint` fails the commit when it finds something. To try odoo-lint next
+to your other linters first, use `odoo-lint-advisory` instead: it shows the
+findings on every commit (`--exit-zero`, `verbose`) but never fails it.
+Only the staged files are linted; checks across a module's files (a `.po`
+against its `.pot`, a manifest against the module) read the other files from
+disk.
+
+[Migrating from OCA's tooling](migrating.md) shows which OCA hooks these
+replace.
+
+## hk
+
+[hk](https://hk.jdx.dev) runs the step on the staged files, and `hk fix` (or
+the pre-commit hook) applies the safe fixes. Use the version of your hk in
+the `amends` line.
+
+```text
+amends "package://github.com/jdx/hk/releases/download/v1.10.4/hk@1.10.4#/Config.pkl"
+
+local odoo_lint = new Step {
+  glob = List("**/*.py", "**/*.xml", "**/*.po", "**/*.pot", "**/*.js")
+  check = "odl check --force-exclude {{files}}"
+  fix = "odl check --fix --force-exclude {{files}}"
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps { ["odoo-lint"] = odoo_lint }
+  }
+  ["check"] { steps { ["odoo-lint"] = odoo_lint } }
+  ["fix"] {
+    fix = true
+    steps { ["odoo-lint"] = odoo_lint }
+  }
+}
+```
+
+Steps for [`odl format`](format.md#as-a-hook) and [`odl readme`](readme.md#as-a-hook)
+follow the same pattern.
+
+## CI
 
 `odl check` exits with `1` when it finds violations, so it fails a CI job on
 its own. The output formats below additionally show the findings where you
@@ -7,9 +73,9 @@ review code.
 Until odoo-lint 0.1.0 is released, `uvx` needs `--prerelease allow` to
 install the alpha versions from PyPI.
 
-## GitHub
+### GitHub
 
-### The odoo-lint action
+#### The odoo-lint action
 
 [odoo-lint action](https://github.com/marketplace/actions/odoo-lint) on the
 GitHub Marketplace installs the wheel and runs `odl check`. It shows the
@@ -26,7 +92,7 @@ findings as annotations, or with `sarif: true` sends them to code scanning:
 
 The steps below do the same without the action.
 
-### Annotations on pull requests
+#### Annotations on pull requests
 
 The `github` format prints workflow commands that GitHub shows as annotations
 on the changed lines:
@@ -36,7 +102,7 @@ on the changed lines:
 - run: uvx --prerelease allow --from odoo-linter odl check --output-format github
 ```
 
-### Code scanning (SARIF)
+#### Code scanning (SARIF)
 
 Code scanning keeps track of alerts across runs: new and fixed findings,
 dismissals with a reason, and a link to the rule documentation for every
@@ -78,7 +144,7 @@ jobs:
 
 Pin the actions to a full commit SHA in your own workflows.
 
-## GitLab
+### GitLab
 
 The `gitlab` format is a
 [Code Quality report](https://docs.gitlab.com/ci/testing/code_quality/).
@@ -96,7 +162,7 @@ odoo-lint:
       codequality: gl-code-quality-report.json
 ```
 
-## Forgejo and Gitea
+### Forgejo and Gitea
 
 Forgejo and Gitea Actions do not show annotations or code quality reports.
 [reviewdog](https://github.com/reviewdog/reviewdog) can turn the `sarif`
@@ -133,7 +199,7 @@ jobs:
 requests. The checksum is the one reviewdog publishes for v0.21.2. This recipe follows reviewdog's documentation and has not been
 tested by the odoo-lint project on a Forgejo instance; reports are welcome.
 
-## Other tools
+### Other tools
 
 The `sarif` format also works with the VS Code SARIF Viewer, Azure DevOps,
 SonarQube's external issue import and DefectDojo. The `json` format is a plain

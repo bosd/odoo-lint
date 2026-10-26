@@ -55,25 +55,22 @@ linting fast enough to run on every save. odoo-lint applies that idea to Odoo:
 
 ## Status and trade-offs
 
-odoo-lint is young, but it implements all of pylint-odoo's checks: the
-[parity page](parity.md) shows, check by check, that odoo-lint reports exactly
-what pylint-odoo's own test suite expects on its test repository. It can
-replace the pylint-odoo pre-commit hook; please report any difference you see
-on your own code.
+odoo-lint is in alpha: its releases are `0.1.0` pre-releases. It implements
+every check of pylint-odoo, `oca-checks-odoo-module` and `oca-checks-po`,
+and the [parity page](parity.md) shows, check by check, that it reports
+exactly what their own test suites expect. It can replace their pre-commit
+hooks; [Migrating from OCA's tooling](migrating.md) lists what changes.
+Please report any difference you see on your own code.
 
 In OCA repositories ruff runs alongside both; it covers general Python style,
 not the Odoo checks, so odoo-lint replaces pylint-odoo, not ruff.
 
-Skipping type inference is a deliberate trade-off. A few checks need knowledge
-across modules, such as which model a field is inherited from. Those will be
-built on a lightweight index of the addons being linted, not on full
-inference, so they stay fast.
+Skipping type inference is a deliberate trade-off. Checks that need
+knowledge across modules, such as whether a field in a view exists on its
+model or an XML id is defined in a dependency, use a lightweight index of
+the modules' dependencies on the [addons path](configuration.md#addons-path),
+not inference, so they stay fast. Without an addons path they stay silent
+rather than guess.
 
-Support for XML views, `ir.model.access.csv` and more manifest checks is on
-the roadmap.
-
-## Benchmarks
-
-Speed is the reason this project exists, so it has to be measured, not
-claimed. A benchmark section comparing `odl` and pylint-odoo on real OCA
-repositories, with the exact commands and versions used, will be added here.
+Measured timings are on the [benchmarks](benchmarks.md) page; planned work
+is on the [roadmap](roadmap.md).
