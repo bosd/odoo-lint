@@ -278,10 +278,7 @@ fn unresolved_depends(path: &Path, target: OdooVersion, settings: &Settings) -> 
     let Some(core) = core_addons(target) else {
         return Vec::new();
     };
-    let Some(source) = crate::manifest::MANIFEST_FILE_NAMES
-        .iter()
-        .find_map(|name| std::fs::read_to_string(path.join(name)).ok())
-    else {
+    let Some(source) = crate::manifest::manifest_path(path).and_then(|m| std::fs::read_to_string(m).ok()) else {
         return Vec::new();
     };
     let Some(manifest) = crate::manifest::Manifest::parse(&source) else {
@@ -292,14 +289,8 @@ fn unresolved_depends(path: &Path, target: OdooVersion, settings: &Settings) -> 
     };
     let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
     dirs.extend(settings.addons_path.iter().cloned());
-    let found = |name: &str| {
-        core.lines().any(|line| line == name)
-            || dirs.iter().any(|dir| {
-                crate::manifest::MANIFEST_FILE_NAMES
-                    .iter()
-                    .any(|m| dir.join(name).join(m).is_file())
-            })
-    };
+    let found =
+        |name: &str| core.lines().any(|line| line == name) || crate::manifest::find_module_dir(&dirs, name).is_some();
     crate::rules::manifest::string_elements(depends)
         .into_iter()
         .map(|(name, _)| name)

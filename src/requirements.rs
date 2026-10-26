@@ -4,7 +4,7 @@
 //! module's package first: whool's names for common imports (`dateutil` is
 //! `python-dateutil`) and its `external_dependencies_override` apply.
 
-use crate::manifest::{Manifest, MANIFEST_FILE_NAMES};
+use crate::manifest::Manifest;
 use crate::pyliteral::is_truthy;
 use regex::Regex;
 use ruff_python_ast::Expr;
@@ -89,10 +89,7 @@ fn overrides(module: &Path) -> HashMap<String, Vec<String>> {
 
 /// The Python requirements of one module, or none when it is not installable.
 fn module_requirements(module: &Path) -> Vec<String> {
-    let Some(source) = MANIFEST_FILE_NAMES
-        .iter()
-        .find_map(|name| std::fs::read_to_string(module.join(name)).ok())
-    else {
+    let Some(source) = crate::manifest::manifest_path(module).and_then(|m| std::fs::read_to_string(m).ok()) else {
         return Vec::new();
     };
     let Some(manifest) = Manifest::parse(&source) else {

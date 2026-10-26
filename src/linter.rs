@@ -2,7 +2,7 @@
 
 use crate::checker::{JsContext, ManifestContext, ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
-use crate::manifest::{is_manifest_file_name, Manifest, MANIFEST_FILE_NAMES};
+use crate::manifest::{is_manifest_file_name, is_module_dir, manifest_path, Manifest};
 use crate::po::{PoError, PoFile};
 use crate::rules::po::PoContext;
 use crate::rules::python::inherit::{self, InheritFact, CONSIDER_MERGING_CLASSES_INHERITED};
@@ -290,7 +290,7 @@ pub fn addons_path_warnings(paths: &[PathBuf], settings: &Settings) -> Vec<Strin
             .into_iter()
             .flatten()
             .flatten()
-            .any(|entry| MANIFEST_FILE_NAMES.iter().any(|m| entry.path().join(m).is_file()))
+            .any(|entry| is_module_dir(&entry.path()))
         {
             warnings.push(format!(
                 "addons path folder {} holds no module; name the folders that hold them (for Odoo: addons and odoo/addons)",
@@ -349,7 +349,7 @@ fn resolve_modules(files: &[PathBuf], sources: &Sources) -> HashMap<PathBuf, Opt
 }
 
 fn load_module(dir: &Path, sources: &Sources) -> Option<Arc<ModuleInfo>> {
-    let manifest_path = MANIFEST_FILE_NAMES.iter().map(|n| dir.join(n)).find(|p| p.is_file())?;
+    let manifest_path = manifest_path(dir)?;
     let source = sources.read_to_string(&manifest_path).ok()?;
     let name = (if dir.as_os_str().is_empty() {
         Path::new(".")

@@ -6,9 +6,9 @@
 use crate::checker::ModuleInfo;
 use crate::definition::{python_target_in, resolve, xml_target_in, Definition, Target};
 use crate::index::{closure, closure_at, Closure};
-use crate::manifest::MANIFEST_FILE_NAMES;
+use crate::manifest::module_dirs;
 use crate::sources::Sources;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Folders of a module that hold no references worth showing.
@@ -52,27 +52,6 @@ fn occurrences<'a>(text: &'a str, needle: &'a str) -> impl Iterator<Item = usize
 fn same(a: &Definition, b: &Definition) -> bool {
     let canonical = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     a.line == b.line && canonical(&a.path) == canonical(&b.path)
-}
-
-/// The module folders of `dirs`, each once.
-fn module_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
-    let mut seen = HashSet::new();
-    let mut found = Vec::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
-        let mut entries: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-        entries.sort();
-        for path in entries {
-            if !MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()) {
-                continue;
-            }
-            let key = path.canonicalize().unwrap_or_else(|_| path.clone());
-            if seen.insert(key) {
-                found.push(path);
-            }
-        }
-    }
-    found
 }
 
 /// The Python and XML files of a module.

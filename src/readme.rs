@@ -4,6 +4,7 @@
 //! page Odoo shows for the module). Byte for byte the output of the
 //! template's Python generator, in milliseconds instead of seconds.
 
+use crate::manifest::is_module_dir;
 use comrak::{markdown_to_html, Options};
 use std::path::{Path, PathBuf};
 
@@ -129,17 +130,13 @@ pub fn outputs(module: &Path) -> Option<Vec<(PathBuf, String)>> {
     ])
 }
 
-fn is_module(dir: &Path) -> bool {
-    dir.join("__manifest__.py").is_file()
-}
-
 /// The modules under `paths`: folders with a manifest, and the module of
 /// each file given (as pre-commit passes the changed files).
 pub fn modules(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
     for path in paths {
         if path.is_file() || !path.exists() {
-            if let Some(module) = path.ancestors().skip(1).find(|d| is_module(d)) {
+            if let Some(module) = path.ancestors().skip(1).find(|d| is_module_dir(d)) {
                 found.push(module.to_path_buf());
             }
             continue;
@@ -151,7 +148,7 @@ pub fn modules(paths: &[PathBuf]) -> Vec<PathBuf> {
                 && (name.starts_with('.') || SKIPPED_DIRS.contains(&name.as_ref())))
         });
         for entry in walker.flatten() {
-            if entry.file_type().is_dir() && is_module(entry.path()) {
+            if entry.file_type().is_dir() && is_module_dir(entry.path()) {
                 found.push(entry.path().to_path_buf());
             }
         }
