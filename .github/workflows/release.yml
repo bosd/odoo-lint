@@ -276,7 +276,9 @@ jobs:
 
   publish_release:
     name: Sign and Publish to PyPI
-    needs: [build_wheels, build_sdist]
+    # A release without the editors' assets stays off PyPI: it is immutable,
+    # so the fix is a new version.
+    needs: [verify_assets, build_wheels, build_sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi

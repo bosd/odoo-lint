@@ -367,6 +367,36 @@ fn findings_for_odoo_19() {
 }
 
 #[test]
+fn search_groups_in_views_that_extend_a_search_view() {
+    let dir = tempfile::tempdir().unwrap();
+    let views = r#"<odoo>
+    <record id="view_order_filter" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <filter name="my_quotation" position="after">
+                <group expand="0" string="Group By">
+                    <filter name="by_team" context="{'group_by': 'team_id'}"/>
+                </group>
+            </filter>
+        </field>
+    </record>
+    <record id="view_order_form" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="after">
+                <group string="Delivery"><field name="note"/></group>
+            </field>
+        </field>
+    </record>
+</odoo>
+"#;
+    module(dir.path(), "19.0.1.0.0", &[("views/views.xml", views)], "");
+    assert_eq!(codes(dir.path(), "U1917", V19), [("U1917".to_string(), 7)]);
+}
+
+#[test]
 fn fixes_for_odoo_19() {
     let dir = tempfile::tempdir().unwrap();
     let module = module(dir.path(), "19.0.1.0.0", &[("views/views.xml", VIEWS_18)], PYTHON_18);
@@ -1314,6 +1344,18 @@ fn renamed_fields_get_their_new_name() {
 }
 
 #[test]
+fn a_guard_on_the_new_name_keeps_the_old_one() {
+    let dir = tempfile::tempdir().unwrap();
+    module(
+        dir.path(),
+        "19.0.1.0.0",
+        &[],
+        "from odoo import models\n\n\nclass SaleOrderLine(models.Model):\n    _inherit = \"sale.order.line\"\n\n    def taxes(self):\n        if \"tax_ids\" not in self._fields:\n            return self.tax_id\n        return False\n",
+    );
+    assert!(codes(dir.path(), "U1990", V19).is_empty());
+}
+
+#[test]
 fn a_removed_field_the_module_defines_again_is_its_own() {
     let dir = tempfile::tempdir().unwrap();
     module(
@@ -1388,5 +1430,29 @@ fn renamed_xml_ids_get_their_new_name() {
     assert!(
         python.contains("self.env.ref(\"base.module_category_supply_chain\")"),
         "{python}"
+    );
+}
+
+#[test]
+fn list_columns_added_through_an_xpath_keep_their_attrs() {
+    let view = r#"<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_order_form" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/tree" position="inside">
+                <field name="g" invisible="1" attrs="{'invisible': [('x', '=', False)]}"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let module = module(dir.path(), "17.0.1.0.0", &[("views/order.xml", view)], PYTHON_16);
+    let xml = fixed(dir.path(), "U17", V17, &module.join("views/order.xml"), FixMode::Unsafe);
+    assert!(
+        xml.contains(r#"<field name="g" column_invisible="1" invisible="not x"/>"#),
+        "{xml}"
     );
 }

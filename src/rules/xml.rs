@@ -1481,8 +1481,10 @@ fn check_field_eval(ctx: &XmlContext, reporter: &mut XmlReporter) {
                     let open = file.source[field.range().start..tag_end - 1]
                         .trim_end_matches('/')
                         .trim_end();
+                    // From the tag's own start: a start tag over several lines
+                    // is reported where it ends, but replaced whole.
                     let edits = vec![Edit::replace(
-                        at(file, field),
+                        field.range().start,
                         field.range().end,
                         format!("{open} eval=\"{value}\" />"),
                     )];

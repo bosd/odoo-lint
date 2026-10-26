@@ -2,7 +2,7 @@
 //! (ODOO005) and models (ODOO006) that do not exist where a module can see
 //! them. Silent without the dependencies of a module (see `addons-path`).
 
-use crate::index::{closure, module_index, Closure, ModuleIndex, Position};
+use crate::index::{closure, module_index, modules_mentioning, Closure, ModuleIndex, Position};
 use crate::manifest::MANIFEST_FILE_NAMES;
 use crate::rules::module::{ModuleContext, ModuleReporter};
 use crate::rules::{Check, Rule};
@@ -21,9 +21,9 @@ pub const XML_ID_NOT_FOUND: Rule = Rule {
 
 Checks the XML ids a module refers to: `ref="..."`, `parent` and `action`
 of menus, `inherit_id`, `groups`, `t-call`, `%(...)d`, `ref('...')` in
-`eval`, the `:id` columns of CSV files, records that override another
-module's (`id="base.main_company"`), and `env.ref()` and `has_group()` in
-Python.
+`eval`, the `:id` columns of CSV files, and `env.ref()` and `has_group()` in
+Python. A record with another module's id (`id="base.main_company"`) is not
+checked: Odoo creates it when it is missing.
 
 It reports an id that does not exist, one from a module that `depends` does
 not reach, and one of the module itself that is defined in a later data
@@ -34,7 +34,9 @@ file (or further down, or only in demo data).
 Odoo resolves the reference while it loads the record: the module fails to
 install with "External ID not found". Outside `depends`, it works only on a
 database where the other module happens to be installed. In Python, the
-error comes when the code runs.
+error comes when the code runs. A `groups` of an element in a view is the
+exception: for a missing group Odoo only logs a warning, and the element
+is shown to no one.
 
 ## Configuration
 
@@ -411,21 +413,19 @@ fn check_xml_ids(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
 
 /// The modules in `dirs` that define `model` with `_name`.
 fn modules_defining_model(dirs: &[PathBuf], model: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()) {
-                continue;
-            }
-            let Some(module) = module_index(&path) else { continue };
-            if module.classes.iter().any(|c| c.name.as_deref() == Some(model)) && !found.contains(&module.name) {
-                found.push(module.name.clone());
-            }
-        }
-    }
+    let mut found: Vec<String> = modules_mentioning(dirs, &[model])
+        .into_iter()
+        .filter(|module| {
+            // `_name` with the same `_inherit` extends the model.
+            module
+                .classes
+                .iter()
+                .any(|c| c.name.as_deref() == Some(model) && !c.inherit.iter().any(|i| i == model))
+        })
+        .map(|module| module.name.clone())
+        .collect();
     found.sort();
+    found.dedup();
     found
 }
 

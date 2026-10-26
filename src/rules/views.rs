@@ -272,7 +272,11 @@ fn check_view_fields(ctx: &XmlContext, reporter: &mut XmlReporter) {
             for root in arch.children().filter(Node::is_element) {
                 if extension {
                     if root.attribute("position").is_some() || is(root, "xpath") {
-                        // The arch is a single spec.
+                        // The arch is a single spec. Odoo only reads the
+                        // `<attribute>`s of an `attributes` (or `move`) spec.
+                        if matches!(root.attribute("position"), Some("attributes" | "move")) {
+                            continue;
+                        }
                         let scope = checker.spec_scope(root, model);
                         checker.children(root, &scope);
                     } else {

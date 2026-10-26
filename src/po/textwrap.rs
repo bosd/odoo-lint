@@ -13,10 +13,14 @@ const WHITESPACE: &[char] = &['\t', '\n', '\x0b', '\x0c', '\r', ' '];
 static WORDSEP_RE: LazyLock<Regex> = LazyLock::new(|| {
     let ws = r"[\t\n\x0b\x0c\r ]";
     let nws = r"[^\t\n\x0b\x0c\r ]";
-    let wp = r#"[\w!"'&.,?]"#;
-    let lt = r"[^\d\W]";
+    // Python's `\w` is letters, numbers and `_`, without the combining marks
+    // the regex crate's `\w` has (Thai, Devanagari, Arabic vowel signs).
+    let w = r"[\p{L}\p{N}_]";
+    let wp = r#"[\p{L}\p{N}_!"'&.,?]"#;
+    // `[^\d\W]`: a word character that is not a decimal digit.
+    let lt = r"[\p{L}\p{Nl}\p{No}_]";
     let pattern = format!(
-        r"({ws}+|(?<={wp})-{{2,}}(?=\w)|{nws}+?(?:-(?:(?<={lt}{{2}}-)|(?<={lt}-{lt}-))(?={lt}-?{lt})|(?={ws}|\z)|(?<={wp})(?=-{{2,}}\w)))"
+        r"({ws}+|(?<={wp})-{{2,}}(?={w})|{nws}+?(?:-(?:(?<={lt}{{2}}-)|(?<={lt}-{lt}-))(?={lt}-?{lt})|(?={ws}|\z)|(?<={wp})(?=-{{2,}}{w})))"
     );
     Regex::new(&pattern).expect("valid wordsep regex")
 });
@@ -184,6 +188,21 @@ pub fn wrap(text: &str, options: &Options) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn combining_marks_are_not_word_characters() {
+        // polib keeps "ไอริช-อเมริกัน" together: `ช` is a letter, the marks
+        // around it are not word characters in Python.
+        let text = "ผู้ให้บริการชำระเงินแบบไอริช-อเมริกันที่ครอบคลุมสหรัฐอเมริกาและอื่นๆ อีกมากมาย";
+        let lines = wrap(
+            text,
+            &Options {
+                width: 76,
+                ..Options::default()
+            },
+        );
+        assert!(lines[0].contains("ไอริช-อเมริกัน"), "{lines:?}");
+    }
 
     #[test]
     fn splits_like_python() {

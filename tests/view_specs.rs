@@ -175,3 +175,47 @@ fn silent_without_all_dependencies() {
     module(&addons, "acme_sale", &["sale"], VIEWS);
     assert!(messages(&[addons], Vec::new()).is_empty());
 }
+
+#[test]
+fn an_extension_of_another_model_is_not_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = odoo(dir.path());
+    module(
+        &core,
+        "users",
+        &["base"],
+        r#"<odoo>
+    <record id="partner_form" model="ir.ui.view">
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.partner_form"/>
+        <field name="arch" type="xml">
+            <group name="main" position="after"><group name="users"/></group>
+        </field>
+    </record>
+</odoo>
+"#,
+    );
+    let addons = dir.path().join("addons");
+    module(
+        &addons,
+        "acme_users",
+        &["users"],
+        r#"<odoo>
+    <record id="partner_form" model="ir.ui.view">
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='users']" position="inside"/>
+        </field>
+    </record>
+</odoo>
+"#,
+    );
+    assert_eq!(
+        messages(std::slice::from_ref(&addons), vec![core]),
+        vec![(
+            6,
+            "`<xpath expr=\"//group[@name='users']\">` matches nothing in `base.partner_form`, as the modules `depends` reaches build it".to_string()
+        )]
+    );
+}

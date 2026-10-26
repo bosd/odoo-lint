@@ -594,7 +594,9 @@ impl PoFile {
 }
 
 /// polib's `natural_sort` key: digit runs compare as numbers, the rest
-/// case-insensitively.
+/// case-insensitively. Like Python's `re.split('([0-9]+)', key)`, the key
+/// starts and ends with text, empty next to a digit at either end, so text
+/// and numbers alternate and `1Key` sorts before `X-9`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum NaturalPart {
     Text(String),
@@ -603,6 +605,9 @@ enum NaturalPart {
 
 fn natural_key(s: &str) -> Vec<NaturalPart> {
     let mut parts = Vec::new();
+    if s.starts_with(|c: char| c.is_ascii_digit()) {
+        parts.push(NaturalPart::Text(String::new()));
+    }
     let mut current = String::new();
     let mut digits = false;
     for c in s.chars() {
@@ -615,6 +620,9 @@ fn natural_key(s: &str) -> Vec<NaturalPart> {
     }
     if !current.is_empty() {
         parts.push(natural_part(&current, digits));
+    }
+    if digits {
+        parts.push(NaturalPart::Text(String::new()));
     }
     parts
 }
@@ -781,6 +789,13 @@ impl PoEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn natural_sort_puts_a_leading_digit_first_like_polib() {
+        let mut keys = vec!["X-9", "1Key", "X-10", "a"];
+        keys.sort_by_key(|k| natural_key(k));
+        assert_eq!(keys, ["1Key", "a", "X-9", "X-10"]);
+    }
 
     const SAMPLE: &str = r#"# Translation of Odoo Server.
 # This file contains the translation of the following modules:

@@ -9,4 +9,4 @@ repository = "https://github.com/bosd/odoo-lint"
 [language_servers.odoo-lint]
 name = "odoo-lint"
 # XML and PO come from the `xml` and `po` extensions of the registry.
-languages = ["Python", "XML", "PO"]
+languages = ["Python", "XML", "PO", "JavaScript"]

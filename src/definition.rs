@@ -409,15 +409,6 @@ fn find_module(dirs: &[PathBuf], name: &str) -> Option<std::sync::Arc<crate::ind
         .and_then(|path| module_index(&path))
 }
 
-/// Every module in `dirs`, for definitions outside the closure.
-fn all_modules(dirs: &[PathBuf]) -> impl Iterator<Item = std::sync::Arc<crate::index::ModuleIndex>> + '_ {
-    dirs.iter()
-        .filter_map(|dir| std::fs::read_dir(dir).ok())
-        .flat_map(|entries| entries.flatten())
-        .filter(|entry| MANIFEST_FILE_NAMES.iter().any(|m| entry.path().join(m).is_file()))
-        .filter_map(|entry| module_index(&entry.path()))
-}
-
 fn at((path, line): (PathBuf, usize)) -> Definition {
     Definition {
         path,
@@ -440,11 +431,12 @@ pub(crate) fn resolve(closure: Option<&Closure>, dirs: &[PathBuf], target: Targe
             if let Some(found) = closure.and_then(|c| c.model_location(&model)) {
                 return Some(at(found));
             }
-            all_modules(dirs)
+            crate::index::modules_mentioning(dirs, &[model.as_str()])
+                .iter()
                 .find_map(|m| {
                     m.classes
                         .iter()
-                        .find(|c| c.name.as_deref() == Some(model.as_str()))
+                        .find(|c| c.name.as_deref() == Some(model.as_str()) && !c.inherit.contains(&model))
                         .map(|c| (c.file.clone(), c.line))
                 })
                 .map(at)

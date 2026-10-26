@@ -53,12 +53,19 @@ models = ["ir.config_parameter"]
 ## Limits
 
 A many2one is not reported: Odoo reads its `display_name` as superuser.
+Extensions of the Users and Groups forms (`base.view_users_form`,
+`base.view_groups_form`) are not checked: only the Settings menus open
+them.
 A field with `groups` counts as restricted, whichever groups they are.
 "#,
     check: Check::Xml(check_restricted),
     min_odoo: None,
     max_odoo: None,
 };
+
+/// Forms of models users may read that only the Settings menus open: their
+/// extensions are seen by administrators alone.
+const ADMIN_VIEWS: &[&str] = &["base.view_users_form", "base.view_groups_form"];
 
 /// Whether `node` or an element around it in the arch has `groups`.
 fn gated(arch: Node, node: Node) -> bool {
@@ -117,6 +124,9 @@ fn check_restricted(ctx: &XmlContext, reporter: &mut XmlReporter) {
                 continue;
             }
             let inherit_id = child_field(record, "inherit_id").and_then(|f| f.attribute("ref"));
+            if inherit_id.is_some_and(|id| ADMIN_VIEWS.contains(&id)) {
+                continue;
+            }
             let extension = inherit_id.is_some();
             let parent_type = inherit_id.and_then(|id| {
                 let id = if id.contains('.') {

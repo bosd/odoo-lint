@@ -31,6 +31,17 @@ from pathlib import Path
 OUT = Path(__file__).resolve().parent.parent / "src" / "rules" / "upgrade" / "data"
 
 FIELD_LINE = re.compile(r"^(\S+)\s*/\s*(\S+)\s*/\s*(\S+) \(([^)]*)\)\s*: (.*)$")
+# Models OpenUpgrade renames with their data into a model of another shape
+# (other fields, one record per something else): renaming them in a module
+# is no fix, so they are reported like merged models.
+RESHAPED = {
+    19: {
+        "hr.contract",
+        "procurement.group",
+        "product.packaging",
+        "stock.valuation.layer",
+    },
+}
 MODEL_LINE = re.compile(r"^(obsolete|new) model (\S+)")
 
 
@@ -192,6 +203,9 @@ def generate(root, odoo, major):
                     fields.setdefault((item[0], item[2]), item[3])
                 elif name == "rename_xmlids" and len(item) == 2 and item[0] != item[1]:
                     xmlids.setdefault(item[0], item[1])
+    for old in RESHAPED.get(major, ()):
+        if old in models:
+            merged[old] = models.pop(old)
     deleted, added = set(), set()
     obsolete, new = set(), set()
     for path in sorted(scripts.glob(f"*/{major}.0.*/upgrade_analysis.txt")):

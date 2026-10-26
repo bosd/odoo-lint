@@ -136,10 +136,13 @@ pub fn collect_files_matching(
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
+        // Patterns usually name folders: check the path's folders too.
+        if settings.force_exclude && root.ancestors().any(|p| settings.is_excluded(p)) {
+            continue;
+        }
         if root.is_file() {
-            // Patterns usually name folders: check the file's folders too.
-            let excluded = settings.force_exclude && root.ancestors().any(|p| settings.is_excluded(p));
-            if !excluded {
+            // Hooks may pass every changed file: only lint what odoo-lint reads.
+            if root.extension().is_some_and(matches) {
                 files.push(root.clone());
             }
             continue;
@@ -163,9 +166,21 @@ pub fn collect_files_matching(
                 .map(|e| e.into_path()),
         );
     }
+    // `a.py` and `./a.py` are the same file.
+    for file in &mut files {
+        *file = file
+            .components()
+            .filter(|c| *c != std::path::Component::CurDir)
+            .collect();
+    }
     files.sort();
     files.dedup();
     files
+}
+
+/// The paths of `paths` that do not exist: a typo must not pass as clean.
+pub fn missing_paths(paths: &[PathBuf]) -> Vec<&PathBuf> {
+    paths.iter().filter(|p| !p.exists()).collect()
 }
 
 fn is_linted_extension(extension: &std::ffi::OsStr) -> bool {
@@ -193,10 +208,11 @@ fn lint_js_file(
     settings: &Settings,
     sources: &Sources,
 ) -> Vec<Violation> {
+    let ignores = settings.file_ignores(path);
     let js_rules: Vec<&Rule> = rules
         .iter()
         .copied()
-        .filter(|rule| rule.check.js().is_some() && !settings.is_ignored_in_file(path, rule))
+        .filter(|rule| rule.check.js().is_some() && !ignores.ignores(rule))
         .collect();
     if js_rules.is_empty() || !is_module_js(path) {
         return Vec::new();
@@ -380,11 +396,8 @@ fn lint_file(
         return (Vec::new(), Vec::new());
     };
     let file_path = path.to_string_lossy();
-    let rules: Vec<&Rule> = rules
-        .iter()
-        .copied()
-        .filter(|rule| !settings.is_ignored_in_file(path, rule))
-        .collect();
+    let ignores = settings.file_ignores(path);
+    let rules: Vec<&Rule> = rules.iter().copied().filter(|rule| !ignores.ignores(rule)).collect();
     let line_index = LineIndex::from_source_text(&source);
     let mut reporter = Reporter::new(&file_path, &source, &line_index);
 
@@ -468,11 +481,8 @@ fn lint_file(
 /// Lints a `.po`/`.pot` file. Files are read as UTF-8 with universal
 /// newlines, like OCA's `oca-checks-po` reads them.
 fn lint_po_file(path: &Path, rules: &[&'static Rule], settings: &Settings, sources: &Sources) -> Vec<Violation> {
-    let rules: Vec<&Rule> = rules
-        .iter()
-        .copied()
-        .filter(|rule| !settings.is_ignored_in_file(path, rule))
-        .collect();
+    let ignores = settings.file_ignores(path);
+    let rules: Vec<&Rule> = rules.iter().copied().filter(|rule| !ignores.ignores(rule)).collect();
     let file_path = path.to_string_lossy();
     let Ok(bytes) = sources.read(path) else {
         return Vec::new();

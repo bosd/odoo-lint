@@ -270,4 +270,6 @@ working:
 | `# pylint: disable-next=print-used`       | the next line                        |
 | `# pylint: enable=print-used`             | ends an earlier `disable`            |
 
-`all` instead of a rule list disables every rule.
+`all` instead of a rule list disables every rule. After a string that spans
+several lines, `# noqa` on its last line also covers the line it starts on,
+as in Ruff.

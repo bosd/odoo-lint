@@ -122,6 +122,13 @@ impl<'a> Views<'a> {
             if view.primary || !view.active || view.arch.is_none() {
                 continue;
             }
+            // Odoo applies an extension to a parent of the same model only.
+            let parent_model = by_id.get(parent).and_then(|(p, _)| p.model.as_ref());
+            if let (Some(model), Some(parent_model)) = (&view.model, parent_model) {
+                if model != parent_model {
+                    continue;
+                }
+            }
             children.entry(parent.clone()).or_default().push((
                 view.priority,
                 *rank,
