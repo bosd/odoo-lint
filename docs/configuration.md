@@ -73,22 +73,7 @@ does.
 
 Which rules run. Each entry is one of:
 
-- `ALL`, every rule except the opt-in ones ([MOD008](rules/MOD008.md),
-  which removes copyright headers, [MOD011](rules/MOD011.md) and
-  [MOD013](rules/MOD013.md), which require `readme/` fragments and tests,
-  [XML103](rules/XML103.md), which reports view extensions appended to a
-  whole form, [ODOO012](rules/ODOO012.md), which
-  suggests widgets for fields in views, as a review would,
-  [U1923](rules/U1923.md), which moves `SUPERUSER_ID` imports to
-  `odoo.api`, and [U2035](rules/U2035.md), which turns
-  `_rec_names_search` lists into tuples; and the style checks OCA's CI
-  does not enforce: [PO007](rules/PO007.md), which every OCA repository
-  disables, and [XML002](rules/XML002.md), [XML003](rules/XML003.md),
-  [XML009](rules/XML009.md) and [XML024](rules/XML024.md), newer than the
-  hooks OCA runs; and [MOD009](rules/MOD009.md), which
-  [W8113](rules/W8113.md) covers. A code prefix such as `ODOO` selects
-  them too, and `upgrade-check` runs U1923 and U2035 only when `select`
-  names them);
+- `ALL`, every rule except the [opt-in ones](#opt-in-rules);
 - a code such as `C8101`, or a name such as `manifest-required-author`;
 - a code prefix such as `C81`, `E` or `ODOO`.
 
@@ -99,6 +84,27 @@ Default: `select = ["ALL"]`, no `ignore`.
 Codes and names of rules ported from pylint-odoo are pylint-odoo's, so a list
 copied from a `.pylintrc` works. Entries for pylint-odoo checks that odoo-lint
 does not implement yet produce a warning, not an error.
+
+### Opt-in rules
+
+`ALL` leaves these out; select them by code or name. A code prefix such as
+`XML` or `ODOO` selects them too.
+
+| Rule                        | Why it is opt-in                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| [MOD008](rules/MOD008.md)   | Many projects require the copyright headers it reports (and removes)                             |
+| [MOD009](rules/MOD009.md)   | [W8113](rules/W8113.md) reports the same redundant `string`                                      |
+| [MOD011](rules/MOD011.md)   | Requires `readme/` fragments, a repository convention                                            |
+| [MOD013](rules/MOD013.md)   | Requires tests in every module with models, a repository convention                              |
+| [ODOO012](rules/ODOO012.md) | Suggests widgets, a style review rather than an error                                            |
+| [PO007](rules/PO007.md)     | Style; every OCA repository disables it                                                          |
+| [U1923](rules/U1923.md)     | Moves `SUPERUSER_ID` imports to `odoo.api`; `upgrade-check` runs it only when `select` names it  |
+| [U2035](rules/U2035.md)     | Turns `_rec_names_search` lists into tuples; `upgrade-check` runs it only when `select` names it |
+| [XML002](rules/XML002.md)   | Style; newer than the hooks OCA runs                                                             |
+| [XML003](rules/XML003.md)   | Style; newer than the hooks OCA runs                                                             |
+| [XML009](rules/XML009.md)   | Style; newer than the hooks OCA runs                                                             |
+| [XML024](rules/XML024.md)   | Style; newer than the hooks OCA runs                                                             |
+| [XML103](rules/XML103.md)   | Reports view extensions appended to a whole form, a review rule                                  |
 
 ### `exclude`
 
@@ -174,7 +180,7 @@ wins over `*`, key by key. Values are strings, numbers, booleans or lists of
 them. Without a configured value there is no fix: odoo-lint does not guess a
 license or an author.
 
-### `manifest-website`
+### `rules.manifest-website`
 
 The website every manifest must have; [MOD010](rules/MOD010.md) reports
 another or a missing one, and `odl check --fix` sets it, as OCA's
@@ -187,7 +193,7 @@ website = "https://www.example.com"
 
 Without it the rule does nothing.
 
-### `po-translation-missing`
+### `rules.po-translation-missing`
 
 The languages every module with translatable terms must have a `.po` file
 for; [PO105](rules/PO105.md) reports a missing file, and a file that leaves
@@ -200,7 +206,7 @@ languages = ["nl", "es"]
 
 Without it the rule does nothing.
 
-### `module-icon`
+### `rules.module-icon`
 
 The icon of the modules, and the outdated icons it replaces;
 [MOD012](rules/MOD012.md) reports a module without an icon or with an
@@ -221,7 +227,7 @@ logo), `sha256:<hex>` or a file; `paths` gives the modules under a glob their
 own icon (the longest matching glob wins). Paths are relative to the
 configuration file. Without the table the rule does nothing.
 
-### `missing-depends`
+### `rules.missing-depends`
 
 [ODOO001](rules/ODOO001.md) reports stored computes without
 `@api.depends`. Non-stored computes without dependencies are a deliberate
@@ -231,6 +237,11 @@ pattern (counts, SQL queries); report them too with:
 [tool.odoo-lint.rules.missing-depends]
 non-stored = true
 ```
+
+### `readme`
+
+The layout of the READMEs `odl readme` writes: `style`, `org`, `repo`,
+`branch` and `remove-rst`. See [The `obs` style](readme.md#the-obs-style).
 
 ### Other rule options
 

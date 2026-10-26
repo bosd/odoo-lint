@@ -13,7 +13,9 @@ end-before: <!-- github-only -->
 ---
 ```
 
-New here? Read [why odoo-lint exists](why.md).
+New here? Start with [Getting started](getting-started.md), or read
+[why odoo-lint exists](why.md). Coming from OCA's pre-commit hooks? See
+[Migrating from OCA's tooling](migrating.md).
 
 ```{toctree}
 ---
@@ -21,7 +23,9 @@ hidden:
 maxdepth: 2
 ---
 
+getting-started
 why
+migrating
 usage
 configuration
 integrations

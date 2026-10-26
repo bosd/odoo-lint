@@ -17,10 +17,10 @@
 
 Blazing fast Rust-native linter for Odoo modules. The command is called `odl`.
 
-It checks Python files, manifests, XML and CSV data files and translation
-(`.po`) files, with the checks of OCA's pylint-odoo, `oca-checks-odoo-module`
-and `oca-checks-po`: same names, same messages, same results on their own
-test suites. It also warns about files that do not belong in a module, such
+It checks Python files, manifests, XML and CSV data files, translation
+(`.po`) files and JavaScript (OWL components and templates), with the checks
+of OCA's pylint-odoo, `oca-checks-odoo-module` and `oca-checks-po`: same
+names, same messages, same results on their own test suites. It also warns about files that do not belong in a module, such
 as packages or database dumps committed by accident.
 
 <p align="center">
@@ -32,8 +32,9 @@ as packages or database dumps committed by accident.
 - ⚡ **250x faster** than pylint with pylint-odoo, and still 30x faster on a
   single core
 - ⚖️ **Drop-in for pylint-odoo and OCA's pre-commit checks**: same codes,
-  names and messages, 95/95 checks matching on their own test suites (Python,
-  manifests, XML, `.po`), and `# pylint: disable=` comments keep working
+  names and messages, every check matching on their own test suites
+  ([parity](https://odoo-lint.readthedocs.io/en/latest/parity.html)), and
+  `# pylint: disable=` comments keep working
 - 🔧 **Automatic fixes**, safe and unsafe as in Ruff, for Python, manifests,
   XML and `.po` files (`odl check --fix`, `--diff` to preview)
 - ⬆️ **Upgrade checks**: leftovers of older Odoo versions, such as Bootstrap 4
@@ -89,6 +90,10 @@ DeepSeek Harness and OpenCode.
 
 <!-- mcp-name: io.github.bosd/odoo-lint -->
 
+New to odoo-lint? Start with
+[Getting started](https://odoo-lint.readthedocs.io/en/latest/getting-started.html);
+coming from OCA's pre-commit hooks, read
+[Migrating from OCA's tooling](https://odoo-lint.readthedocs.io/en/latest/migrating.html).
 See the [documentation](https://odoo-lint.readthedocs.io/) for all commands,
 configuration options and rules.
 
@@ -101,7 +106,7 @@ uv sync --all-groups   # builds odl into .venv via maturin
 uv run nox             # pre-commit, fmt, clippy, cargo tests, CLI tests, docs
 ```
 
-See the [development guide](https://odoo-lint.readthedocs.io/en/latest/development.html).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [development guide](https://odoo-lint.readthedocs.io/en/latest/development.html).
 
 ## License
 

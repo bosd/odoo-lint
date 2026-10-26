@@ -8,6 +8,7 @@ Lint addons directories or single files.
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
           [--fix] [--unsafe-fixes] [--diff] [--force-exclude]
+          [--exit-zero]
 ```
 
 `PATHS`
@@ -81,7 +82,7 @@ rule links to its documentation page.
 `gitlab`
 : A GitLab Code Quality report, shown in merge requests.
 
-See [CI integration](integrations.md) for complete workflows.
+See [CI](integrations.md#ci) for complete workflows.
 
 ### Fixes
 
@@ -126,6 +127,15 @@ odl rule manifest-required-author   # or by name
 
 The output is the same as the pages under [rules](rules/index.md).
 
+`--output-format json` prints the same as JSON, for scripts: one object, or
+an array of all rules, with `code`, `name`, `summary`, `doc` (the Markdown
+page) and `min_odoo_version` and `max_odoo_version` (`null` when the rule
+applies to every version).
+
+```bash
+odl rule --output-format json | jq -r '.[] | select(.code | startswith("U")) | .code'
+```
+
 ## `odl upgrade-check`
 
 What modules need to run on a newer Odoo version, per version step. See
@@ -145,54 +155,23 @@ A language server for editors. See [Editors](editors.md).
 For AI coding agents: a Model Context Protocol server, and a post-edit hook.
 See [AI coding agents](ai.md).
 
-## In pre-commit
+## `odl format`
 
-[odoo-lint-pre-commit](https://github.com/bosd/odoo-lint-pre-commit) installs
-the prebuilt wheel, with a tag for every release:
+Formats XML files and stylesheets, moving only whitespace. See
+[Formatting XML and stylesheets](format.md).
 
-```yaml
-repos:
-  - repo: https://github.com/bosd/odoo-lint-pre-commit
-    rev: v0.1.0a17
-    hooks:
-      - id: odoo-lint
-        # args: [--fix]   # also apply the safe fixes
-```
+## `odl readme`
 
-It lints the staged `.py`, `.xml`, `.po` and `.pot` files, with `--force-exclude`,
-and fails the commit when it finds something. To try odoo-lint next to your
-other linters first, use `odoo-lint-advisory` instead: it shows the findings
-on every commit (`--exit-zero`, `verbose`) but never fails it.
-Checks across a module's files read the other files from disk.
+Builds each module's `README.md` and `static/description/index.html` from
+its `readme/` fragments. See [Module READMEs](readme.md).
 
-## In hk
+## `odl requirements`
 
-[hk](https://hk.jdx.dev) runs the step on the staged files, and `hk fix` (or
-the pre-commit hook) applies the safe fixes. Use the version of your hk in
-the `amends` line.
+Writes `requirements.txt` from the modules' `external_dependencies`, as
+OCA's `oca-gen-external-dependencies` does. See
+[requirements.txt](requirements-txt.md).
 
-```text
-amends "package://github.com/jdx/hk/releases/download/v1.10.4/hk@1.10.4#/Config.pkl"
+## In pre-commit, hk and CI
 
-local odoo_lint = new Step {
-  glob = List("**/*.py", "**/*.xml", "**/*.po", "**/*.pot")
-  check = "odl check --force-exclude {{files}}"
-  fix = "odl check --fix --force-exclude {{files}}"
-}
-
-hooks {
-  ["pre-commit"] {
-    fix = true
-    stash = "git"
-    steps { ["odoo-lint"] = odoo_lint }
-  }
-  ["check"] { steps { ["odoo-lint"] = odoo_lint } }
-  ["fix"] {
-    fix = true
-    steps { ["odoo-lint"] = odoo_lint }
-  }
-}
-```
-
-Only the staged files are linted; checks across files of a module (such as a
-`.po` against its `.pot`) see the other files as they are on disk.
+The pre-commit hooks, the hk step and CI workflows are in
+[Pre-commit, hk and CI](integrations.md).

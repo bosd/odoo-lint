@@ -25,13 +25,16 @@ odl requirements --check         # write nothing; exit 1 when out of date
 
 ## As a hook
 
+With pre-commit, the `odoo-lint-requirements` hook of
+[odoo-lint-pre-commit](integrations.md#pre-commit) runs `odl requirements`
+when a manifest or `pyproject.toml` changes:
+
 ```yaml
-- repo: local
+- repo: https://github.com/bosd/odoo-lint-pre-commit
+  rev: v0.1.0a17
   hooks:
-    - id: odl-requirements
-      name: requirements.txt from the manifests
-      entry: odl requirements
-      language: system
-      pass_filenames: false
-      files: (__manifest__\.py|pyproject\.toml)$
+    - id: odoo-lint-requirements
 ```
+
+It replaces OCA's `oca-gen-external-dependencies`; see
+[Migrating from OCA's tooling](migrating.md).
