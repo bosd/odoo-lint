@@ -52,11 +52,36 @@ pub fn lint_files_with(files: &[PathBuf], settings: &Settings, sources: &Sources
     violations.extend(inherit::violations(inherit_facts));
     violations.extend(lint_xml(files, &modules, &rules, settings, sources));
     violations.extend(lint_modules(&modules, &rules, settings, sources));
+    drop_markup_suppressed(&mut violations, sources);
     if let Some(filter) = &settings.violation_filter {
         violations.retain(|v| (filter.0)(v));
     }
     violations.sort();
     violations
+}
+
+/// Drops the findings in XML and PO files that a `noqa` comment there
+/// suppresses. Rules of every kind report in them (module rules, checks
+/// across modules), so this runs on the findings rather than in each rule.
+fn drop_markup_suppressed(violations: &mut Vec<Violation>, sources: &Sources) {
+    let mut by_file: HashMap<String, Option<Suppressions>> = HashMap::new();
+    violations.retain(|v| {
+        let suppressions = by_file.entry(v.file_path.clone()).or_insert_with(|| {
+            let path = Path::new(&v.file_path);
+            let extension = path.extension()?;
+            let read = || sources.read_to_string(path).ok();
+            if extension == "xml" {
+                Some(Suppressions::from_xml(&read()?))
+            } else if is_po_extension(extension) {
+                Some(Suppressions::from_po(&normalize_newlines(&read()?)))
+            } else {
+                None
+            }
+        });
+        suppressions
+            .as_ref()
+            .is_none_or(|s| !s.is_suppressed(v.line, &v.code, &v.name))
+    });
 }
 
 /// The XML rules, per module with a file among `files`. They read every XML

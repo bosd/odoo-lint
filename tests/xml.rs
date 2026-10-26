@@ -299,3 +299,22 @@ fn standard_chatters_become_the_chatter_tag() {
         assert_eq!(result.remaining.len(), if mode == FixMode::Safe { 2 } else { 1 });
     }
 }
+
+#[test]
+fn noqa_comments_suppress_on_their_line_or_the_next() {
+    let dir = tempfile::tempdir().unwrap();
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="acme_xml.a" model="res.partner"/> <!-- noqa: xml-redundant-module-name -->
+    <!-- noqa -->
+    <record id="acme_xml.b" model="res.partner"/>
+    <record id="acme_xml.c" model="res.partner"/>
+</odoo>
+"#;
+    module(dir.path(), "17.0.1.0.0", &[("data.xml", xml)]);
+    let lines: Vec<usize> = findings(dir.path(), &["xml-redundant-module-name"])
+        .into_iter()
+        .map(|(_, line, _)| line)
+        .collect();
+    assert_eq!(lines, vec![6]);
+}
