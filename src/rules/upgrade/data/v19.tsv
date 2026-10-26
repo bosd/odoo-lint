@@ -4,18 +4,18 @@
 model	account_peppol.service.wizard	peppol.config.wizard
 model	hr.attendance.overtime	hr.attendance.overtime.line
 model	hr.candidate.skill	hr.applicant.skill
-model	hr.contract	hr.version
 model	mail.wizard.invite	mail.followers.edit
 model	mrp.batch.produce	mrp.production.serials
-model	procurement.group	stock.reference
-model	product.packaging	product.uom
 model	stock.package_level	stock.package.history
 model	stock.quant.package	stock.package
-model	stock.valuation.layer	product.value
 model	web_editor.assets	website.assets
 model	web_editor.converter.test	html_editor.converter.test
 model	web_editor.converter.test.sub	html_editor.converter.test.sub
 model-merged	hr.candidate	hr.applicant
+model-merged	hr.contract	hr.version
+model-merged	procurement.group	stock.reference
+model-merged	product.packaging	product.uom
+model-merged	stock.valuation.layer	product.value
 model-removed	account.fiscal.position.tax
 model-removed	account.reconcile.model.partner.mapping
 model-removed	bus.presence
