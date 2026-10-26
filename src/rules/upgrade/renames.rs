@@ -109,7 +109,8 @@ fn covered_field(major: u16, model: &str, field: &str, xml: bool) -> bool {
                 17 => model == "ir.ui.view" && field == "field_parent",
                 18 => model == "ir.cron" && matches!(field, "numbercall" | "doall"),
                 19 => {
-                    (model == "res.groups" && field == "users")
+                    // XML016 reports `category_id` of groups.
+                    (model == "res.groups" && matches!(field, "users" | "category_id"))
                         || (matches!(model, "res.partner" | "res.company") && matches!(field, "mobile" | "title"))
                 }
                 _ => false,
@@ -226,7 +227,11 @@ fn check_python(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule, major
         return;
     }
     let own = own_models(ctx.module, ctx.settings);
-    let names: Vec<&str> = found.iter().map(|(_, name, ..)| name.as_str()).collect();
+    // A guard may test the old name or the new one.
+    let names: Vec<&str> = found
+        .iter()
+        .flat_map(|(_, name, _, new, _)| std::iter::once(name.as_str()).chain(*new))
+        .collect();
     let guards = version_guards(suite, &names);
     for (range, name, message, new, concatenated) in &found {
         let skipped = own.contains(name)
@@ -399,18 +404,25 @@ fn check_python_fields(ctx: &PythonContext, reporter: &mut Reporter, rule: &Rule
         return;
     }
     let own = own_fields(ctx.module, ctx.settings);
-    let names: Vec<&str> = uses.iter().map(|u| u.name).collect();
-    let guards = version_guards(suite, &names);
     let mut seen = HashSet::new();
-    for field_use in uses {
-        if guards.iter().any(|g| g.contains_range(field_use.range)) || !seen.insert(field_use.range) {
+    let changed: Vec<(FieldUse, String, Option<&str>)> = uses
+        .into_iter()
+        .filter(|field_use| seen.insert(field_use.range))
+        .filter_map(|field_use| {
+            let (message, new) = field_change(changes, major, &field_use.models, field_use.name, renamed, &own, false)?;
+            Some((field_use, message, new))
+        })
+        .collect();
+    // A guard may test the old name or the new one.
+    let names: Vec<&str> = changed
+        .iter()
+        .flat_map(|(field_use, _, new)| std::iter::once(field_use.name).chain(*new))
+        .collect();
+    let guards = version_guards(suite, &names);
+    for (field_use, message, new) in changed {
+        if guards.iter().any(|g| g.contains_range(field_use.range)) {
             continue;
         }
-        let Some((message, new)) =
-            field_change(changes, major, &field_use.models, field_use.name, renamed, &own, false)
-        else {
-            continue;
-        };
         let violation = reporter.report(rule, field_use.range.start(), message);
         if let Some(new) = new {
             violation.fix = rename_in(ctx.source, field_use.range, field_use.name, new)
@@ -540,6 +552,26 @@ const MODEL_FIELDS: &[&str] = &["model", "res_model", "src_model", "binding_mode
 static XPATH_FIELD: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r#"field\[@name\s*=\s*['"](\w+)['"]"#).unwrap());
 
+/// Whether the content of `node` lands in the sub-view of a field: a field
+/// of the arch, a `<field position="inside">` spec, or an `<xpath>` that goes
+/// past a field (`//field[@name='order_line']/tree`) or into one.
+fn opens_subview(node: roxmltree::Node) -> bool {
+    if is(node, "field") {
+        return matches!(node.attribute("position"), None | Some("inside"));
+    }
+    if !is(node, "xpath") {
+        return false;
+    }
+    let Some(expr) = node.attribute("expr") else {
+        return false;
+    };
+    let steps: Vec<&str> = expr.split('/').filter(|s| !s.trim().is_empty()).collect();
+    match steps.iter().position(|step| step.trim_start().starts_with("field[")) {
+        Some(at) => at + 1 < steps.len() || node.attribute("position").unwrap_or("inside") == "inside",
+        None => false,
+    }
+}
+
 fn check_xml_fields(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, major: u16, renamed: bool) {
     let Some(changes) = changes(major) else { return };
     let own = own_fields(Some(ctx.module), ctx.settings);
@@ -552,11 +584,7 @@ fn check_xml_fields(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, m
                 continue;
             };
             for node in arch.descendants().filter(|n| n.is_element()) {
-                let in_subview = node
-                    .ancestors()
-                    .skip(1)
-                    .take_while(|a| *a != arch)
-                    .any(|a| is(a, "field") && a.attribute("position").is_none());
+                let in_subview = node.ancestors().skip(1).take_while(|a| *a != arch).any(opens_subview);
                 if in_subview {
                     continue;
                 }
@@ -569,7 +597,10 @@ fn check_xml_fields(ctx: &XmlContext, reporter: &mut XmlReporter, rule: &Rule, m
                         let start = expr.range_value().start;
                         // The raw value: entities would shift the offsets.
                         let raw = file.source.get(expr.range_value()).unwrap_or_default();
-                        for captures in XPATH_FIELD.captures_iter(raw) {
+                        // Only the first field is the view model's: those after it
+                        // (`.../field[@name='order_line']/tree/field[@name='x']`)
+                        // are its sub-view's.
+                        for captures in XPATH_FIELD.captures_iter(raw).take(1) {
                             let name = captures.get(1).expect("group");
                             uses.push((node, model.to_string(), start + name.start()..start + name.end()));
                         }
@@ -692,15 +723,19 @@ install, and Python code fails where it reads the field.
 ## Fix safety
 
 Safe for a rename: the new name replaces the old one. A merged model is
-reported without a fix, as its fields and behaviour changed too.
+reported without a fix, as its fields and behaviour changed too; so is a
+model renamed into one of another shape (`product.packaging` into
+`product.uom` in 19.0).
 
 ## Limitations
 
 The data comes from the migration scripts of
 [OpenUpgrade](https://github.com/OCA/OpenUpgrade), so it covers Odoo's own
-modules. Docstrings, migration scripts, version guards
-(`if "x" in self.env:`), and models and fields the module defines itself
-are skipped, as are the names other rules report (`groups_id`, ...).
+modules. Docstrings, migration scripts, version guards on the old or the
+new name (`if "x" in self.env:`), and models and fields the module defines
+itself are skipped, as are the names other rules report (`groups_id`, ...).
+Fields reached through another field (`line.tax_id` in a loop over
+`self.order_line`) are not checked.
 "#
             ),
             check: Check::PythonXml(
@@ -761,6 +796,26 @@ version_rules!(RENAMED_19, REMOVED_19, 19);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_past_a_field_of_an_xpath_is_in_its_sub_view() {
+        let opens = |spec: &str| {
+            let doc = roxmltree::Document::parse(spec).expect("valid");
+            opens_subview(doc.root_element())
+        };
+        assert!(opens(
+            r#"<xpath expr="//field[@name='move_ids']/list/field[@name='name']" position="after"/>"#
+        ));
+        assert!(opens(
+            r#"<xpath expr="//field[@name='order_line']" position="inside"/>"#
+        ));
+        assert!(opens(r#"<field name="order_line" position="inside"/>"#));
+        assert!(!opens(
+            r#"<xpath expr="//field[@name='partner_id']" position="after"/>"#
+        ));
+        assert!(!opens(r#"<field name="partner_id" position="after"/>"#));
+        assert!(!opens(r#"<xpath expr="//group[@name='main']" position="inside"/>"#));
+    }
 
     #[test]
     fn the_data_parses() {

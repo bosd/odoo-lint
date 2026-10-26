@@ -46,14 +46,40 @@ fn is_list(node: roxmltree::Node) -> bool {
 }
 
 /// A field or button of a list view, outside its `<header>`: where Odoo
-/// 16 read a plain `invisible` as `column_invisible`.
+/// 16 read a plain `invisible` as `column_invisible`. In an extension view
+/// the list may only show in the `<xpath>` that puts the node there.
 fn is_list_column(node: roxmltree::Node) -> bool {
     (is(node, "field") || is(node, "button"))
         && node
             .ancestors()
             .skip(1)
-            .find(|a| is(*a, "header") || VIEW_TYPES.iter().any(|t| is(*a, t)))
-            .is_some_and(is_list)
+            .find(|a| is(*a, "header") || is(*a, "xpath") || VIEW_TYPES.iter().any(|t| is(*a, t)))
+            .is_some_and(|a| {
+                if is(a, "xpath") {
+                    xpath_puts_in_list(a)
+                } else {
+                    is_list(a)
+                }
+            })
+}
+
+/// Whether an `<xpath>` spec puts its content in a list: `.../tree` (or
+/// `list`) with `position="inside"`, or next to a node of one.
+fn xpath_puts_in_list(spec: roxmltree::Node) -> bool {
+    let Some(expr) = spec.attribute("expr") else {
+        return false;
+    };
+    let steps: Vec<&str> = expr
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.split('[').next().unwrap_or(s).trim())
+        .collect();
+    let list = |step: Option<&&str>| step.is_some_and(|s| *s == "tree" || *s == "list");
+    match spec.attribute("position").unwrap_or("inside") {
+        "inside" => list(steps.last()),
+        "before" | "after" | "replace" => list(steps.len().checked_sub(2).and_then(|i| steps.get(i))),
+        _ => false,
+    }
 }
 
 fn constant(value: &str) -> Option<bool> {
