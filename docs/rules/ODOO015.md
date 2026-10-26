@@ -16,9 +16,11 @@ module the view's module can see registers that name in the `fields` or
 
 ## Why is this bad?
 
-The view loads, but the web client fails where it renders the field:
-"Missing widget: ..." for every user who opens it. Usually a dependency is
-missing from the manifest, or the widget was renamed in a newer Odoo.
+The view loads, but the widget is not there: Odoo 17 and later log a warning
+in the browser and show the field with its type's default widget, so the
+intended behaviour (avatars, a status bar, a phone link) silently goes.
+Usually a dependency is missing from the manifest, or the widget was renamed
+in a newer Odoo.
 
 ## Limitations
 

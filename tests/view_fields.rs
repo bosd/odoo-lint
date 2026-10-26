@@ -215,3 +215,24 @@ class Mixin(models.AbstractModel):
         ]
     );
 }
+
+#[test]
+fn a_root_attributes_spec_only_holds_attributes() {
+    let views = r#"<odoo>
+    <record id="view_order" model="ir.ui.view">
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']//list" position="attributes">
+                <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let core = odoo(dir.path());
+    let addons = dir.path().join("addons");
+    module(&addons, "acme_sale", &["sale"], "", Some(views));
+    assert!(messages(std::slice::from_ref(&addons), vec![core]).is_empty());
+}
