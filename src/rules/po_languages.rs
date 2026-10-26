@@ -182,6 +182,10 @@ fn check_translations(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
 /// the configured `language`.
 fn covers(stem: &str, language: &str) -> bool {
     match language.split_once('_') {
+        // Odoo also reads `es_419.po` for the Spanishes of Latin America and
+        // `zh_TW.po` for Hong Kong Chinese (`get_base_langs`).
+        Some(("es", _)) if stem == "es_419" && language != "es_ES" => true,
+        Some(_) if stem == "zh_TW" && language == "zh_HK" => true,
         Some((base, _)) => stem == language || stem == base,
         None => stem == language || stem.split_once('_').is_some_and(|(base, _)| base == language),
     }
@@ -259,6 +263,9 @@ mod tests {
         assert!(!covers("nl_NL", "nl_BE"));
         assert!(!covers("es", "nl"));
         assert!(!covers("nld", "nl"));
+        assert!(covers("es_419", "es_MX"));
+        assert!(!covers("es_419", "es_ES"));
+        assert!(covers("zh_TW", "zh_HK"));
     }
 
     #[test]

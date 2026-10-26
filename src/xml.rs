@@ -300,8 +300,11 @@ fn disabled_in(comment: &str) -> Vec<String> {
 fn first_tag(source: &str) -> (String, usize) {
     let mut buffer: Vec<&str> = Vec::new();
     let mut line_number = 0;
+    // A BOM or CRLF line endings do not hide the declaration (OCA's check
+    // misses it then, and a fix would add a second one).
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     for (index, line) in source.split_inclusive('\n').enumerate() {
-        let stripped = line.trim_matches([' ', '\n']);
+        let stripped = line.trim_matches([' ', '\n', '\r']);
         if buffer.is_empty() && stripped.starts_with('<') {
             buffer.push(stripped);
             line_number = index + 1;
@@ -410,6 +413,15 @@ mod tests {
             ("<?xml version='1.0' encoding='utf-8'?>".to_string(), 2)
         );
         assert_eq!(first_tag("<odoo>\n</odoo>\n"), ("<odoo>".to_string(), 1));
+    }
+
+    #[test]
+    fn first_tag_ignores_crlf_and_a_bom() {
+        let header = "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+        assert_eq!(
+            first_tag(&format!("\u{feff}{header}\r\n<odoo/>\r\n")),
+            (header.to_string(), 1)
+        );
     }
 
     #[test]

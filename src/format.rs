@@ -61,9 +61,9 @@ fn skeleton(source: &str) -> Result<Vec<Item>, String> {
     Ok(items)
 }
 
-/// `value`: whether the element's text is a value as written: a `<field>`
-/// of a record, or a `<value>`, which Odoo loads without stripping.
-fn walk(node: roxmltree::Node, value: bool, items: &mut Vec<Item>) {
+/// `verbatim`: inside a record's `type="html"` field, whose children Odoo
+/// stores with their tails, so every bit of text is content.
+fn walk(node: roxmltree::Node, verbatim: bool, items: &mut Vec<Item>) {
     let name = node.tag_name();
     let qualified = match name.namespace() {
         Some(ns) => format!("{{{ns}}}{}", name.name()),
@@ -84,15 +84,17 @@ fn walk(node: roxmltree::Node, value: bool, items: &mut Vec<Item>) {
         match child.node_type() {
             roxmltree::NodeType::Element => {
                 let tag = child.tag_name().name();
-                let holds_value = (tag == "field" && node.tag_name().name() == "record") || tag == "value";
-                walk(child, holds_value, items);
+                let html =
+                    tag == "field" && node.tag_name().name() == "record" && child.attribute("type") == Some("html");
+                walk(child, verbatim || html, items);
             }
             roxmltree::NodeType::Text => {
                 let text = child.text().unwrap_or_default();
-                // Whitespace alone in an empty element renders as nothing,
-                // except in a value.
+                // Whitespace between child elements is indentation. Alone in
+                // an element it is content: `<attribute name="class"> </attribute>`
+                // sets a space, an empty one removes the attribute.
                 let blank = text.trim().is_empty();
-                if !blank || mixed || (!has_children && value) {
+                if !blank || mixed || !has_children || verbatim {
                     items.push(Item::Text(text.to_string()));
                 }
             }
@@ -209,7 +211,11 @@ fn css_tokens(source: &str) -> String {
 pub fn format_stylesheet(path: &Path, source: &str, config: &lax_css::configuration::Configuration) -> Outcome {
     match lax_css::format_text(path, source, config) {
         Ok(None) => Outcome::Unchanged,
-        Ok(Some(text)) if css_tokens(&text) == css_tokens(source) => Outcome::Formatted(text),
+        // lax-css adds the `;` after a block's last declaration, as prettier
+        // does: it changes nothing.
+        Ok(Some(text)) if css_tokens(&text).replace(";}", "}") == css_tokens(source).replace(";}", "}") => {
+            Outcome::Formatted(text)
+        }
         Ok(Some(_)) => Outcome::Refused("formatting would change more than whitespace".to_string()),
         Err(error) => Outcome::Invalid(error.to_string()),
     }
@@ -272,6 +278,27 @@ mod tests {
         assert_eq!(format(&text), Outcome::Unchanged);
     }
 
+    /// The text after formatting: the source when the formatter leaves it.
+    fn formatted(source: &str) -> String {
+        match format(source) {
+            Outcome::Formatted(text) => text,
+            _ => source.to_string(),
+        }
+    }
+
+    #[test]
+    fn whitespace_alone_in_an_element_is_kept() {
+        let source = "<odoo>\n<record id=\"v\" model=\"ir.ui.view\">\n<field name=\"arch\" type=\"xml\">\n<xpath expr=\".\" position=\"attributes\">\n<attribute name=\"class\"> </attribute>\n</xpath>\n</field>\n</record>\n</odoo>\n";
+        assert!(formatted(source).contains("<attribute name=\"class\"> </attribute>"));
+    }
+
+    #[test]
+    fn html_field_content_is_kept() {
+        let field = "<field name=\"body_html\" type=\"html\"><p>a <b>b</b> c</p></field>";
+        let source = format!("<odoo>\n<record id=\"m\" model=\"mail.template\">\n{field}\n</record>\n</odoo>\n");
+        assert!(formatted(&source).contains(field));
+    }
+
     #[test]
     fn domains_stay_as_written() {
         let source = "<odoo>\n    <record id=\"a\" model=\"ir.rule\">\n        <field name=\"domain_force\">[('user_id', '=', user.id), ('amount', '&lt;', 10)]</field>\n    </record>\n</odoo>\n";
@@ -321,6 +348,12 @@ mod stylesheet_tests {
         assert!(is_vendored(Path::new("acme/static/lib/x/x.css")));
         assert!(is_vendored(Path::new("acme/static/src/lib/x.scss")));
         assert!(!is_vendored(Path::new("acme/static/src/scss/x.scss")));
+    }
+
+    #[test]
+    fn a_missing_last_semicolon_does_not_stop_formatting() {
+        let out = format_stylesheet(Path::new("a.scss"), ".a { color: red }\n", &css_configuration(88, 4));
+        assert!(matches!(out, Outcome::Formatted(_)), "{out:?}");
     }
 
     #[test]
