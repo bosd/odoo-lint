@@ -12,9 +12,11 @@ use crate::checker::ModuleInfo;
 use crate::manifest::{find_module_dir, manifest_path, module_dirs, Manifest, LOADED_KEYS};
 use crate::rules::python::classes;
 use crate::semantic::func_lib;
+use rayon::prelude::*;
 use ruff_python_ast::{Expr, Stmt, StmtClassDef};
 use ruff_python_parser::parse_module;
-use ruff_text_size::Ranged;
+use ruff_source_file::LineIndex;
+use ruff_text_size::{Ranged, TextSize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -234,6 +236,11 @@ pub(crate) fn revalidating() -> bool {
 struct Fingerprint {
     files: usize,
     newest: Option<SystemTime>,
+}
+
+/// A byte offset as ruff's text size; files over 4 GiB are not source.
+fn text_size(offset: usize) -> TextSize {
+    TextSize::new(u32::try_from(offset).unwrap_or(u32::MAX))
 }
 
 fn indexed_files(path: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
@@ -797,63 +804,69 @@ fn parse(path: &Path) -> Option<ModuleIndex> {
         _ => None,
     };
     let name = path.canonicalize().ok()?.file_name()?.to_string_lossy().into_owned();
-    let mut model_classes = Vec::new();
     // All files first: a field may use a constant of another file.
-    let parsed_files: Vec<(PathBuf, String, _)> = indexed_files(path)
+    let files: Vec<PathBuf> = indexed_files(path).map(walkdir::DirEntry::into_path).collect();
+    let parsed_files: Vec<(PathBuf, String, _)> = files
+        .into_par_iter()
         .filter_map(|file| {
-            let source = std::fs::read_to_string(file.path()).ok()?;
+            let source = std::fs::read_to_string(&file).ok()?;
             let parsed = parse_module(&source).ok()?;
-            Some((file.into_path(), source, parsed))
+            Some((file, source, parsed))
         })
         .collect();
     let mut constants = Constants::default();
     for (file, _, parsed) in &parsed_files {
         constants.add(file, parsed.suite());
     }
-    for (file, source, parsed) in &parsed_files {
-        let line_of = |offset: usize| source[..offset].matches('\n').count() + 1;
-        let mut found: Vec<(String, ModelClass)> = classes(parsed.suite())
-            .into_iter()
-            .filter_map(|class| {
-                let eval = |expr: &Expr| constants.eval(file, Some(class), expr, 0);
-                let mut model = model_class(class, &eval)?;
-                model.file = file.clone();
-                model.line = line_of(class.name.start().to_usize());
-                for field in &mut model.fields {
-                    field.line = line_of(field.line);
+    let per_file: Vec<Vec<ModelClass>> = parsed_files
+        .par_iter()
+        .map(|(file, source, parsed)| {
+            let lines = LineIndex::from_source_text(source);
+            let line_of = |offset: usize| lines.line_index(text_size(offset)).get();
+            let mut found: Vec<(String, ModelClass)> = classes(parsed.suite())
+                .into_iter()
+                .filter_map(|class| {
+                    let eval = |expr: &Expr| constants.eval(file, Some(class), expr, 0);
+                    let mut model = model_class(class, &eval)?;
+                    model.file = file.clone();
+                    model.line = line_of(class.name.start().to_usize());
+                    for field in &mut model.fields {
+                        field.line = line_of(field.line);
+                    }
+                    for (_, line) in &mut model.method_lines {
+                        *line = line_of(*line);
+                    }
+                    Some((class.name.to_string(), model))
+                })
+                .collect();
+            // `setattr(IrRule, 'global', global_)`: a field whose name is a
+            // Python keyword, added after the class.
+            for stmt in parsed.suite() {
+                let Stmt::Expr(expr) = stmt else { continue };
+                let Expr::Call(call) = &*expr.value else { continue };
+                if !matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "setattr") {
+                    continue;
                 }
-                for (_, line) in &mut model.method_lines {
-                    *line = line_of(*line);
+                let [Expr::Name(class), name, _] = call.arguments.args.as_ref() else {
+                    continue;
+                };
+                let Some(name) = string(name) else { continue };
+                if let Some((_, model)) = found.iter_mut().find(|(c, _)| c == class.id.as_str()) {
+                    model.fields.push(Field {
+                        name,
+                        kind: String::new(),
+                        comodel: None,
+                        has_domain: false,
+                        groups: None,
+                        line: 0,
+                        label: FieldLabel::default(),
+                    });
                 }
-                Some((class.name.to_string(), model))
-            })
-            .collect();
-        // `setattr(IrRule, 'global', global_)`: a field whose name is a
-        // Python keyword, added after the class.
-        for stmt in parsed.suite() {
-            let Stmt::Expr(expr) = stmt else { continue };
-            let Expr::Call(call) = &*expr.value else { continue };
-            if !matches!(&*call.func, Expr::Name(n) if n.id.as_str() == "setattr") {
-                continue;
             }
-            let [Expr::Name(class), name, _] = call.arguments.args.as_ref() else {
-                continue;
-            };
-            let Some(name) = string(name) else { continue };
-            if let Some((_, model)) = found.iter_mut().find(|(c, _)| c == class.id.as_str()) {
-                model.fields.push(Field {
-                    name,
-                    kind: String::new(),
-                    comodel: None,
-                    has_domain: false,
-                    groups: None,
-                    line: 0,
-                    label: FieldLabel::default(),
-                });
-            }
-        }
-        model_classes.extend(found.into_iter().map(|(_, model)| model));
-    }
+            found.into_iter().map(|(_, model)| model).collect()
+        })
+        .collect();
+    let model_classes: Vec<ModelClass> = per_file.into_iter().flatten().collect();
     let data_files = data_files(path, &manifest);
     let (xml_ids, xml_id_lines) = xml_ids(&name, path, &data_files, &model_classes);
     let views = views(&name, &data_files);
@@ -1036,19 +1049,22 @@ fn walk_dependencies(path: &Path, addons_path: &[PathBuf]) -> Option<(Vec<Arc<Mo
     }
     let mut modules = vec![root];
     let mut missing = Vec::new();
-    while let Some(name) = queue.pop() {
-        if !seen.insert(name.clone()) {
-            continue;
+    // Level by level, each level's modules parsed in parallel.
+    while !queue.is_empty() {
+        let level: Vec<String> = queue.drain(..).filter(|name| seen.insert(name.clone())).collect();
+        let found: Vec<(String, Option<Arc<ModuleIndex>>)> =
+            level.into_par_iter().map(|name| (name.clone(), find(&name))).collect();
+        for (name, found) in found {
+            let Some(found) = found else {
+                // Trees of only some modules (tests, `base` alone) lack `web`.
+                if name != "web" {
+                    missing.push(name);
+                }
+                continue;
+            };
+            queue.extend(found.depends.iter().cloned());
+            modules.push(found);
         }
-        let Some(found) = find(&name) else {
-            // Trees of only some modules (tests, `base` alone) lack `web`.
-            if name != "web" {
-                missing.push(name);
-            }
-            continue;
-        };
-        queue.extend(found.depends.iter().cloned());
-        modules.push(found);
     }
     missing.sort();
     Some((modules, missing))
@@ -1451,7 +1467,6 @@ pub fn find_module(dirs: &[PathBuf], name: &str) -> Option<Arc<ModuleIndex>> {
 /// source, so a text search rules out most of the addons path before any
 /// module is parsed.
 pub fn modules_mentioning(dirs: &[PathBuf], words: &[&str]) -> Vec<Arc<ModuleIndex>> {
-    use rayon::prelude::*;
     module_dirs(dirs)
         .par_iter()
         .filter(|path| mentions(path, words))
@@ -1652,6 +1667,7 @@ fn xml_ids(
                 let Ok(doc) = roxmltree::Document::parse(&text) else {
                     continue;
                 };
+                let line_index = LineIndex::from_source_text(&text);
                 for node in doc.descendants().filter(|n| n.is_element()) {
                     if !ID_ELEMENTS.contains(&node.tag_name().name()) {
                         continue;
@@ -1662,7 +1678,7 @@ fn xml_ids(
                         offset: node.range().start,
                     };
                     ids.entry(full(id)).or_insert(position);
-                    let line = text[..node.range().start].matches('\n').count() + 1;
+                    let line = line_index.line_index(text_size(node.range().start)).get();
                     lines.entry(full(id)).or_insert((file.path.clone(), line));
                 }
             }
@@ -1833,7 +1849,8 @@ fn views(module: &str, files: &[DataFile]) -> Vec<View> {
         let Ok(doc) = roxmltree::Document::parse(&text) else {
             continue;
         };
-        let line_of = |offset: usize| text[..offset].matches('\n').count() + 1;
+        let line_index = LineIndex::from_source_text(&text);
+        let line_of = |offset: usize| line_index.line_index(text_size(offset)).get();
         for node in doc.descendants().filter(|n| n.is_element()) {
             let Some(id) = node.attribute("id") else { continue };
             let position = Position {
