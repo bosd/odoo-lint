@@ -1,16 +1,13 @@
 //! ODOO015-ODOO017: widgets and OWL templates against the assets of the
 //! module and its dependencies.
 
+mod common;
+
+use common::write;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, contents).unwrap();
-}
 
 /// `core/web` registering a field widget and a template, and `addons/acme`
 /// using them, and some that do not exist.

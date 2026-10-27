@@ -1,23 +1,19 @@
 //! ODOO008: inheritance specs checked against the parent view, as the
 //! modules of `depends` build it.
 
+mod common;
+
+use common::write;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, contents).unwrap();
-}
 
 fn module(root: &Path, name: &str, depends: &[&str], views: &str) {
     let depends: Vec<String> = depends.iter().map(|d| format!("'{d}'")).collect();
     write(
         root,
         &format!("{name}/__manifest__.py"),
-        &format!(
+        format!(
             "{{'name': '{name}', 'depends': [{}], 'data': ['views/views.xml']}}\n",
             depends.join(", ")
         ),

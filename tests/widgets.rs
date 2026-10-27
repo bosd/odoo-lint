@@ -1,25 +1,20 @@
 //! ODOO012: fields in views without the widget that suits them.
 
+mod common;
+
+use common::write;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
-}
 
 fn module(root: &Path, name: &str, depends: &[&str], python: &str, views: &str) -> PathBuf {
     let depends: Vec<String> = depends.iter().map(|d| format!("'{d}'")).collect();
     write(
         root,
         &format!("{name}/__manifest__.py"),
-        &format!(
+        format!(
             "{{'name': '{name}', 'depends': [{}], 'data': ['views/views.xml']}}\n",
             depends.join(", ")
         ),
