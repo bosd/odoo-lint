@@ -10,7 +10,7 @@ use crate::fix::Applicability;
 use crate::linter::{collect_files, lint_files_with, modules_of};
 use crate::odoo_version::OdooVersion;
 use crate::rules::{self, Rule, ALL};
-use crate::settings::{selector_matches, Settings, ViolationFilter, OPT_IN};
+use crate::settings::{selector_matches, Settings, ViolationFilter};
 use crate::sources::Sources;
 use crate::xml::{manifest_series, module_version};
 use ruff_text_size::Ranged;
@@ -105,12 +105,6 @@ pub struct Report {
     pub modules: Vec<ModuleReport>,
 }
 
-/// The checks across modules, which an upgrade runs against the addons of
-/// the target version when it has them (`--addons-path`).
-const INDEX_RULES: &[&str] = &[
-    "ODOO004", "ODOO005", "ODOO006", "ODOO007", "ODOO008", "ODOO009", "ODOO010", "ODOO011", "ODOO013",
-];
-
 /// The rules an upgrade to `target` brings: those with a first version up
 /// to `target`, and the checks across modules with the target's addons,
 /// minus the ones the configuration ignores. Opt-in rules only when the
@@ -119,10 +113,10 @@ fn upgrade_rules(settings: &Settings, target: OdooVersion) -> Vec<&'static Rule>
     ALL.iter()
         .filter(|rule| {
             rule.min_odoo.is_some_and(|min| min <= target)
-                || (settings.target_addons_path.is_some() && INDEX_RULES.contains(&rule.code))
+                || (settings.target_addons_path.is_some() && rule.is_across_modules())
         })
         .filter(|rule| {
-            !OPT_IN.contains(&rule.code)
+            !rule.is_opt_in()
                 || settings
                     .select
                     .iter()
@@ -176,7 +170,7 @@ pub fn settings_for(
         };
         // Checks across modules ran on the target's addons: all of it is
         // the upgrade's.
-        if INDEX_RULES.contains(&rule.code) {
+        if rule.is_across_modules() {
             return true;
         }
         let Some(since) = rule.min_odoo else { return false };
