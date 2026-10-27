@@ -69,9 +69,11 @@ them without failing. Invalid configuration or usage still exits with `2`.
 : Print only the findings, without the summary line.
 
 With an addons path, `odl check` warns about what makes the checks across
-modules skip a module: an addons path folder that does not exist or holds no
-module (the Odoo checkout itself instead of its `addons` and `odoo/addons`),
-and dependencies it cannot find.
+modules skip a module: an addons path folder that does not exist, one that
+holds no module while a folder below it does (the Odoo checkout itself
+instead of its `addons` and `odoo/addons`), and dependencies it cannot find.
+A folder without any module, such as a repository with none for this Odoo
+version yet, is fine.
 
 ### Output formats
 

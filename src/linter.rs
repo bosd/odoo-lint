@@ -311,16 +311,20 @@ pub fn addons_path_warnings(paths: &[PathBuf], settings: &Settings) -> Vec<Strin
     for dir in &settings.addons_path {
         if !dir.is_dir() {
             warnings.push(format!("addons path folder {} does not exist", dir.display()));
-        } else if !std::fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .any(|entry| is_module_dir(&entry.path()))
-        {
-            warnings.push(format!(
-                "addons path folder {} holds no module; name the folders that hold them (for Odoo: addons and odoo/addons)",
-                dir.display()
-            ));
+        } else if !holds_modules(dir) {
+            // A folder without modules may be a repository with none for
+            // this version yet; only one level too high is a mistake.
+            let below: Vec<String> = module_folders_below(dir)
+                .iter()
+                .map(|d| d.display().to_string())
+                .collect();
+            if !below.is_empty() {
+                warnings.push(format!(
+                    "addons path folder {} holds no module, but {} does; name that instead",
+                    dir.display(),
+                    below.join(" and ")
+                ));
+            }
         }
     }
     for module in modules_of(&collect_files(paths, settings), &Sources::default()) {
@@ -334,6 +338,39 @@ pub fn addons_path_warnings(paths: &[PathBuf], settings: &Settings) -> Vec<Strin
         }
     }
     warnings
+}
+
+fn holds_modules(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| is_module_dir(&entry.path()))
+}
+
+/// The folders up to two levels under `dir` that hold modules, as `addons`
+/// and `odoo/addons` in an Odoo checkout.
+fn module_folders_below(dir: &Path) -> Vec<PathBuf> {
+    let subdirs = |dir: &Path| -> Vec<PathBuf> {
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir() && !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
+            .collect();
+        dirs.sort();
+        dirs
+    };
+    let mut found = Vec::new();
+    for child in subdirs(dir) {
+        if holds_modules(&child) {
+            found.push(child);
+        } else {
+            found.extend(subdirs(&child).into_iter().filter(|d| holds_modules(d)));
+        }
+    }
+    found
 }
 
 /// The unit every file is linted with: its module's folder, or the file itself

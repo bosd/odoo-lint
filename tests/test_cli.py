@@ -406,13 +406,23 @@ def test_addons_path_problems_are_reported(project: Path) -> None:
     )
     empty = project / "empty"
     empty.mkdir()
+    # An Odoo checkout: its modules are in addons and odoo/addons.
+    checkout = project / "odoo"
+    for folder in ("addons", "odoo/addons"):
+        (checkout / folder / "web").mkdir(parents=True)
+        (checkout / folder / "web" / "__manifest__.py").write_text("{'name': 'web'}\n")
     result = run_odl(
         "check",
         str(project / "addons"),
         "--addons-path",
-        f"{empty},{project / 'missing'}",
+        f"{empty},{checkout},{project / 'missing'}",
     )
-    assert f"{empty} holds no module" in result.stderr
+    # A repository without modules for this version is not a mistake.
+    assert str(empty) not in result.stderr
+    assert (
+        f"{checkout} holds no module, but {checkout / 'addons'} and "
+        f"{checkout / 'odoo' / 'addons'} do"
+    ) in result.stderr
     assert "does not exist" in result.stderr
     assert "sale_x: `base`, `sale` not found on the addons path" in result.stderr
 
