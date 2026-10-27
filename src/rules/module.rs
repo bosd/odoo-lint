@@ -8,6 +8,7 @@
 use crate::checker::{ModuleInfo, PythonContext, Reporter};
 use crate::diagnostics::Violation;
 use crate::fix::{Edit, Fix};
+use crate::manifest::FILE_KEYS;
 use crate::rules::python::{classes, source_of};
 use crate::rules::{Check, Rule};
 use crate::settings::Settings;
@@ -80,18 +81,6 @@ pub fn lint_module(module: &ModuleInfo, rules: &[&Rule], settings: &Settings, so
 
 // --- Manifest files ---------------------------------------------------------
 
-/// Manifest keys whose files Odoo loads; `qweb` and `assets` are globs.
-const DATA_KEYS: &[&str] = &[
-    "data",
-    "demo",
-    "demo_xml",
-    "init_xml",
-    "qweb",
-    "test",
-    "update_xml",
-    "assets",
-];
-
 /// The string items of a list or tuple literal.
 fn strings(expr: &Expr) -> Vec<&str> {
     let items: &[Expr] = match expr {
@@ -127,7 +116,7 @@ pub(crate) fn manifest_files(module: &ModuleInfo) -> Vec<(String, &'static str)>
         return Vec::new();
     };
     let mut files: Vec<(String, &'static str)> = Vec::new();
-    for &section in DATA_KEYS {
+    for section in FILE_KEYS.iter().copied().chain(["assets"]) {
         let Some(value) = manifest.get(section) else { continue };
         let names: Vec<String> = if section == "qweb" || section == "assets" {
             let lists: Vec<&Expr> = match value {

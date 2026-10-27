@@ -8,6 +8,8 @@
 use crate::checker::{JsContext, ManifestContext, PythonContext, Reporter};
 use crate::odoo_version::OdooVersion;
 use po::PoContext;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 pub mod access;
 pub mod action_read;
@@ -367,12 +369,49 @@ pub const ALL: &[Rule] = &[
     xml::XML_INSIDE_FORM_CONTAINER,
 ];
 
-pub fn find(code_or_name: &str) -> Option<&'static Rule> {
+/// Rules `ALL` leaves out: policies many projects do not share, style that
+/// OCA's CI does not enforce, and MOD009, which W8113 covers; enabled by
+/// selecting them by code, name or code prefix. Listed with the reason in
+/// `docs/configuration.md#opt-in-rules`.
+const OPT_IN: &[&str] = &[
+    "MOD008", "MOD009", "MOD011", "MOD013", "ODOO012", "PO007", "U1923", "U2035", "XML002", "XML003", "XML009",
+    "XML024", "XML103",
+];
+
+/// The checks across modules, which need the other modules of the addons
+/// path.
+const ACROSS_MODULES: &[&str] = &[
+    "ODOO004", "ODOO005", "ODOO006", "ODOO007", "ODOO008", "ODOO009", "ODOO010", "ODOO011", "ODOO013",
+];
+
+/// The rules by lowercase code and name.
+static BY_KEY: LazyLock<HashMap<String, &'static Rule>> = LazyLock::new(|| {
     ALL.iter()
-        .find(|rule| rule.code.eq_ignore_ascii_case(code_or_name) || rule.name.eq_ignore_ascii_case(code_or_name))
+        .flat_map(|rule| {
+            [
+                (rule.code.to_ascii_lowercase(), rule),
+                (rule.name.to_ascii_lowercase(), rule),
+            ]
+        })
+        .collect()
+});
+
+/// The rule with this code or name, in any case.
+pub fn find(code_or_name: &str) -> Option<&'static Rule> {
+    BY_KEY.get(&code_or_name.to_ascii_lowercase()).copied()
 }
 
 impl Rule {
+    /// Whether `ALL` leaves the rule out.
+    pub fn is_opt_in(&self) -> bool {
+        OPT_IN.contains(&self.code)
+    }
+
+    /// Whether the rule checks across modules, with the addons path.
+    pub fn is_across_modules(&self) -> bool {
+        ACROSS_MODULES.contains(&self.code)
+    }
+
     pub fn applies_to(&self, version: OdooVersion) -> bool {
         self.min_odoo.is_none_or(|min| version >= min) && self.max_odoo.is_none_or(|max| version <= max)
     }
@@ -404,6 +443,7 @@ impl Rule {
             "summary": self.summary,
             "min_odoo_version": self.min_odoo.map(|v| v.to_string()),
             "max_odoo_version": self.max_odoo.map(|v| v.to_string()),
+            "opt_in": self.is_opt_in(),
             "doc": self.doc.trim(),
         })
     }
@@ -441,6 +481,30 @@ mod tests {
         assert_eq!(find("odoo001").map(|r| r.code), Some("ODOO001"));
         assert_eq!(find("manifest-required-author").map(|r| r.code), Some("C8101"));
         assert!(find("ODOO999").is_none());
+    }
+
+    #[test]
+    fn listed_codes_are_rules() {
+        for code in OPT_IN.iter().chain(ACROSS_MODULES) {
+            assert!(ALL.iter().any(|r| r.code == *code), "{code} is not a rule");
+        }
+    }
+
+    #[test]
+    fn opt_in_rules_are_documented() {
+        let docs = include_str!("../../docs/configuration.md");
+        let table = docs
+            .split("### Opt-in rules")
+            .nth(1)
+            .unwrap()
+            .split("\n### ")
+            .next()
+            .unwrap();
+        let documented: Vec<&str> = table
+            .lines()
+            .filter_map(|line| line.strip_prefix("| [")?.split(']').next())
+            .collect();
+        assert_eq!(documented, OPT_IN);
     }
 
     #[test]

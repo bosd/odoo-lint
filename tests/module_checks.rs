@@ -1,6 +1,9 @@
 //! Module checks: OCA's non-XML module checks (MOD001-MOD009) and the files
 //! in a module (ODOO002, ODOO003).
 
+mod common;
+
+use common::write;
 use odoo_lint::config::OdooLintConfig;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
@@ -13,13 +16,6 @@ fn settings(select: &str) -> Settings {
     let mut settings = Settings::default();
     settings.select = vec![select.to_string()];
     settings
-}
-
-fn write(root: &Path, path: &str, contents: impl AsRef<[u8]>) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
 }
 
 /// A module `acme_mod` with the given manifest data files.

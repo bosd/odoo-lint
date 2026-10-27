@@ -1,18 +1,13 @@
 //! ODOO013: one2many and many2many fields in views whose comodel only
 //! administrators may read.
 
+mod common;
+
+use common::write;
 use odoo_lint::config::OdooLintConfig;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
-}
 
 const BASE_MANIFEST: &str =
     "{'name': 'base', 'depends': [], 'data': ['security/groups.xml', 'security/ir.model.access.csv', 'views/users.xml']}\n";

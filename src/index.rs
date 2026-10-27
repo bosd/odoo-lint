@@ -9,7 +9,7 @@
 //! path, but parses only the modules whose Python mentions it.
 
 use crate::checker::ModuleInfo;
-use crate::manifest::{Manifest, MANIFEST_FILE_NAMES};
+use crate::manifest::{find_module_dir, manifest_path, module_dirs, Manifest, LOADED_KEYS};
 use crate::rules::python::classes;
 use crate::semantic::func_lib;
 use rayon::prelude::*;
@@ -796,8 +796,7 @@ fn model_class(class: &StmtClassDef, eval: &Eval) -> Option<ModelClass> {
 }
 
 fn parse(path: &Path) -> Option<ModuleIndex> {
-    let manifest_path = MANIFEST_FILE_NAMES.iter().map(|n| path.join(n)).find(|p| p.is_file())?;
-    let manifest = Manifest::parse(&std::fs::read_to_string(manifest_path).ok()?)?;
+    let manifest = Manifest::parse(&std::fs::read_to_string(manifest_path(path)?).ok()?)?;
     let depends = manifest.get("depends").map(strings).unwrap_or_default();
     let auto_install = match manifest.get("auto_install") {
         Some(Expr::BooleanLiteral(b)) if b.value => Some(depends.clone()),
@@ -902,7 +901,7 @@ pub fn module_index(path: &Path) -> Option<Arc<ModuleIndex>> {
     let current = revalidate.then(|| {
         let mut print = fingerprint(&key);
         print.files += 1;
-        let manifest = MANIFEST_FILE_NAMES.iter().map(|n| key.join(n)).find(|p| p.is_file());
+        let manifest = manifest_path(&key);
         let modified = manifest.and_then(|m| m.metadata().ok()).and_then(|m| m.modified().ok());
         print.newest = print.newest.max(modified);
         print
@@ -1039,12 +1038,7 @@ pub fn missing_dependencies(path: &Path, addons_path: &[PathBuf]) -> Vec<String>
 fn walk_dependencies(path: &Path, addons_path: &[PathBuf]) -> Option<(Vec<Arc<ModuleIndex>>, Vec<String>)> {
     let mut dirs: Vec<PathBuf> = path.parent().map(Path::to_path_buf).into_iter().collect();
     dirs.extend(addons_path.iter().cloned());
-    let find = |name: &str| {
-        dirs.iter()
-            .map(|dir| dir.join(name))
-            .find(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
-            .and_then(|path| module_index(&path))
-    };
+    let find = |name: &str| find_module(&dirs, name);
     let root = module_index(path)?;
     let mut seen: HashSet<String> = HashSet::from([root.name.clone()]);
     let mut queue: Vec<String> = root.depends.clone();
@@ -1463,13 +1457,9 @@ impl Closure {
     }
 }
 
-/// The module folders in `dirs`, in addons path order.
-pub fn addon_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
-    dirs.iter()
-        .filter_map(|dir| std::fs::read_dir(dir).ok())
-        .flat_map(|entries| entries.flatten().map(|entry| entry.path()))
-        .filter(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
-        .collect()
+/// The index of module `name` in the first of `dirs` that has it.
+pub fn find_module(dirs: &[PathBuf], name: &str) -> Option<Arc<ModuleIndex>> {
+    module_index(&find_module_dir(dirs, name)?)
 }
 
 /// The modules in `dirs` whose Python mentions every one of `words`, in
@@ -1477,7 +1467,7 @@ pub fn addon_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
 /// source, so a text search rules out most of the addons path before any
 /// module is parsed.
 pub fn modules_mentioning(dirs: &[PathBuf], words: &[&str]) -> Vec<Arc<ModuleIndex>> {
-    addon_dirs(dirs)
+    module_dirs(dirs)
         .par_iter()
         .filter(|path| mentions(path, words))
         .filter_map(|path| module_index(path))
@@ -1536,15 +1526,12 @@ pub struct DataFile {
     pub demo: bool,
 }
 
-/// Manifest keys of data files, in the order Odoo loads them: data, then demo.
-const DATA_KEYS: &[&str] = &["init_xml", "update_xml", "data", "demo_xml", "demo"];
-
 /// Elements that define an XML id.
 const ID_ELEMENTS: &[&str] = &["record", "template", "menuitem", "report", "act_window", "url", "asset"];
 
 fn data_files(path: &Path, manifest: &Manifest) -> Vec<DataFile> {
     let mut files: Vec<DataFile> = Vec::new();
-    for key in DATA_KEYS {
+    for key in LOADED_KEYS {
         for name in manifest.get(key).map(strings).unwrap_or_default() {
             let file = path.join(&name);
             if files.iter().any(|f| f.path == file) {

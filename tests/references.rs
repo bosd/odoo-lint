@@ -1,15 +1,11 @@
 //! ODOO005 (XML ids) and ODOO006 (models) across the addons path.
 
+mod common;
+
+use common::write;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::{Path, PathBuf};
-
-fn write(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, contents).unwrap();
-}
 
 /// A module with the given manifest keys (`'data': [...]` and so on).
 fn module(root: &Path, name: &str, depends: &[&str], keys: &str, python: &str) {
@@ -17,7 +13,7 @@ fn module(root: &Path, name: &str, depends: &[&str], keys: &str, python: &str) {
     write(
         root,
         &format!("{name}/__manifest__.py"),
-        &format!("{{'name': '{name}', 'depends': [{}], {keys}}}\n", depends.join(", ")),
+        format!("{{'name': '{name}', 'depends': [{}], {keys}}}\n", depends.join(", ")),
     );
     write(root, &format!("{name}/__init__.py"), "from . import models\n");
     write(root, &format!("{name}/models.py"), python);

@@ -43,8 +43,54 @@ with `--diff` first.
 `.pot` into the template, untranslated and with only the references Odoo can
 read. Entries that only have references Odoo cannot read, or that label a
 field the template already labels differently, are left alone: they are
-translations of old texts. Regenerate the `.pot` from a running Odoo when
-possible; the fix is for when that is not practical.
+translations of old texts. Regenerating the `.pot` (below) is the better
+fix: it keeps those translations when their text is still in the code.
+
+## Generating the template: `odl pot`
+
+`odl pot` writes `i18n/<module>.pot` the way Odoo's export does, without a
+database: the terms of the code (`_()`, `_lt()`, `_t()`, QWeb templates,
+spreadsheet dashboards), of the models (descriptions, field labels and help,
+selections, constraint messages) and of the data files (records, menus,
+views, mail templates, CSV rows). `--merge` then brings the module's `.po`
+files in line with it, as `msgmerge` does:
+
+```console
+$ odl pot my_module --merge
+```
+
+- Translations of messages the template still has are kept, with their
+  flags and translator comments; new messages come untranslated.
+- Translations of removed messages stay as obsolete entries (`#~`), which Odoo
+  ignores; `--no-obsolete` drops them.
+- `--check` writes nothing and exits with 1 when a template or `.po` file is
+  out of date, for CI.
+- The first merge usually rewrites every `.po` file: references follow the
+  template, and entries are sorted by `msgid` as Odoo exports them. A `.po`
+  file that does not parse is left alone and reported.
+
+Labels and descriptions come from the module's dependencies: put them on the
+addons path (`addons-path` in the configuration, or `--addons-path`), Odoo's
+own addons included. Without them `odl pot` says which templates may miss
+labels. What a module's records get follows Odoo's install order, so a field
+another module adds later is in that module's template, not in this one.
+
+To reproduce OCA's templates, which its CI exports from a database with every
+module of the repository installed and nothing installed automatically:
+
+```console
+$ odl pot . --installed . --skip-auto-install
+```
+
+Demo data counts as installed as Odoo's default says: up to 18.0 it is, from
+19.0 it is not; `--with-demo` and `--without-demo` override that.
+
+Some terms only exist once Odoo runs, and `odl pot` cannot see them:
+selections computed by a method or taken from a library, models built while
+the registry loads (such as `spec_driven_model` in l10n-brazil), and records
+created by hooks or company setup (charts of accounts). On OCA's 18.0 and
+19.0 repositories the generated templates match OCA's own for 96% and 99% of
+their entries; most of the rest are OCA templates older than their code.
 
 ## Reloading translations
 
