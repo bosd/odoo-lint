@@ -47,7 +47,7 @@ fn a_noqa_translator_comment_suppresses_in_its_entry() {
     write(
         dir.path(),
         "acme/i18n/fr.po",
-        &PO.replace("#: ../", "# noqa: PO102\n#: ../"),
+        PO.replace("#: ../", "# noqa: PO102\n#: ../"),
     );
     let mut settings = Settings::default();
     settings.select = vec!["PO102".into()];
