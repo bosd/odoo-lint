@@ -8,6 +8,7 @@
 
 mod code;
 mod markup;
+mod merge;
 mod models;
 mod records;
 
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use code::{code_terms, javascript_terms, python_terms, qweb_terms, spreadsheet_terms};
+pub use merge::{merge, Obsolete};
 pub use models::model_terms;
 
 /// The extracted comment Odoo adds to the terms of Python code.
@@ -358,12 +360,15 @@ pub struct Change {
     pub path: PathBuf,
     /// Whether the file was written (`false` in check mode).
     pub written: bool,
-    /// See [`Template::incomplete`].
+    /// See [`Template::incomplete`] (for a template).
     pub incomplete: bool,
+    /// Why the file was left as it is: a `.po` file that does not parse.
+    pub skipped: Option<String>,
 }
 
 /// Writes `i18n/<module>.pot` for the modules under `paths`, or into
-/// `output_dir` when given; in check mode only reports the outdated ones.
+/// `output_dir` when given, and with `merge_po` brings the module's `.po`
+/// files in line with it; in check mode only reports the outdated files.
 ///
 /// # Errors
 ///
@@ -374,6 +379,7 @@ pub fn run(
     output_dir: Option<&Path>,
     default_version: OdooVersion,
     installation: &Installation,
+    merge_po: Option<Obsolete>,
 ) -> std::io::Result<Vec<Change>> {
     let auto_installs = installation.auto_installs();
     let mut changes = Vec::new();
@@ -389,22 +395,60 @@ pub fn run(
             Some(out) => out.join(format!("{module}.pot")),
             None => dir.join("i18n").join(format!("{module}.pot")),
         };
-        if std::fs::read_to_string(&path).is_ok_and(|current| current == content) {
-            continue;
-        }
-        if !check {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
+        let mut update = |path: PathBuf, content: &str, incomplete: bool| -> std::io::Result<()> {
+            if std::fs::read_to_string(&path).is_ok_and(|current| current == content) {
+                return Ok(());
             }
-            std::fs::write(&path, &content)?;
+            if !check {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, content)?;
+            }
+            changes.push(Change {
+                path,
+                written: !check,
+                incomplete,
+                skipped: None,
+            });
+            Ok(())
+        };
+        update(path, &content, incomplete)?;
+        if let (Some(obsolete), None) = (merge_po, output_dir) {
+            let Ok(template) = PoFile::parse(&content) else {
+                continue;
+            };
+            let mut skipped = Vec::new();
+            for po_path in po_files(&dir.join("i18n")) {
+                let source = std::fs::read_to_string(&po_path)?;
+                match PoFile::parse(&source) {
+                    Ok(po) => update(po_path, &merge(&po, &template, obsolete).to_po_string(), false)?,
+                    // Left as it is: rewriting it could lose what did not parse.
+                    Err(error) => skipped.push(Change {
+                        path: po_path,
+                        written: false,
+                        incomplete: false,
+                        skipped: Some(format!("line {}: {}", error.line, error.message)),
+                    }),
+                }
+            }
+            changes.extend(skipped);
         }
-        changes.push(Change {
-            path,
-            written: !check,
-            incomplete,
-        });
     }
     Ok(changes)
+}
+
+/// The `.po` files of an `i18n` folder, sorted.
+fn po_files(dir: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "po"))
+        .collect();
+    found.sort();
+    found
 }
 
 #[cfg(test)]
