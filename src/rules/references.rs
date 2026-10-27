@@ -2,8 +2,7 @@
 //! (ODOO005) and models (ODOO006) that do not exist where a module can see
 //! them. Silent without the dependencies of a module (see `addons-path`).
 
-use crate::index::{closure, module_index, modules_mentioning, Closure, ModuleIndex, Position};
-use crate::manifest::MANIFEST_FILE_NAMES;
+use crate::index::{closure, find_module, module_index, modules_mentioning, Closure, ModuleIndex, Position};
 use crate::rules::module::{ModuleContext, ModuleReporter};
 use crate::rules::{Check, Rule};
 use regex::Regex;
@@ -91,14 +90,6 @@ fn context(ctx: &ModuleContext) -> Option<(Closure, Vec<PathBuf>, Arc<ModuleInde
     dirs.extend(ctx.settings.addons_path.iter().cloned());
     let own = module_index(&ctx.module.path)?;
     Some((closure, dirs, own))
-}
-
-/// The module `name` anywhere in `dirs`.
-fn find_module(dirs: &[PathBuf], name: &str) -> Option<Arc<ModuleIndex>> {
-    dirs.iter()
-        .map(|dir| dir.join(name))
-        .find(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
-        .and_then(|path| module_index(&path))
 }
 
 // --- References ---------------------------------------------------------------

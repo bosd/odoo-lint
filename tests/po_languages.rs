@@ -1,16 +1,12 @@
 //! PO105: the configured languages of a repository.
 
+mod common;
+
+use common::write;
 use odoo_lint::config::OdooLintConfig;
 use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
-use std::fs;
 use std::path::Path;
-
-fn write(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-}
 
 fn settings(languages: &str) -> Settings {
     let mut settings = Settings::default();
@@ -108,7 +104,7 @@ fn untranslated_terms() {
     write(
         dir.path(),
         "acme_po/i18n/nl.po",
-        &POT.replacen(
+        POT.replacen(
             "msgstr \"\"\n\n#. module: acme_po\n#: model:ir.model.fields,help",
             "msgstr \"Niet plannen\"\n\n#. module: acme_po\n#: model:ir.model.fields,help",
             1,
@@ -117,7 +113,7 @@ fn untranslated_terms() {
     write(
         dir.path(),
         "acme_po/i18n/nl_BE.po",
-        &POT.replace(
+        POT.replace(
             "msgid \"Keep the task out of planning\"\nmsgstr \"\"",
             "msgid \"Keep the task out of planning\"\nmsgstr \"Niet in de planning\"",
         ),

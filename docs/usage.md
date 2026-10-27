@@ -161,6 +161,12 @@ What modules need to run on a newer Odoo version, per version step. See
 README badges: the share of clean modules, or readiness for an Odoo version.
 See [README badges](integrations.md#readme-badges).
 
+## `odl pot`
+
+Writes each module's translation template (`i18n/<module>.pot`) from its
+source, and with `--merge` updates its `.po` files. See
+[Generating the template](translations.md#generating-the-template-odl-pot).
+
 ## `odl server`
 
 A language server for editors. See [Editors](editors.md).

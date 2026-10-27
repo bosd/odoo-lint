@@ -3,8 +3,7 @@
 //! language server answers `textDocument/definition` with it.
 
 use crate::checker::ModuleInfo;
-use crate::index::{class_models, closure, module_index, Closure};
-use crate::manifest::MANIFEST_FILE_NAMES;
+use crate::index::{class_models, closure, find_module, Closure};
 use crate::semantic::{func_lib, func_name};
 use crate::visit::{enclosing_class, walk, Node};
 use regex::Regex;
@@ -399,14 +398,6 @@ pub(crate) fn python_target_in(
         }
     });
     found
-}
-
-/// The module `name` in `dirs`.
-fn find_module(dirs: &[PathBuf], name: &str) -> Option<std::sync::Arc<crate::index::ModuleIndex>> {
-    dirs.iter()
-        .map(|dir| dir.join(name))
-        .find(|path| MANIFEST_FILE_NAMES.iter().any(|m| path.join(m).is_file()))
-        .and_then(|path| module_index(&path))
 }
 
 fn at((path, line): (PathBuf, usize)) -> Definition {

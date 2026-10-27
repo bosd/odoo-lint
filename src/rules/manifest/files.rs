@@ -4,6 +4,7 @@
 
 use crate::checker::{ManifestContext, Reporter};
 use crate::config::list_or;
+use crate::manifest::FILE_KEYS;
 use crate::rules::{Check, Rule};
 use ruff_python_ast::Expr;
 use ruff_text_size::{Ranged, TextSize};
@@ -12,8 +13,6 @@ const README_FILES: &[&str] = &["README.rst", "README.md", "README.txt"];
 const DEFAULT_README_TEMPLATE_URL: &str =
     "https://github.com/OCA/maintainer-tools/blob/master/template/module/README.rst";
 const DEFAULT_REQUIRED_FILES_APP: &[&str] = &["static/description/index.html"];
-/// Manifest keys that list data files, current and historical.
-const DATA_KEYS: &[&str] = &["data", "demo", "demo_xml", "init_xml", "test", "update_xml"];
 
 pub const MISSING_README: Rule = Rule {
     code: "C8112",
@@ -269,7 +268,8 @@ fn group_files(list: &Expr) -> Vec<(&str, Vec<TextSize>)> {
 }
 
 fn check_resource_not_exist(ctx: &ManifestContext, reporter: &mut Reporter) {
-    for key in DATA_KEYS {
+    // `qweb` lists globs, not files.
+    for key in FILE_KEYS.iter().filter(|k| **k != "qweb") {
         let Some(list) = ctx.manifest.get(key) else { continue };
         for (file, offsets) in group_files(list) {
             if !ctx.module.path.join(file).is_file() {
@@ -284,7 +284,8 @@ fn check_resource_not_exist(ctx: &ManifestContext, reporter: &mut Reporter) {
 }
 
 fn check_data_duplicated(ctx: &ManifestContext, reporter: &mut Reporter) {
-    for key in DATA_KEYS {
+    // `qweb` lists globs, not files.
+    for key in FILE_KEYS.iter().filter(|k| **k != "qweb") {
         let Some(list) = ctx.manifest.get(key) else { continue };
         for (file, offsets) in group_files(list) {
             if offsets.len() < 2 {

@@ -139,7 +139,8 @@ list in `select` and run the advisory hook with `--select ALL`:
   pylint-odoo's default is `keys-values-true = ["active", "installable"]`.
 - **Suppression comments.** `# pylint: disable=...` and `# noqa` work in
   Python; `<!-- oca-hooks:disable=... -->` and `<!-- pylint:disable=... -->`
-  turn checks off for a whole XML file. The `# lint-ignore` and
+  turn checks off for a whole XML file, `<!-- noqa: ... -->` for one
+  element and `# noqa: ...` for one `.po` entry. The `# lint-ignore` and
   `# oca-hooks:disable=...` comments of `oca-checks-odoo-module-fixit` in
   Python files are not read; use `# noqa: MOD009`. See
   [Suppressing a violation](configuration.md#suppressing-a-violation-in-the-code).

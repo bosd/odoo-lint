@@ -1,5 +1,8 @@
 //! Upgrade rules: findings and fixes per Odoo version step.
 
+mod common;
+
+use common::write;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
 use odoo_lint::linter::lint_paths;
@@ -15,20 +18,13 @@ fn settings(select: &str, version: OdooVersion) -> Settings {
     settings
 }
 
-fn write(root: &Path, path: &str, contents: &str) -> PathBuf {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-    path
-}
-
 /// A module for `version` with the given data files and Python file.
 fn module(root: &Path, version: &str, xml: &[(&str, &str)], python: &str) -> PathBuf {
     let data: Vec<String> = xml.iter().map(|(name, _)| format!("'{name}'")).collect();
     write(
         root,
         "acme_up/__manifest__.py",
-        &format!(
+        format!(
             "{{'name': 'Up', 'version': '{version}', 'license': 'AGPL-3', 'data': [{}]}}\n",
             data.join(", ")
         ),

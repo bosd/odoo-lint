@@ -1,6 +1,9 @@
 //! Repository conventions: README fragments (MOD011), the module icon
 //! (MOD012), tests (MOD013) and form view anchors (XML103).
 
+mod common;
+
+use common::write;
 use odoo_lint::config::OdooLintConfig;
 use odoo_lint::fix::FixMode;
 use odoo_lint::fixer::fix_paths;
@@ -8,12 +11,6 @@ use odoo_lint::linter::lint_paths;
 use odoo_lint::settings::Settings;
 use std::fs;
 use std::path::Path;
-
-fn write(root: &Path, path: &str, contents: impl AsRef<[u8]>) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, contents).unwrap();
-}
 
 fn module(root: &Path, name: &str) {
     write(

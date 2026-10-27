@@ -9,6 +9,10 @@
 //! - `# pylint: disable-next=...` suppresses on the next line;
 //! - `# pylint: enable=...` ends an earlier block-level `disable`.
 //!
+//! In XML, `<!-- noqa -->` and `<!-- noqa: XML002 -->` suppress on their
+//! line, or on the next line when the comment stands alone. In a `.po` file,
+//! a translator comment `# noqa: PO005` suppresses in its entry.
+//!
 //! Rules are matched by code or by name, case-insensitively; `all` matches
 //! every rule.
 
@@ -104,6 +108,63 @@ impl Suppressions {
         }
     }
 
+    /// The `<!-- noqa -->` comments of an XML file.
+    pub fn from_xml(source: &str) -> Self {
+        let mut suppressions = Self::default();
+        let lines: Vec<&str> = source.lines().collect();
+        for (index, text) in lines.iter().enumerate() {
+            let mut rest = *text;
+            let mut outside = String::new();
+            let mut found = Vec::new();
+            while let Some(start) = rest.find("<!--") {
+                outside.push_str(&rest[..start]);
+                let Some(end) = rest[start..].find("-->") else {
+                    rest = "";
+                    break;
+                };
+                found.extend(parse_noqa(&rest[start + 4..start + end]));
+                rest = &rest[start + end + 3..];
+            }
+            outside.push_str(rest);
+            let line = index + 1;
+            // A comment on a line of its own is about the next element.
+            let target = if outside.trim().is_empty() {
+                lines
+                    .iter()
+                    .enumerate()
+                    .skip(index + 1)
+                    .find(|(_, t)| !t.trim().is_empty() && !t.trim_start().starts_with("<!--"))
+                    .map_or(line, |(i, _)| i + 1)
+            } else {
+                line
+            };
+            for rules in found {
+                suppressions.ranges.push((line, target, rules));
+            }
+        }
+        suppressions
+    }
+
+    /// The `# noqa` translator comments of a `.po` file, each for its entry.
+    pub fn from_po(source: &str) -> Self {
+        let mut suppressions = Self::default();
+        let lines: Vec<&str> = source.lines().collect();
+        let mut start = 0;
+        while start < lines.len() {
+            let end = lines[start..]
+                .iter()
+                .position(|t| t.trim().is_empty())
+                .map_or(lines.len(), |n| start + n);
+            for text in &lines[start..end] {
+                if let Some(rules) = text.strip_prefix('#').and_then(parse_noqa) {
+                    suppressions.ranges.push((start + 1, end, rules));
+                }
+            }
+            start = end + 1;
+        }
+        suppressions
+    }
+
     pub fn is_suppressed(&self, line: usize, code: &str, name: &str) -> bool {
         let (code, name) = (code.to_ascii_lowercase(), name.to_ascii_lowercase());
         self.ranges.iter().any(|(start, end, rules)| {
@@ -145,18 +206,24 @@ fn split_rules(list: &str) -> Vec<String> {
         .collect()
 }
 
+/// The rules of a `noqa` or `noqa: A, b` comment text (without its comment
+/// marker), empty for every rule.
+fn parse_noqa(text: &str) -> Option<Vec<String>> {
+    let lower = text.trim().to_ascii_lowercase();
+    let rest = lower.strip_prefix("noqa")?.trim_start();
+    match rest.strip_prefix(':') {
+        Some(list) => Some(split_rules(list)),
+        None => rest.is_empty().then(Vec::new),
+    }
+}
+
 fn parse_comment(comment: &str) -> Vec<Directive> {
     let mut directives = Vec::new();
     // A comment may hold several `#`-separated parts: `# pylint: disable=x  # noqa`.
     for part in comment.split('#').map(str::trim).filter(|p| !p.is_empty()) {
         let lower = part.to_ascii_lowercase();
-        if let Some(rest) = lower.strip_prefix("noqa") {
-            let rest = rest.trim_start();
-            match rest.strip_prefix(':') {
-                Some(list) => directives.push(Directive::Noqa(split_rules(list))),
-                None if rest.is_empty() => directives.push(Directive::Noqa(Vec::new())),
-                None => {}
-            }
+        if let Some(rules) = parse_noqa(part) {
+            directives.push(Directive::Noqa(rules));
         } else if let Some(rest) = lower.strip_prefix("pylint:") {
             for clause in rest.split(';') {
                 let Some((key, value)) = clause.split_once('=') else {
@@ -252,6 +319,55 @@ def g():
         assert!(s.is_suppressed(3, "W8116", "print-used"));
         assert!(s.is_suppressed(5, "W8116", "print-used"));
         assert!(!s.is_suppressed(7, "W8116", "print-used"));
+    }
+
+    #[test]
+    fn xml_noqa() {
+        let src = "\
+<odoo>
+    <record id=\"a\" model=\"x\"> <!-- noqa: XML002 -->
+    </record>
+    <!-- noqa -->
+
+    <record id=\"b\" model=\"x\"/>
+    <record id=\"c\" model=\"x\"/> <!-- a noqa note -->
+</odoo>
+";
+        let s = Suppressions::from_xml(src);
+        assert!(s.is_suppressed(2, "XML002", "x"));
+        assert!(!s.is_suppressed(2, "XML003", "x"));
+        assert!(!s.is_suppressed(3, "XML002", "x"));
+        assert!(
+            s.is_suppressed(6, "XML003", "x"),
+            "the element after a comment of its own"
+        );
+        assert!(!s.is_suppressed(7, "XML003", "x"), "not a noqa comment");
+    }
+
+    #[test]
+    fn po_noqa() {
+        let src = "\
+msgid \"\"
+msgstr \"\"
+
+# noqa: PO005
+#: model:ir.model,name:x
+msgid \"A\"
+msgstr \"B\"
+
+#. noqa
+msgid \"C\"
+msgstr \"D\"
+";
+        let s = Suppressions::from_po(src);
+        assert!(s.is_suppressed(6, "PO005", "x"));
+        assert!(s.is_suppressed(4, "PO005", "x"));
+        assert!(!s.is_suppressed(6, "PO001", "x"));
+        assert!(!s.is_suppressed(1, "PO005", "x"));
+        assert!(
+            !s.is_suppressed(10, "PO005", "x"),
+            "an extracted comment is not the translator's"
+        );
     }
 
     #[test]

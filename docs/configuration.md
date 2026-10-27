@@ -284,3 +284,16 @@ working:
 `all` instead of a rule list disables every rule. After a string that spans
 several lines, `# noqa` on its last line also covers the line it starts on,
 as in Ruff.
+
+In XML and `.po` files:
+
+| Comment                                    | Scope                                                |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `<!-- noqa -->` after an element           | every rule, on this line                             |
+| `<!-- noqa: XML002, ODOO006 -->` after one | these rules, on this line                            |
+| `<!-- noqa: ... -->` on its own line       | that line and the next element's line                |
+| `<!-- oca-hooks:disable=... -->`           | the whole file, as in OCA's hooks                    |
+| `# noqa: PO005` in a `.po` entry           | that entry; `msgmerge` and `odl pot --merge` keep it |
+
+The `.po` comment is a translator comment (`# `), not an extracted one
+(`#. `), which a template update would replace.
