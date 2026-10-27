@@ -2,6 +2,8 @@
 
 use ruff_python_ast::{Expr, ExprDict, ModModule, Number, Operator, Stmt, UnaryOp};
 use ruff_python_parser::{parse_module, Parsed};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 /// Manifest file names, in order of preference: `__openerp__.py` up to Odoo
 /// 9.0, `__terp__.py` and `__odoo__.py` in early versions.
@@ -9,6 +11,48 @@ pub const MANIFEST_FILE_NAMES: &[&str] = &["__manifest__.py", "__openerp__.py", 
 
 pub fn is_manifest_file_name(name: &str) -> bool {
     MANIFEST_FILE_NAMES.contains(&name)
+}
+
+/// Manifest keys that list a module's files: data and demo files, tests,
+/// and `qweb`, whose entries are globs. `assets` (globs too) is not a list.
+pub const FILE_KEYS: &[&str] = &["data", "demo", "demo_xml", "init_xml", "qweb", "test", "update_xml"];
+
+/// Manifest keys of the data files Odoo loads, in the order it loads them:
+/// data, then demo.
+pub const LOADED_KEYS: &[&str] = &["init_xml", "update_xml", "data", "demo_xml", "demo"];
+
+/// The manifest of the module folder `dir`, if it is one.
+pub fn manifest_path(dir: &Path) -> Option<PathBuf> {
+    MANIFEST_FILE_NAMES.iter().map(|n| dir.join(n)).find(|p| p.is_file())
+}
+
+/// Whether `dir` is a module folder: one with a manifest.
+pub fn is_module_dir(dir: &Path) -> bool {
+    manifest_path(dir).is_some()
+}
+
+/// The folder of module `name` in the first of `dirs` that has it, as Odoo
+/// looks a module up on its addons path.
+pub fn find_module_dir(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
+    dirs.iter().map(|dir| dir.join(name)).find(|path| is_module_dir(path))
+}
+
+/// The module folders in `dirs`, in addons path order and sorted within a
+/// folder, each once.
+pub fn module_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut found = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        let mut entries: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
+            if is_module_dir(&path) && seen.insert(path.canonicalize().unwrap_or_else(|_| path.clone())) {
+                found.push(path);
+            }
+        }
+    }
+    found
 }
 
 #[derive(Debug)]

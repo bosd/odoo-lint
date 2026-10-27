@@ -6,7 +6,7 @@
 //! in installable modules that have an `__init__.py`.
 
 use crate::checker::ModuleInfo;
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, FILE_KEYS};
 use crate::odoo_version::OdooVersion;
 use crate::pyliteral::is_truthy;
 use crate::sources::Sources;
@@ -16,9 +16,6 @@ use ruff_python_ast::Expr;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-
-/// Manifest keys whose files Odoo loads in order.
-const DATA_KEYS: &[&str] = &["data", "demo", "demo_xml", "init_xml", "qweb", "test", "update_xml"];
 
 /// An XML file the manifest loads, and the manifest key it is listed under.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,7 +214,7 @@ pub fn manifest_xml_files(module: &ModuleInfo) -> Vec<XmlEntry> {
         return Vec::new();
     }
     let mut entries: Vec<XmlEntry> = Vec::new();
-    for section in DATA_KEYS.iter().copied().chain(["assets"]) {
+    for section in FILE_KEYS.iter().copied().chain(["assets"]) {
         let files: Vec<String> = if section == "qweb" || section == "assets" {
             glob_section(module, manifest, section)
         } else {
