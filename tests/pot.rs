@@ -1,9 +1,11 @@
 //! `odl pot`: writing and checking module templates.
 
+mod common;
+
+use common::write;
 use odoo_lint::odoo_version::OdooVersion;
 use odoo_lint::pot::{run, Installation};
 use std::fs;
-use std::path::Path;
 
 const NOTHING_ELSE: Installation = Installation {
     addons_path: &[],
@@ -11,12 +13,6 @@ const NOTHING_ELSE: Installation = Installation {
     skip_auto_install: false,
     demo: None,
 };
-
-fn write(root: &Path, relative: &str, content: &str) {
-    let path = root.join(relative);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, content).unwrap();
-}
 
 #[test]
 fn writes_then_checks_the_template() {
