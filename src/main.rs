@@ -2,9 +2,9 @@ use clap::{Parser, Subcommand};
 use odoo_lint::diagnostics::Violation;
 use odoo_lint::fix::{Applicability, FixMode};
 use odoo_lint::output::{self, OutputFormat};
-use odoo_lint::settings::{CliOverrides, Settings};
+use odoo_lint::settings::{CliOverrides, Loaded, Settings};
 use odoo_lint::{fixer, linter, rules};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
@@ -17,86 +17,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Lint Odoo addon directories or files
-    Check {
-        /// Files or directories to lint
-        #[arg(default_value = ".")]
-        paths: Vec<PathBuf>,
-        /// Target Odoo version, e.g. 17.0; overrides `target-version` from the config
-        #[arg(long, visible_alias = "odoo-version")]
-        version: Option<String>,
-        /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
-        #[arg(long)]
-        config: Option<PathBuf>,
-        /// Rules to enable (codes, names or code prefixes); replaces `select` from the config
-        #[arg(long, value_delimiter = ',')]
-        select: Option<Vec<String>>,
-        /// Rules to disable; added to `ignore` from the config
-        #[arg(long, value_delimiter = ',')]
-        ignore: Vec<String>,
-        /// Output format
-        #[arg(long, value_enum, default_value_t)]
-        output_format: OutputFormat,
-        /// Apply safe fixes
-        #[arg(long)]
-        fix: bool,
-        /// Apply `exclude` to files given on the command line as well (for pre-commit)
-        #[arg(long)]
-        force_exclude: bool,
-        /// Exit with 0 even when there are violations (advisory hooks); errors still exit with 2
-        #[arg(long)]
-        exit_zero: bool,
-        /// Folders with addons for checks across modules; replaces `addons-path` from the config
-        #[arg(long, value_delimiter = ',')]
-        addons_path: Option<Vec<String>>,
-        /// Also apply fixes that may change behaviour or lose information
-        #[arg(long)]
-        unsafe_fixes: bool,
-        /// Show the fixes as a diff instead of writing them
-        #[arg(long)]
-        diff: bool,
-        /// Also print the Odoo version and the config used
-        #[arg(short, long, conflicts_with = "quiet")]
-        verbose: bool,
-        /// Print only the findings, without the summary
-        #[arg(short, long)]
-        quiet: bool,
-    },
+    Check(CheckArgs),
     /// Report what modules need to run on a newer Odoo version, per version step
-    UpgradeCheck {
-        /// Files or directories to check
-        #[arg(default_value = ".")]
-        paths: Vec<PathBuf>,
-        /// The Odoo version to upgrade to, e.g. 19.0
-        #[arg(long)]
-        target: String,
-        /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
-        #[arg(long)]
-        config: Option<PathBuf>,
-        /// Rules to leave out; added to `ignore` from the config
-        #[arg(long, value_delimiter = ',')]
-        ignore: Vec<String>,
-        /// Output format
-        #[arg(long, value_enum, default_value_t)]
-        output_format: ReportFormat,
-        /// List every finding under its module
-        #[arg(long)]
-        show_findings: bool,
-        /// Apply the safe fixes of the upgrade
-        #[arg(long)]
-        fix: bool,
-        /// Also apply the unsafe fixes
-        #[arg(long)]
-        unsafe_fixes: bool,
-        /// Set the manifest version of modules older than the target to `<target>.1.0.0`
-        #[arg(long)]
-        bump_version: bool,
-        /// Folders with the addons of the target version (Odoo's included): also check views, fields, XML ids and models against them
-        #[arg(long, value_delimiter = ',')]
-        addons_path: Option<Vec<String>>,
-        /// Show the fixes as a diff instead of writing them
-        #[arg(long)]
-        diff: bool,
-    },
+    UpgradeCheck(UpgradeArgs),
     /// Write a README badge (shields.io endpoint JSON): share of clean modules, or upgrade readiness
     Badge {
         /// Files or directories to check
@@ -163,6 +86,91 @@ enum Commands {
     },
 }
 
+/// The options of `odl check`.
+#[derive(clap::Args)]
+struct CheckArgs {
+    /// Files or directories to lint
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+    /// Target Odoo version, e.g. 17.0; overrides `target-version` from the config
+    #[arg(long, visible_alias = "odoo-version")]
+    version: Option<String>,
+    /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Rules to enable (codes, names or code prefixes); replaces `select` from the config
+    #[arg(long, value_delimiter = ',')]
+    select: Option<Vec<String>>,
+    /// Rules to disable; added to `ignore` from the config
+    #[arg(long, value_delimiter = ',')]
+    ignore: Vec<String>,
+    /// Output format
+    #[arg(long, value_enum, default_value_t)]
+    output_format: OutputFormat,
+    /// Apply safe fixes
+    #[arg(long)]
+    fix: bool,
+    /// Apply `exclude` to files given on the command line as well (for pre-commit)
+    #[arg(long)]
+    force_exclude: bool,
+    /// Exit with 0 even when there are violations (advisory hooks); errors still exit with 2
+    #[arg(long)]
+    exit_zero: bool,
+    /// Folders with addons for checks across modules; replaces `addons-path` from the config
+    #[arg(long, value_delimiter = ',')]
+    addons_path: Option<Vec<String>>,
+    /// Also apply fixes that may change behaviour or lose information
+    #[arg(long)]
+    unsafe_fixes: bool,
+    /// Show the fixes as a diff instead of writing them
+    #[arg(long)]
+    diff: bool,
+    /// Also print the Odoo version and the config used
+    #[arg(short, long, conflicts_with = "quiet")]
+    verbose: bool,
+    /// Print only the findings, without the summary
+    #[arg(short, long)]
+    quiet: bool,
+}
+
+/// The options of `odl upgrade-check`.
+#[derive(clap::Args)]
+struct UpgradeArgs {
+    /// Files or directories to check
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+    /// The Odoo version to upgrade to, e.g. 19.0
+    #[arg(long)]
+    target: String,
+    /// Config file (`odoo-lint.toml` or `pyproject.toml`); skips discovery
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Rules to leave out; added to `ignore` from the config
+    #[arg(long, value_delimiter = ',')]
+    ignore: Vec<String>,
+    /// Output format
+    #[arg(long, value_enum, default_value_t)]
+    output_format: ReportFormat,
+    /// List every finding under its module
+    #[arg(long)]
+    show_findings: bool,
+    /// Apply the safe fixes of the upgrade
+    #[arg(long)]
+    fix: bool,
+    /// Also apply the unsafe fixes
+    #[arg(long)]
+    unsafe_fixes: bool,
+    /// Set the manifest version of modules older than the target to `<target>.1.0.0`
+    #[arg(long)]
+    bump_version: bool,
+    /// Folders with the addons of the target version (Odoo's included): also check views, fields, XML ids and models against them
+    #[arg(long, value_delimiter = ',')]
+    addons_path: Option<Vec<String>>,
+    /// Show the fixes as a diff instead of writing them
+    #[arg(long)]
+    diff: bool,
+}
+
 /// The options of `odl pot`.
 #[derive(clap::Args)]
 struct PotArgs {
@@ -216,6 +224,9 @@ enum RuleFormat {
     Json,
 }
 
+/// A command's exit code, or the error that stopped it (exit code 2).
+type Outcome = Result<ExitCode, String>;
+
 fn main() -> ExitCode {
     // Stop quietly when the reader goes away (`odl check | head`), as other
     // command-line tools do, instead of panicking on the failed write.
@@ -224,33 +235,9 @@ fn main() -> ExitCode {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
-    let cli = Cli::parse();
-    match cli.command {
-        Commands::UpgradeCheck {
-            paths,
-            target,
-            config,
-            ignore,
-            output_format,
-            show_findings,
-            fix,
-            unsafe_fixes,
-            bump_version,
-            addons_path,
-            diff,
-        } => upgrade_check(UpgradeArgs {
-            paths,
-            target,
-            config,
-            ignore,
-            json: output_format == ReportFormat::Json,
-            show_findings,
-            fix,
-            unsafe_fixes,
-            bump_version,
-            addons_path,
-            diff,
-        }),
+    let outcome = match Cli::parse().command {
+        Commands::Check(args) => check(args),
+        Commands::UpgradeCheck(args) => upgrade_check(args),
         Commands::Badge {
             paths,
             upgrade,
@@ -263,82 +250,9 @@ fn main() -> ExitCode {
             config,
             force_exclude,
         } => format(&paths, check, config, force_exclude),
-        Commands::Readme { paths, check } => match readme(&paths, check) {
-            Ok(changes) => {
-                for change in &changes {
-                    let verb = match (change.written, change.removed) {
-                        (true, true) => "removed",
-                        (false, true) => "to remove:",
-                        (true, false) => "wrote",
-                        (false, false) => "out of date:",
-                    };
-                    eprintln!("{verb} {}", change.path.display());
-                }
-                if check && !changes.is_empty() {
-                    eprintln!("Run `odl readme` to update {} file(s).", changes.len());
-                    ExitCode::from(1)
-                } else {
-                    ExitCode::SUCCESS
-                }
-            }
-            Err(err) => {
-                eprintln!("error: {err}");
-                ExitCode::from(2)
-            }
-        },
-        Commands::Pot(args) => match pot(&args) {
-            Ok(changes) => {
-                let mut outdated = 0;
-                for change in &changes {
-                    if let Some(reason) = &change.skipped {
-                        eprintln!("skipped {}: {reason}", change.path.display());
-                        continue;
-                    }
-                    outdated += 1;
-                    let verb = if change.written { "wrote" } else { "out of date:" };
-                    let note = if change.incomplete {
-                        " (dependencies not found on the addons path: labels may be missing)"
-                    } else {
-                        ""
-                    };
-                    eprintln!("{verb} {}{note}", change.path.display());
-                }
-                if args.check && outdated > 0 {
-                    let command = if args.merge { "odl pot --merge" } else { "odl pot" };
-                    eprintln!("Run `{command}` to update {outdated} file(s).");
-                    ExitCode::from(1)
-                } else {
-                    ExitCode::SUCCESS
-                }
-            }
-            Err(err) => {
-                eprintln!("error: {err}");
-                ExitCode::from(2)
-            }
-        },
-        Commands::Requirements { dir, check } => match odoo_lint::requirements::run(&dir, check) {
-            Ok(change) => {
-                use odoo_lint::requirements::Change;
-                match (&change, check) {
-                    (Some(Change::Written(path)), false) => eprintln!("wrote {}", path.display()),
-                    (Some(Change::Removed(path)), false) => eprintln!("removed {}", path.display()),
-                    (Some(Change::Written(path) | Change::Removed(path)), true) => {
-                        eprintln!("out of date: {}", path.display());
-                    }
-                    (None, _) => {}
-                }
-                if check && change.is_some() {
-                    eprintln!("Run `odl requirements` to update it.");
-                    ExitCode::from(1)
-                } else {
-                    ExitCode::SUCCESS
-                }
-            }
-            Err(err) => {
-                eprintln!("error: {err}");
-                ExitCode::from(2)
-            }
-        },
+        Commands::Readme { paths, check } => readme(&paths, check),
+        Commands::Pot(args) => pot(&args),
+        Commands::Requirements { dir, check } => requirements(&dir, check),
         Commands::Hook => {
             let mut event = String::new();
             // A hook must never break the agent: problems mean "nothing to report".
@@ -347,155 +261,112 @@ fn main() -> ExitCode {
                     println!("{output}");
                 }
             }
-            ExitCode::SUCCESS
+            Ok(ExitCode::SUCCESS)
         }
-        Commands::Server => match odoo_lint::server::run() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                eprintln!("error: {err}");
-                ExitCode::from(2)
-            }
-        },
-        Commands::Mcp => match odoo_lint::mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                eprintln!("error: {err}");
-                ExitCode::from(2)
-            }
-        },
-        Commands::Rule {
-            code: None,
-            output_format,
-        } => {
-            if output_format == RuleFormat::Json {
-                let all: Vec<_> = rules::ALL.iter().map(rules::Rule::to_json).collect();
-                println!("{}", serde_json::to_string_pretty(&all).expect("rules serialize"));
-            } else {
-                for rule in rules::ALL {
-                    println!("{:<8} {:<26} {}", rule.code, rule.name, rule.summary);
-                }
-            }
-            ExitCode::SUCCESS
-        }
-        Commands::Rule {
-            code: Some(code),
-            output_format,
-        } => match rules::find(&code) {
-            Some(rule) => {
-                if output_format == RuleFormat::Json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&rule.to_json()).expect("rule serializes")
-                    );
-                } else {
-                    print!("{}", rule.to_markdown());
-                }
-                ExitCode::SUCCESS
-            }
-            None => {
-                eprintln!("error: unknown rule '{code}' (run `odl rule` to list all rules)");
-                ExitCode::from(2)
-            }
-        },
-        Commands::Check {
-            paths,
-            version,
-            config,
-            select,
-            ignore,
-            output_format,
-            fix,
-            unsafe_fixes,
-            diff,
-            force_exclude,
-            exit_zero,
-            addons_path,
-            verbose,
-            quiet,
-        } => {
-            let missing = linter::missing_paths(&paths);
-            if !missing.is_empty() {
-                for path in missing {
-                    eprintln!("error: {}: no such file or directory", path.display());
-                }
-                return ExitCode::from(2);
-            }
-            let overrides = CliOverrides {
-                target_version: version,
-                select,
-                ignore,
-                force_exclude,
-                addons_path,
-            };
-            let loaded = match Settings::load(&paths[0], config.as_deref(), overrides) {
-                Ok(loaded) => loaded,
-                Err(err) => {
-                    eprintln!("error: {err}");
-                    return ExitCode::from(2);
-                }
-            };
-            let (settings, config_path, warnings) = (loaded.settings, loaded.config_path, loaded.warnings);
-            for warning in &warnings {
-                eprintln!("warning: {warning}");
-            }
+        Commands::Server => odoo_lint::server::run()
+            .map(|()| ExitCode::SUCCESS)
+            .map_err(|err| err.to_string()),
+        Commands::Mcp => odoo_lint::mcp::serve(std::io::stdin().lock(), std::io::stdout().lock())
+            .map(|()| ExitCode::SUCCESS)
+            .map_err(|err| err.to_string()),
+        Commands::Rule { code, output_format } => rule(code.as_deref(), output_format),
+    };
+    outcome.unwrap_or_else(|err| {
+        eprintln!("error: {err}");
+        ExitCode::from(2)
+    })
+}
 
-            if verbose {
-                if settings.target_explicit {
-                    eprintln!("Odoo version: {}", settings.target_version);
-                } else {
-                    eprintln!("Odoo version: each module's manifest, else {}", settings.target_version);
-                }
-                match &config_path {
-                    Some(config_path) => eprintln!("Config: {}", config_path.display()),
-                    None => eprintln!("Config: none found (odoo-lint.toml or [tool.odoo-lint] in pyproject.toml)"),
-                }
-            }
-            for warning in linter::addons_path_warnings(&paths, &settings) {
-                eprintln!("warning: {warning}");
-            }
-            let mode = if unsafe_fixes { FixMode::Unsafe } else { FixMode::Safe };
-            if diff {
-                let result = fixer::fix_paths(&paths, &settings, mode);
-                print!("{}", result.diff());
-                eprintln!("{} fix(es) would change {} file(s).", result.fixed, result.files());
-                return if result.files() == 0 || exit_zero {
-                    ExitCode::SUCCESS
-                } else {
-                    ExitCode::from(1)
-                };
-            }
-            let (violations, fixed) = if fix {
-                let result = fixer::fix_paths(&paths, &settings, mode);
-                if let Err(err) = result.write() {
-                    eprintln!("error: {err}");
-                    return ExitCode::from(2);
-                }
-                (result.remaining, Some(result.fixed))
-            } else {
-                (linter::lint_paths(&paths, &settings), None)
-            };
-            print!("{}", output::render(output_format, &violations));
-            if output_format == OutputFormat::Text && !quiet {
-                if let Some(fixed) = fixed {
-                    println!("Fixed {fixed} violation(s).");
-                }
-                if violations.is_empty() {
-                    println!("✨ No violations found!");
-                } else {
-                    println!(
-                        "Found {} violation(s).{}",
-                        violations.len(),
-                        fixable_hint(&violations, fix)
-                    );
-                }
-            }
-            if violations.is_empty() || exit_zero {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+/// Exit code 1 when a check found something, else 0.
+fn found(anything: bool) -> ExitCode {
+    if anything {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// The settings for `paths`, with the configuration's warnings printed.
+fn load(paths: &[PathBuf], config: Option<&Path>, overrides: CliOverrides) -> Result<Loaded, String> {
+    let loaded = Settings::load(&paths[0], config, overrides)?;
+    for warning in &loaded.warnings {
+        eprintln!("warning: {warning}");
+    }
+    Ok(loaded)
+}
+
+fn write(path: &Path, contents: &str) -> Result<(), String> {
+    std::fs::write(path, contents).map_err(|err| format!("cannot write {}: {err}", path.display()))
+}
+
+fn check(args: CheckArgs) -> Outcome {
+    let missing = linter::missing_paths(&args.paths);
+    if !missing.is_empty() {
+        let missing: Vec<String> = missing
+            .iter()
+            .map(|path| format!("{}: no such file or directory", path.display()))
+            .collect();
+        return Err(missing.join("\nerror: "));
+    }
+    let overrides = CliOverrides {
+        target_version: args.version,
+        select: args.select,
+        ignore: args.ignore,
+        force_exclude: args.force_exclude,
+        addons_path: args.addons_path,
+    };
+    let Loaded {
+        settings, config_path, ..
+    } = load(&args.paths, args.config.as_deref(), overrides)?;
+    let paths = &args.paths;
+    if args.verbose {
+        if settings.target_explicit {
+            eprintln!("Odoo version: {}", settings.target_version);
+        } else {
+            eprintln!("Odoo version: each module's manifest, else {}", settings.target_version);
+        }
+        match &config_path {
+            Some(config_path) => eprintln!("Config: {}", config_path.display()),
+            None => eprintln!("Config: none found (odoo-lint.toml or [tool.odoo-lint] in pyproject.toml)"),
         }
     }
+    for warning in linter::addons_path_warnings(paths, &settings) {
+        eprintln!("warning: {warning}");
+    }
+    let mode = if args.unsafe_fixes {
+        FixMode::Unsafe
+    } else {
+        FixMode::Safe
+    };
+    if args.diff {
+        let result = fixer::fix_paths(paths, &settings, mode);
+        print!("{}", result.diff());
+        eprintln!("{} fix(es) would change {} file(s).", result.fixed, result.files());
+        return Ok(found(result.files() > 0 && !args.exit_zero));
+    }
+    let (violations, fixed) = if args.fix {
+        let result = fixer::fix_paths(paths, &settings, mode);
+        result.write().map_err(|err| err.to_string())?;
+        (result.remaining, Some(result.fixed))
+    } else {
+        (linter::lint_paths(paths, &settings), None)
+    };
+    print!("{}", output::render(args.output_format, &violations));
+    if args.output_format == OutputFormat::Text && !args.quiet {
+        if let Some(fixed) = fixed {
+            println!("Fixed {fixed} violation(s).");
+        }
+        if violations.is_empty() {
+            println!("✨ No violations found!");
+        } else {
+            println!(
+                "Found {} violation(s).{}",
+                violations.len(),
+                fixable_hint(&violations, args.fix)
+            );
+        }
+    }
+    Ok(found(!violations.is_empty() && !args.exit_zero))
 }
 
 /// " 3 fixable with `--fix` (1 more with `--unsafe-fixes`)." for the summary.
@@ -516,42 +387,16 @@ fn fixable_hint(violations: &[Violation], fixing: bool) -> String {
     }
 }
 
-struct UpgradeArgs {
-    paths: Vec<PathBuf>,
-    target: String,
-    config: Option<PathBuf>,
-    ignore: Vec<String>,
-    json: bool,
-    show_findings: bool,
-    fix: bool,
-    unsafe_fixes: bool,
-    bump_version: bool,
-    addons_path: Option<Vec<String>>,
-    diff: bool,
-}
-
-fn upgrade_check(args: UpgradeArgs) -> ExitCode {
-    let target: odoo_lint::odoo_version::OdooVersion = match args.target.parse() {
-        Ok(version) => version,
-        Err(err) => {
-            eprintln!("error: --target: {err}");
-            return ExitCode::from(2);
-        }
-    };
+fn upgrade_check(args: UpgradeArgs) -> Outcome {
+    let target: odoo_lint::odoo_version::OdooVersion = args.target.parse().map_err(|err| format!("--target: {err}"))?;
     let overrides = CliOverrides {
         ignore: args.ignore,
         ..CliOverrides::default()
     };
-    let mut settings = match Settings::load(&args.paths[0], args.config.as_deref(), overrides) {
-        Ok(loaded) => loaded.settings,
-        Err(err) => {
-            eprintln!("error: {err}");
-            return ExitCode::from(2);
-        }
-    };
+    let mut settings = load(&args.paths, args.config.as_deref(), overrides)?.settings;
     settings.target_addons_path = args
         .addons_path
-        .map(|paths| odoo_lint::settings::expand_paths(std::path::Path::new("."), &paths));
+        .map(|paths| odoo_lint::settings::expand_paths(Path::new("."), &paths));
     let sources = odoo_lint::sources::Sources::default();
     let mut changed: Vec<(PathBuf, String, String)> = Vec::new();
     let mut fixed = 0;
@@ -589,59 +434,33 @@ fn upgrade_check(args: UpgradeArgs) -> ExitCode {
             print!("{}", fixer::unified_diff(path, old, new));
         }
         eprintln!("{fixed} fix(es) would change {} file(s).", changed.len());
-        return if changed.is_empty() {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::from(1)
-        };
+        return Ok(found(!changed.is_empty()));
     }
     for (path, _, new) in &changed {
-        if let Err(err) = std::fs::write(path, new) {
-            eprintln!("error: cannot write {}: {err}", path.display());
-            return ExitCode::from(2);
-        }
+        write(path, new)?;
     }
     if args.fix {
         eprintln!("Fixed {fixed} finding(s) in {} file(s).", changed.len());
     }
     let report = odoo_lint::upgrade::check(&settings, &args.paths, target);
-    if args.json {
+    if args.output_format == ReportFormat::Json {
         println!("{}", serde_json::to_string_pretty(&report).expect("report serializes"));
     } else {
         print!("{}", odoo_lint::upgrade::render_text(&report, args.show_findings));
     }
     for (path, _, new) in &bumps {
-        if let Err(err) = std::fs::write(path, new) {
-            eprintln!("error: cannot write {}: {err}", path.display());
-            return ExitCode::from(2);
-        }
+        write(path, new)?;
     }
     if !bumps.is_empty() {
         eprintln!("Set the version of {} module(s) to {target}.1.0.0.", bumps.len());
     }
-    if report.effort.changes == 0 {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
-    }
+    Ok(found(report.effort.changes > 0))
 }
 
-fn format(paths: &[PathBuf], check: bool, config: Option<PathBuf>, force_exclude: bool) -> ExitCode {
-    let mut settings = match Settings::load(&paths[0], config.as_deref(), CliOverrides::default()) {
-        Ok(loaded) => loaded.settings,
-        Err(err) => {
-            eprintln!("error: {err}");
-            return ExitCode::from(2);
-        }
-    };
+fn format(paths: &[PathBuf], check: bool, config: Option<PathBuf>, force_exclude: bool) -> Outcome {
+    let mut settings = load(paths, config.as_deref(), CliOverrides::default())?.settings;
     settings.force_exclude |= force_exclude;
-    let results = match odoo_lint::format::run(paths, &settings, check) {
-        Ok(results) => results,
-        Err(err) => {
-            eprintln!("error: {err}");
-            return ExitCode::from(2);
-        }
-    };
+    let results = odoo_lint::format::run(paths, &settings, check).map_err(|err| err.to_string())?;
     let mut pending = 0;
     for (path, outcome) in &results {
         match outcome {
@@ -657,28 +476,37 @@ fn format(paths: &[PathBuf], check: bool, config: Option<PathBuf>, force_exclude
     }
     if pending > 0 {
         eprintln!("Run `odl format` to format {pending} file(s).");
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
     }
+    Ok(found(pending > 0))
 }
 
 /// `odl readme` in the style the configuration found from `paths[0]` asks for.
-fn readme(paths: &[PathBuf], check: bool) -> std::io::Result<Vec<odoo_lint::readme::Change>> {
-    let loaded = Settings::load(&paths[0], None, CliOverrides::default()).map_err(std::io::Error::other)?;
-    let target = loaded.settings.target_version.to_string();
-    let style = odoo_lint::readme::style(&loaded.settings.config, &target).map_err(std::io::Error::other)?;
-    odoo_lint::readme::run_with(paths, check, &style)
+fn readme(paths: &[PathBuf], check: bool) -> Outcome {
+    let settings = load(paths, None, CliOverrides::default())?.settings;
+    let target = settings.target_version.to_string();
+    let style = odoo_lint::readme::style(&settings.config, &target)?;
+    let changes = odoo_lint::readme::run_with(paths, check, &style).map_err(|err| err.to_string())?;
+    for change in &changes {
+        let verb = match (change.written, change.removed) {
+            (true, true) => "removed",
+            (false, true) => "to remove:",
+            (true, false) => "wrote",
+            (false, false) => "out of date:",
+        };
+        eprintln!("{verb} {}", change.path.display());
+    }
+    if check && !changes.is_empty() {
+        eprintln!("Run `odl readme` to update {} file(s).", changes.len());
+    }
+    Ok(found(check && !changes.is_empty()))
 }
 
-fn pot(args: &PotArgs) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
+fn pot(args: &PotArgs) -> Outcome {
     let overrides = CliOverrides {
         addons_path: args.addons_path.clone(),
         ..CliOverrides::default()
     };
-    let settings = Settings::load(&args.paths[0], None, overrides)
-        .map_err(std::io::Error::other)?
-        .settings;
+    let settings = load(&args.paths, None, overrides)?.settings;
     let installation = odoo_lint::pot::Installation {
         addons_path: &settings.addons_path,
         installed: &args.installed,
@@ -690,7 +518,7 @@ fn pot(args: &PotArgs) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
     } else {
         odoo_lint::pot::Obsolete::Keep
     });
-    odoo_lint::pot::run(
+    let changes = odoo_lint::pot::run(
         &args.paths,
         args.check,
         args.output_dir.as_deref(),
@@ -698,35 +526,85 @@ fn pot(args: &PotArgs) -> std::io::Result<Vec<odoo_lint::pot::Change>> {
         &installation,
         merge,
     )
+    .map_err(|err| err.to_string())?;
+    let mut outdated = 0;
+    for change in &changes {
+        if let Some(reason) = &change.skipped {
+            eprintln!("skipped {}: {reason}", change.path.display());
+            continue;
+        }
+        outdated += 1;
+        let verb = if change.written { "wrote" } else { "out of date:" };
+        let note = if change.incomplete {
+            " (dependencies not found on the addons path: labels may be missing)"
+        } else {
+            ""
+        };
+        eprintln!("{verb} {}{note}", change.path.display());
+    }
+    if args.check && outdated > 0 {
+        let command = if args.merge { "odl pot --merge" } else { "odl pot" };
+        eprintln!("Run `{command}` to update {outdated} file(s).");
+    }
+    Ok(found(args.check && outdated > 0))
 }
 
-fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> ExitCode {
-    let settings = match Settings::load(&paths[0], config.as_deref(), CliOverrides::default()) {
-        Ok(loaded) => loaded.settings,
-        Err(err) => {
-            eprintln!("error: {err}");
-            return ExitCode::from(2);
+fn requirements(dir: &Path, check: bool) -> Outcome {
+    use odoo_lint::requirements::Change;
+    let change = odoo_lint::requirements::run(dir, check).map_err(|err| err.to_string())?;
+    match (&change, check) {
+        (Some(Change::Written(path)), false) => eprintln!("wrote {}", path.display()),
+        (Some(Change::Removed(path)), false) => eprintln!("removed {}", path.display()),
+        (Some(Change::Written(path) | Change::Removed(path)), true) => {
+            eprintln!("out of date: {}", path.display());
         }
-    };
-    let value = match upgrade {
-        Some(target) => match target.parse() {
-            Ok(target) => odoo_lint::badge::upgrade_ready(&settings, paths, target),
-            Err(err) => {
-                eprintln!("error: --upgrade: {err}");
-                return ExitCode::from(2);
+        (None, _) => {}
+    }
+    if check && change.is_some() {
+        eprintln!("Run `odl requirements` to update it.");
+    }
+    Ok(found(check && change.is_some()))
+}
+
+/// `odl rule`: every rule, or the documentation of one.
+fn rule(code: Option<&str>, output_format: RuleFormat) -> Outcome {
+    let json = output_format == RuleFormat::Json;
+    let Some(code) = code else {
+        if json {
+            let all: Vec<_> = rules::ALL.iter().map(rules::Rule::to_json).collect();
+            println!("{}", serde_json::to_string_pretty(&all).expect("rules serialize"));
+        } else {
+            for rule in rules::ALL {
+                println!("{:<8} {:<26} {}", rule.code, rule.name, rule.summary);
             }
-        },
+        }
+        return Ok(ExitCode::SUCCESS);
+    };
+    let rule = rules::find(code).ok_or_else(|| format!("unknown rule '{code}' (run `odl rule` to list all rules)"))?;
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rule.to_json()).expect("rule serializes")
+        );
+    } else {
+        print!("{}", rule.to_markdown());
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn badge(paths: &[PathBuf], upgrade: Option<String>, config: Option<PathBuf>, output: Option<PathBuf>) -> Outcome {
+    let settings = load(paths, config.as_deref(), CliOverrides::default())?.settings;
+    let value = match upgrade {
+        Some(target) => {
+            let target = target.parse().map_err(|err| format!("--upgrade: {err}"))?;
+            odoo_lint::badge::upgrade_ready(&settings, paths, target)
+        }
         None => odoo_lint::badge::clean(&settings, paths),
     };
     let text = serde_json::to_string_pretty(&value).expect("badge serializes") + "\n";
     match output {
-        Some(path) => {
-            if let Err(err) = std::fs::write(&path, text) {
-                eprintln!("error: cannot write {}: {err}", path.display());
-                return ExitCode::from(2);
-            }
-        }
+        Some(path) => write(&path, &text)?,
         None => print!("{text}"),
     }
-    ExitCode::SUCCESS
+    Ok(ExitCode::SUCCESS)
 }
