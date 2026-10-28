@@ -17,7 +17,7 @@ uv run nox -s docs     # live-reloading documentation
 ```text
 odl check ─> settings ─> linter ─> rules ─> fixer ─> output
                │           │        │
-            config.rs   checker.rs index.rs (checks across modules)
+            config.rs   checker.rs index/ (checks across modules)
 ```
 
 - `src/main.rs`: the command line (clap). Each subcommand calls into the
@@ -37,10 +37,12 @@ odl check ─> settings ─> linter ─> rules ─> fixer ─> output
   result instead of writing it.
 - `src/output.rs` prints the violations as text, JSON, GitHub annotations,
   SARIF or a GitLab report.
-- `src/index.rs` is a model of the addons path: per module, its
+- `src/index/` is a model of the addons path: per module, its
   dependencies, models, fields and XML ids, read on first use. Rules that
   look across modules (most `ODOO0xx` rules) ask it what a module's
-  `depends` reach.
+  `depends` reach. `mod.rs` parses and caches a module, `python.rs` reads
+  its model classes, `data.rs` its data files (XML ids, access rights,
+  views) and `scope.rs` answers for everything its `depends` reach.
 - `src/server.rs` (`odl server`), `src/mcp.rs` (`odl mcp`) and
   `src/hook.rs` (`odl hook`) wrap the linter for editors and AI agents;
   `definition.rs`, `completion.rs` and `usages.rs` add go to definition,
@@ -124,7 +126,7 @@ _Fix safety_ section, and test the fix with `fixer::fix_paths`
 ### Rules across modules
 
 A rule that needs to know what another module defines (a field of an
-inherited model, an XML id from a dependency) uses `src/index.rs`:
+inherited model, an XML id from a dependency) uses `src/index/`:
 `index::closure(module, addons_path)` gives the modules its `depends`
 reach. When a dependency is missing from the addons path, the closure is
 `None` and the rule reports nothing rather than guess.
