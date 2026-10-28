@@ -118,11 +118,14 @@ def main() -> int:
                 if reference_pot.stem != module:
                     continue
                 ours_path = out_dir / repo.name / f"{module}.pot"
-                if not ours_path.is_file():
-                    totals["modules without output"] += 1
-                    continue
                 theirs = pairs(reference_pot.read_text(encoding="utf-8"), kinds)
-                ours = pairs(ours_path.read_text(encoding="utf-8"), kinds)
+                # No template: odl found no terms (or failed); OCA's count as
+                # missing.
+                if ours_path.is_file():
+                    ours = pairs(ours_path.read_text(encoding="utf-8"), kinds)
+                else:
+                    totals["modules without output"] += 1
+                    ours = set()
                 for label, found in (("in OCA", theirs), ("matched", theirs & ours)):
                     for _, reference in found:
                         per_kind.setdefault(kind_of(reference), Counter())[label] += 1

@@ -102,11 +102,7 @@ pub fn spreadsheet_terms(source: &str, extractor: Extractor) -> Vec<String> {
     for filter in data["globalFilters"].as_array().into_iter().flatten() {
         terms.extend(text(&filter["label"]));
     }
-    terms
-        .into_iter()
-        .filter(|t| t.chars().any(char::is_alphabetic))
-        .map(str::to_string)
-        .collect()
+    terms.into_iter().filter(|t| exported(t)).map(str::to_string).collect()
 }
 
 /// The values of the string literals of a Python file, by start offset; `None`
@@ -198,6 +194,9 @@ pub fn python_terms(source: &str, extractor: Extractor) -> Vec<String> {
     };
     let mut strings = PythonStrings::default();
     strings.visit_body(&parsed.syntax().body);
+    // From Python 3.12 on the tokenizer splits an f-string, and Odoo 19's
+    // extractor would read a `_()` in a replacement field; OCA's templates
+    // have none of those (their CI runs an older Python), so neither do ours.
     let tokens = python_tokens(source, &parsed, &strings);
     let messages = match extractor {
         Extractor::Odoo => odoo_python_messages(&tokens),
@@ -377,6 +376,17 @@ impl JsTerms<'_> {
         }
     }
 
+    /// Whether a name ends right before `start`: Odoo's lexer then reads a
+    /// template literal as tagged (`name\`...\``), a call with one string,
+    /// and does not look inside it, also after `return`.
+    fn after_name(&self, start: u32) -> bool {
+        self.source[..start as usize]
+            .trim_end()
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    }
+
     /// A template literal as the extractor reads it: Odoo's takes the raw
     /// text up to and including the first `${`, Babel's the whole text.
     fn template_text(&self, template: &oxc_ast::ast::TemplateLiteral) -> String {
@@ -397,6 +407,9 @@ impl JsTerms<'_> {
 
 impl<'a> Visit<'a> for JsTerms<'_> {
     fn visit_template_literal(&mut self, template: &oxc_ast::ast::TemplateLiteral<'a>) {
+        if self.extractor == Extractor::Odoo && self.after_name(template.span.start) {
+            return;
+        }
         self.in_template += 1;
         walk::walk_template_literal(self, template);
         self.in_template -= 1;
@@ -426,11 +439,18 @@ impl<'a> Visit<'a> for JsTerms<'_> {
     }
 
     fn visit_tagged_template_expression(&mut self, tagged: &TaggedTemplateExpression<'a>) {
-        if is_translate_callee(&tagged.tag) && tagged.quasi.expressions.is_empty() {
-            if let Some(cooked) = tagged.quasi.quasis.first().and_then(|q| q.value.cooked.as_ref()) {
-                if !cooked.is_empty() {
-                    self.terms.push(cooked.to_string());
+        if is_translate_callee(&tagged.tag) {
+            let quasi = &tagged.quasi;
+            let message = match quasi.quasis.first().and_then(|q| q.value.cooked.as_ref()) {
+                Some(cooked) if quasi.expressions.is_empty() => Some(cooked.to_string()),
+                // Odoo's takes the raw text, fields included.
+                _ if self.extractor == Extractor::Odoo => {
+                    Some(self.source[quasi.span.start as usize + 1..quasi.span.end as usize - 1].to_string())
                 }
+                _ => None,
+            };
+            if let Some(message) = message.filter(|m| !m.is_empty()) {
+                self.terms.push(message);
             }
         }
         walk::walk_tagged_template_expression(self, tagged);
@@ -525,7 +545,12 @@ fn tail<'a>(node: roxmltree::Node<'a, '_>) -> Option<&'a str> {
 fn qweb_walk(element: roxmltree::Node, terms: &mut Vec<String>) {
     // Comments and processing instructions are skipped with the text after them.
     for child in element.children().filter(roxmltree::Node::is_element) {
-        let tag = child.tag_name().name();
+        // lxml names a namespaced element `{uri}name`: it matches none of
+        // the names below, nor do namespaced attributes.
+        let tag = match child.tag_name().namespace() {
+            Some(_) => "",
+            None => child.tag_name().name(),
+        };
         let skipped = SKIPPED_ELEMENTS.contains(&tag.to_lowercase().as_str())
             || child.has_attribute("t-js")
             || (tag == "attribute" && !is_translatable_attrib(child.attribute("name"), child))
@@ -535,7 +560,7 @@ fn qweb_walk(element: roxmltree::Node, terms: &mut Vec<String>) {
             let is_component = tag.starts_with(|c: char| c.is_uppercase())
                 || child.has_attribute("t-component")
                 || child.has_attribute("t-set-slot");
-            for attribute in child.attributes() {
+            for attribute in child.attributes().filter(|a| a.namespace().is_none()) {
                 let name = attribute.name();
                 if (!is_component && OWL_TRANSLATED_ATTRS.contains(&name))
                     || (is_component && name.ends_with(".translate"))
@@ -623,6 +648,11 @@ mod tests {
         }
 
         #[test]
+        fn skips_calls_inside_f_string_fields_as_oca_does() {
+            assert!(odoo(r#"raise UserError(f"{_('Bad thing')} happened")"#).is_empty());
+        }
+
+        #[test]
         fn babel_stops_the_file_at_an_f_string_with_fields() {
             let source = "_(\"Before\")\n_(f\"Batch {name}: \" \"failed\")\n_(\"After\")\n";
             assert_eq!(babel(source), ["Before"]);
@@ -676,6 +706,17 @@ mod tests {
         }
 
         #[test]
+        fn odoo_reads_a_tagged_template_with_fields_whole() {
+            assert_eq!(odoo("_t`Tagged ${x} text`;"), ["Tagged ${x} text"]);
+        }
+
+        #[test]
+        fn odoo_misses_calls_in_a_template_after_a_name() {
+            assert!(odoo(r#"function f() { return `${_t("Hello")}`; }"#).is_empty());
+            assert_eq!(odoo(r#"f(`${_t("Hello")}`);"#), ["Hello"]);
+        }
+
+        #[test]
         fn babel_misses_calls_inside_template_fields() {
             assert!(babel(r#"`${count}${_t("s")}`;"#).is_empty());
         }
@@ -720,6 +761,14 @@ mod tests {
         #[test]
         fn skips_untranslated_elements() {
             assert!(terms(r#"<p t-translation="off">Untranslated</p>"#).is_empty());
+        }
+
+        #[test]
+        fn reads_namespaced_elements_lxml_does_not_skip() {
+            assert_eq!(
+                terms(r#"<svg xmlns="http://www.w3.org/2000/svg"><title>Svg title</title></svg>"#),
+                ["Svg title"]
+            );
         }
 
         #[test]

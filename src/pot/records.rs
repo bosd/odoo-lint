@@ -24,6 +24,9 @@ pub(super) enum Value {
     /// The name of the action with this XML id, else this text: a
     /// `<menuitem>` without a name, whose action another module defines.
     ActionName(String, String),
+    /// Anything else: a `ref`, a `search`, a file, an `eval` that is no
+    /// string.
+    Other,
 }
 
 /// What a markup value is.
@@ -122,11 +125,10 @@ fn record(module: &str, source: &str, node: roxmltree::Node) -> Option<Record> {
             ("ir.ui.view", "arch" | "arch_base") => "arch_db",
             _ => name,
         };
-        if field.has_attribute("ref") || field.has_attribute("search") || field.has_attribute("file") {
-            continue;
-        }
-        let value = if let Some(expr) = field.attribute("eval") {
-            eval_string(expr).map(Value::Text)
+        let value = if field.has_attribute("ref") || field.has_attribute("search") || field.has_attribute("file") {
+            Some(Value::Other)
+        } else if let Some(expr) = field.attribute("eval") {
+            Some(eval_string(expr).map_or(Value::Other, Value::Text))
         } else {
             match field.attribute("type") {
                 Some("xml") => Some(Value::Markup(Markup::Xml, source[field.range()].to_string())),
@@ -139,7 +141,7 @@ fn record(module: &str, source: &str, node: roxmltree::Node) -> Option<Record> {
                         .unwrap_or_default()
                         .to_string(),
                 )),
-                _ => None,
+                _ => Some(Value::Other),
             }
         };
         if let Some(value) = value {
@@ -157,7 +159,14 @@ fn menu(module: &str, node: roxmltree::Node, xml_id: &str, records: &[Record]) -
         (Some(name), _) if !name.is_empty() => Value::Text(name.to_string()),
         (_, Some(action)) => {
             let action = full_id(module, action);
-            match records.iter().rev().find(|r| r.xml_id == action) {
+            // The module's own record of the action, unless it only
+            // updates another module's action without naming it.
+            let own = records
+                .iter()
+                .rev()
+                .find(|r| r.xml_id == action)
+                .filter(|r| action.starts_with(&format!("{module}.")) || r.fields.iter().any(|(f, _)| f == "name"));
+            match own {
                 Some(found) => action_name(found).map_or(Value::Text(id), Value::Text),
                 None => Value::ActionName(action, id),
             }
@@ -371,6 +380,16 @@ pub(super) fn record_terms(module: &str, installed: &[Arc<ModuleIndex>], models:
             let (model, xml_id, translate) = match models.stored(&record.model, field) {
                 Some(Stored::Here(translate)) => (record.model.clone(), record.xml_id.clone(), translate),
                 Some(Stored::Parent(parent, translate)) => {
+                    // A record that names its parent record writes there:
+                    // Odoo gives the parent its own XML id only when it
+                    // creates it.
+                    let names_parent = record
+                        .fields
+                        .iter()
+                        .any(|(f, _)| models.comodel(&record.model, f, 0).as_deref() == Some(parent.as_str()));
+                    if names_parent {
+                        continue;
+                    }
                     let xml_id = format!("{}_{}", record.xml_id, parent.replace('.', "_"));
                     (parent, xml_id, translate)
                 }
@@ -379,15 +398,16 @@ pub(super) fn record_terms(module: &str, installed: &[Arc<ModuleIndex>], models:
             let text = match value {
                 Value::Text(text) => Some(text.clone()),
                 Value::ActionName(action, id) => Some(actions.name(action).unwrap_or_else(|| id.clone())),
-                Value::Markup(..) => None,
+                Value::Markup(..) | Value::Other => None,
             };
             let reference = format!("{model},{field}");
             let (kind, sources) = match (translate, text, value) {
                 (Translate::No, ..) => continue,
-                // The sanitizer of outgoing emails strips the whitespace around
-                // the content (`html_normalize`).
+                // The sanitizer of outgoing emails drops the whitespace before
+                // the content (`html_normalize` parses it); what follows is
+                // the tail of the last element and stays.
                 (Translate::Whole, Some(text), _) if models.sanitized_as_xml(&model, field) => {
-                    ("model", vec![text.trim().to_string()])
+                    ("model", vec![text.trim_start().to_string()])
                 }
                 (Translate::Whole, Some(text), _) => ("model", vec![text]),
                 (Translate::Xml, Some(text), _) => ("model_terms", xml_terms(arch_root(&text))),
@@ -408,7 +428,7 @@ pub(super) fn record_terms(module: &str, installed: &[Arc<ModuleIndex>], models:
                             };
                             let value = serialize_children(&element, method);
                             let value = if method == Method::Xml {
-                                value.trim().to_string()
+                                value.trim_start().to_string()
                             } else {
                                 value
                             };
@@ -452,6 +472,20 @@ mod tests {
     }
 
     #[test]
+    fn a_menu_takes_the_name_of_another_module_action_it_only_updates() {
+        let found = records(
+            r#"<odoo><record id="base.ir_action_report" model="ir.actions.act_window"><field name="view_id" ref="view_x"/></record><menuitem id="menu_x" action="base.ir_action_report"/></odoo>"#,
+        );
+        assert_eq!(
+            found[1].fields,
+            [(
+                "name".to_string(),
+                Value::ActionName("base.ir_action_report".into(), "menu_x".into())
+            )]
+        );
+    }
+
+    #[test]
     fn reads_a_record_field_as_written() {
         let found = records(
             r#"<odoo><record id="action_x" model="ir.actions.act_window"><field name="name">My  Orders</field></record></odoo>"#,
@@ -470,11 +504,11 @@ mod tests {
     }
 
     #[test]
-    fn skips_references() {
+    fn keeps_references_as_no_text() {
         let found = records(
             r#"<odoo><record id="x" model="res.groups"><field name="category_id" ref="base.cat"/></record></odoo>"#,
         );
-        assert!(found[0].fields.is_empty());
+        assert_eq!(found[0].fields, [("category_id".to_string(), Value::Other)]);
     }
 
     #[test]
