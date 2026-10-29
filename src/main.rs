@@ -132,6 +132,9 @@ struct CheckArgs {
     /// Print only the findings, without the summary
     #[arg(short, long)]
     quiet: bool,
+    /// Count the findings per rule instead of listing them (text or JSON)
+    #[arg(long, conflicts_with = "diff")]
+    statistics: bool,
 }
 
 /// The options of `odl upgrade-check`.
@@ -301,6 +304,9 @@ fn write(path: &Path, contents: &str) -> Result<(), String> {
 }
 
 fn check(args: CheckArgs) -> Outcome {
+    if args.statistics && !matches!(args.output_format, OutputFormat::Text | OutputFormat::Json) {
+        return Err("--statistics prints text or JSON".to_string());
+    }
     let missing = linter::missing_paths(&args.paths);
     if !missing.is_empty() {
         let missing: Vec<String> = missing
@@ -352,7 +358,21 @@ fn check(args: CheckArgs) -> Outcome {
     } else {
         (linter::lint_paths(paths, &settings), None)
     };
-    print!("{}", output::render(args.output_format, &violations));
+    if args.statistics {
+        let statistics = output::statistics(&violations);
+        if args.output_format == OutputFormat::Json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&statistics).expect("statistics serialize")
+            );
+        } else {
+            print!("{}", output::statistics_text(&statistics));
+        }
+    } else if args.output_format == OutputFormat::Text {
+        print!("{}", output::text(&violations, output::colour_stdout()));
+    } else {
+        print!("{}", output::render(args.output_format, &violations));
+    }
     if args.output_format == OutputFormat::Text && !args.quiet {
         if let Some(fixed) = fixed {
             println!("Fixed {fixed} violation(s).");

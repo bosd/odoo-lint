@@ -1,6 +1,7 @@
 """End-to-end tests for the `odl` binary shipped in the wheel."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -191,6 +192,44 @@ def test_rule_json() -> None:
     c8101 = next(r for r in rules if r["code"] == "C8101")
     assert c8101["name"] == "manifest-required-author"
     assert c8101["min_odoo_version"] is None
+
+
+def test_statistics(project: Path) -> None:
+    """`--statistics` counts the findings per rule instead of listing them."""
+    make_module(project, "acme_sale", "Someone Else")
+
+    text = run_odl("check", str(project / "addons"), "--statistics")
+    assert text.returncode == 1
+    assert "\tC8101\t" in text.stdout
+    assert "__manifest__.py" not in text.stdout
+
+    counts = json.loads(
+        run_odl(
+            "check", str(project / "addons"), "--statistics", "--output-format", "json"
+        ).stdout
+    )
+    assert {"code": "C8101", "name": "manifest-required-author"}.items() <= next(
+        c for c in counts if c["code"] == "C8101"
+    ).items()
+
+    sarif = run_odl(
+        "check", str(project / "addons"), "--statistics", "--output-format", "sarif"
+    )
+    assert sarif.returncode == 2
+
+
+def test_no_colour_when_piped(project: Path) -> None:
+    """Piped text output is plain, even when CI sets FORCE_COLOR."""
+    make_module(project, "acme_sale", "Someone Else")
+    piped = subprocess.run(
+        [ODL, "check", str(project / "addons")],
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
+        env={**os.environ, "FORCE_COLOR": "1"},
+    )
+    assert "C8101" in piped.stdout
+    assert "\x1b[" not in piped.stdout
 
 
 def test_sarif_output(project: Path) -> None:

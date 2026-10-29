@@ -8,7 +8,7 @@ Lint addons directories or single files.
 odl check [PATHS]... [--version VERSION] [--config FILE]
           [--select RULES] [--ignore RULES] [--output-format FORMAT]
           [--fix] [--unsafe-fixes] [--diff] [--force-exclude] [-v] [-q]
-          [--exit-zero] [--addons-path DIRS]
+          [--exit-zero] [--addons-path DIRS] [--statistics]
 ```
 
 `PATHS`
@@ -68,6 +68,22 @@ them without failing. Invalid configuration or usage still exits with `2`.
 `-q`, `--quiet`
 : Print only the findings, without the summary line.
 
+`--statistics`
+: Count the findings per rule instead of listing them, the most frequent
+first; `[*]` marks the rules `--fix` fixes. With `--output-format json`, an
+array of objects with `code`, `name`, `count` and `fixable`.
+
+```text
+12	W8113	[*] attribute-string-redundant
+ 3	C8101	    manifest-required-author
+```
+
+Findings, diffs and reports go to stdout, the summary of `odl check` too;
+warnings, errors and the progress of commands that write files (`odl format`,
+`odl readme`, the summary of `--diff`) go to stderr. So
+`odl check --diff > fixes.patch` gives a patch, and a JSON or SARIF report
+on stdout stays valid.
+
 With an addons path, `odl check` warns about what makes the checks across
 modules skip a module: an addons path folder that does not exist, one that
 holds no module while a folder below it does (the Odoo checkout itself
@@ -84,6 +100,10 @@ version yet, is fine.
 ```text
 addons/acme_sale/__manifest__.py:3:4: C8101: One of the following authors must be present in manifest: 'Acme Corp' (manifest-required-author)
 ```
+
+On a terminal the path is bold and the code red; `NO_COLOR` turns the
+colours off. Piped output, as in CI or pre-commit, has no colours, even with
+`FORCE_COLOR` set.
 
 `json`
 : An array of objects with `file_path`, `line`, `column` (both 1-based),
