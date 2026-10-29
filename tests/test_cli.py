@@ -174,6 +174,16 @@ def test_rule_command() -> None:
     assert by_name.returncode == 0
     assert by_name.stdout.startswith("# manifest-required-author (C8101)")
 
+    prefix = run_odl("rule", "w83")
+    assert prefix.returncode == 0
+    assert prefix.stdout.startswith("W8301 ")
+    number = run_odl("rule", "8101").stdout.splitlines()
+    assert [line.split()[0] for line in number][:2] == ["C8101", "E8101"]
+
+    unknown = run_odl("rule", "X99")
+    assert unknown.returncode == 2
+    assert "unknown rule 'X99'" in unknown.stderr
+
 
 def test_rule_json() -> None:
     """`odl rule --output-format json` lists rules for tooling."""

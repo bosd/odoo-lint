@@ -147,6 +147,8 @@ translation files are described in [Translations](translations.md).
 odl rule                            # list all rules
 odl rule C8101                      # explain a rule by code
 odl rule manifest-required-author   # or by name
+odl rule W83                        # list the rules of a code prefix
+odl rule 8101                       # or with a number (C8101, E8101)
 ```
 
 The output is the same as the pages under [rules](rules/index.md).

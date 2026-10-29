@@ -401,6 +401,20 @@ pub fn find(code_or_name: &str) -> Option<&'static Rule> {
     BY_KEY.get(&code_or_name.to_ascii_lowercase()).copied()
 }
 
+/// The rules whose code starts with `prefix` (`W83`, `odoo`), or, for a bare
+/// number, whose code's number does (`8101` is C8101 and E8101).
+pub fn matching(prefix: &str) -> Vec<&'static Rule> {
+    let starts = |code: &str| code.len() >= prefix.len() && code[..prefix.len()].eq_ignore_ascii_case(prefix);
+    let number = !prefix.is_empty() && prefix.bytes().all(|b| b.is_ascii_digit());
+    ALL.iter()
+        .filter(|rule| {
+            !prefix.is_empty()
+                && (starts(rule.code)
+                    || number && starts(rule.code.trim_start_matches(|c: char| c.is_ascii_alphabetic())))
+        })
+        .collect()
+}
+
 impl Rule {
     /// Whether `ALL` leaves the rule out.
     pub fn is_opt_in(&self) -> bool {
@@ -481,6 +495,18 @@ mod tests {
         assert_eq!(find("odoo001").map(|r| r.code), Some("ODOO001"));
         assert_eq!(find("manifest-required-author").map(|r| r.code), Some("C8101"));
         assert!(find("ODOO999").is_none());
+    }
+
+    #[test]
+    fn rules_by_prefix_or_number() {
+        let codes = |prefix: &str| matching(prefix).iter().map(|r| r.code).collect::<Vec<_>>();
+        let number = codes("8101");
+        assert!(number.contains(&"C8101") && number.contains(&"E8101"), "{number:?}");
+        assert!(number.iter().all(|c| c.ends_with("8101")), "{number:?}");
+        assert!(codes("w83").iter().all(|c| c.starts_with("W83")) && !codes("W83").is_empty());
+        assert!(codes("ODOO").len() > 10);
+        assert!(codes("").is_empty());
+        assert!(codes("X9").is_empty());
     }
 
     #[test]
