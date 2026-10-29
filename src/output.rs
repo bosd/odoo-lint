@@ -1,6 +1,7 @@
 //! Output formats for violations.
 
 use crate::diagnostics::Violation;
+use crate::fix::Applicability;
 use crate::rules::{self, Rule};
 use serde_json::json;
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ pub enum OutputFormat {
 
 pub fn render(format: OutputFormat, violations: &[Violation]) -> String {
     match format {
-        OutputFormat::Text => violations.iter().map(|v| format!("{v}\n")).collect(),
+        OutputFormat::Text => text(violations, false),
         OutputFormat::Json => {
             let mut json = serde_json::to_string_pretty(violations).expect("violations serialize");
             json.push('\n');
@@ -35,6 +36,83 @@ pub fn render(format: OutputFormat, violations: &[Violation]) -> String {
         OutputFormat::Sarif => pretty(&sarif(violations)),
         OutputFormat::Gitlab => pretty(&gitlab(violations)),
     }
+}
+
+/// The text format, with the path in bold and the code in red when
+/// `colour` is set.
+pub fn text(violations: &[Violation], colour: bool) -> String {
+    if !colour {
+        return violations.iter().map(|v| format!("{v}\n")).collect();
+    }
+    violations
+        .iter()
+        .map(|v| {
+            format!(
+                "\x1b[1m{}\x1b[0m:{}:{}: \x1b[1;31m{}\x1b[0m: {} \x1b[2m({})\x1b[0m\n",
+                v.file_path,
+                v.line,
+                v.column.saturating_sub(1),
+                v.code,
+                v.message,
+                v.name
+            )
+        })
+        .collect()
+}
+
+/// Whether text on stdout may use colours: on a terminal, unless `NO_COLOR`
+/// is set (https://no-color.org). `FORCE_COLOR` is left alone: CI jobs set
+/// it for their own tools, and piped text is for tools that parse it.
+pub fn colour_stdout() -> bool {
+    use std::io::IsTerminal;
+    std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty()) && std::io::stdout().is_terminal()
+}
+
+/// How often a rule was found, for `--statistics`.
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Statistic {
+    pub code: String,
+    pub name: String,
+    pub count: usize,
+    /// Whether `--fix` fixes some of them.
+    pub fixable: bool,
+}
+
+/// The violations counted per rule, the most frequent first.
+pub fn statistics(violations: &[Violation]) -> Vec<Statistic> {
+    let mut by_code: HashMap<&str, Statistic> = HashMap::new();
+    for v in violations {
+        let statistic = by_code.entry(&v.code).or_insert_with(|| Statistic {
+            code: v.code.clone(),
+            name: v.name.clone(),
+            count: 0,
+            fixable: false,
+        });
+        statistic.count += 1;
+        statistic.fixable |= v
+            .fix
+            .as_ref()
+            .is_some_and(|fix| fix.applicability == Applicability::Safe);
+    }
+    let mut statistics: Vec<Statistic> = by_code.into_values().collect();
+    statistics.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.code.cmp(&b.code)));
+    statistics
+}
+
+/// `--statistics` as text: count, code, `[*]` when fixable, name.
+pub fn statistics_text(statistics: &[Statistic]) -> String {
+    let count_width = statistics.iter().map(|s| s.count.to_string().len()).max().unwrap_or(0);
+    let code_width = statistics.iter().map(|s| s.code.len()).max().unwrap_or(0);
+    statistics
+        .iter()
+        .map(|s| {
+            let fixable = if s.fixable { "[*]" } else { "   " };
+            format!(
+                "{:>count_width$}\t{:<code_width$}\t{fixable} {}\n",
+                s.count, s.code, s.name
+            )
+        })
+        .collect()
 }
 
 fn pretty(value: &serde_json::Value) -> String {
@@ -193,6 +271,34 @@ mod tests {
         assert_eq!(
             render(OutputFormat::Text, &[violation()]),
             "addons/a,b/__manifest__.py:4:4: C8101: One of the following authors must be present in manifest: 'X' (manifest-required-author)\n"
+        );
+    }
+
+    #[test]
+    fn coloured_text() {
+        let text = crate::output::text(&[violation()], true);
+        assert!(
+            text.starts_with("\x1b[1maddons/a,b/__manifest__.py\x1b[0m:4:4: \x1b[1;31mC8101\x1b[0m: "),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn statistics_per_code() {
+        let other = Violation {
+            code: "W8113".into(),
+            name: "attribute-string-redundant".into(),
+            fix: Some(crate::fix::Fix::safe("Remove", vec![])),
+            ..violation()
+        };
+        let found = statistics(&[violation(), other.clone(), other]);
+        assert_eq!(
+            found.iter().map(|s| (s.code.as_str(), s.count)).collect::<Vec<_>>(),
+            [("W8113", 2), ("C8101", 1)]
+        );
+        assert_eq!(
+            statistics_text(&found),
+            "2\tW8113\t[*] attribute-string-redundant\n1\tC8101\t    manifest-required-author\n"
         );
     }
 
