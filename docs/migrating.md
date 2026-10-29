@@ -203,7 +203,7 @@ compare its findings with pylint-odoo's for a while:
 
 ```yaml
 - repo: https://github.com/bosd/odoo-lint-pre-commit
-  rev: v0.1.0a17
+  rev: v0.1.0a18
   hooks:
     - id: odoo-lint-advisory
 ```
@@ -230,7 +230,7 @@ repos:
             --repo-name=server-tools,
           ]
   - repo: https://github.com/bosd/odoo-lint-pre-commit
-    rev: v0.1.0a17
+    rev: v0.1.0a18
     hooks:
       - id: odoo-lint
         args: [--fix]

@@ -73,7 +73,7 @@ shows the findings but never fails the commit.
 ```yaml
 repos:
   - repo: https://github.com/bosd/odoo-lint-pre-commit
-    rev: v0.1.0a17
+    rev: v0.1.0a18
     hooks:
       - id: odoo-lint-advisory
 ```
