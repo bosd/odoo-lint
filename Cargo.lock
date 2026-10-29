@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "odoo-lint"
-version = "0.1.0-alpha.17"
+version = "0.1.0-alpha.18"
 dependencies = [
  "clap",
  "comrak",
