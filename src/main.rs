@@ -76,9 +76,10 @@ enum Commands {
     Server,
     /// Run a Model Context Protocol server on stdin/stdout, for AI coding agents
     Mcp,
-    /// Explain a rule, or list all rules when no code is given
+    /// Explain a rule, or list the rules of a code prefix, or all of them
     Rule {
-        /// Rule code or name, e.g. C8101 or manifest-required-author
+        /// Rule code or name, e.g. C8101 or manifest-required-author; a code
+        /// prefix (W83) or number (8101) lists the rules it matches
         code: Option<String>,
         /// Output format
         #[arg(long, value_enum, default_value_t)]
@@ -569,25 +570,39 @@ fn requirements(dir: &Path, check: bool) -> Outcome {
 /// `odl rule`: every rule, or the documentation of one.
 fn rule(code: Option<&str>, output_format: RuleFormat) -> Outcome {
     let json = output_format == RuleFormat::Json;
-    let Some(code) = code else {
-        if json {
-            let all: Vec<_> = rules::ALL.iter().map(rules::Rule::to_json).collect();
-            println!("{}", serde_json::to_string_pretty(&all).expect("rules serialize"));
-        } else {
-            for rule in rules::ALL {
-                println!("{:<8} {:<26} {}", rule.code, rule.name, rule.summary);
+    let listed = match code {
+        None => rules::ALL.iter().collect(),
+        Some(code) => match rules::find(code) {
+            Some(rule) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&rule.to_json()).expect("rule serializes")
+                    );
+                } else {
+                    print!("{}", rule.to_markdown());
+                }
+                return Ok(ExitCode::SUCCESS);
             }
-        }
-        return Ok(ExitCode::SUCCESS);
+            None => {
+                let mut matching = rules::matching(code);
+                matching.sort_by_key(|rule| rule.code);
+                matching
+            }
+        },
     };
-    let rule = rules::find(code).ok_or_else(|| format!("unknown rule '{code}' (run `odl rule` to list all rules)"))?;
+    if listed.is_empty() {
+        let code = code.unwrap_or_default();
+        return Err(format!("unknown rule '{code}' (run `odl rule` to list all rules)"));
+    }
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&rule.to_json()).expect("rule serializes")
-        );
+        let listed: Vec<_> = listed.iter().map(|rule| rule.to_json()).collect();
+        println!("{}", serde_json::to_string_pretty(&listed).expect("rules serialize"));
     } else {
-        print!("{}", rule.to_markdown());
+        let width = listed.iter().map(|rule| rule.name.len()).max().unwrap_or_default();
+        for rule in listed {
+            println!("{:<8} {:<width$} {}", rule.code, rule.name, rule.summary);
+        }
     }
     Ok(ExitCode::SUCCESS)
 }
