@@ -82,6 +82,11 @@ module of the repository installed and nothing installed automatically:
 $ odl pot . --installed . --skip-auto-install
 ```
 
+In the editor and in `odl check`, the opt-in rule
+[PO106](rules/PO106.md) reports a template that differs from what `odl pot`
+writes, with what is installed as the plain command has it: the module, its
+dependencies and what installs automatically.
+
 Demo data counts as installed as Odoo's default says: up to 18.0 it is, from
 19.0 it is not; `--with-demo` and `--without-demo` override that.
 

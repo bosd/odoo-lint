@@ -25,6 +25,7 @@ pub mod po;
 pub mod po_fixes;
 pub mod po_languages;
 pub mod po_odoo;
+pub mod po_template;
 pub mod python;
 pub mod python_fields;
 pub mod records;
@@ -193,6 +194,7 @@ pub const ALL: &[Rule] = &[
     po_odoo::PO_FILE_NAME,
     po_odoo::PO_FUZZY,
     po_languages::PO_TRANSLATION_MISSING,
+    po_template::POT_OUTDATED,
     imports::ODOO_EXCEPTION_WARNING,
     inherit::CONSIDER_MERGING_CLASSES_INHERITED,
     values::INVALID_EMAIL,
@@ -374,8 +376,8 @@ pub const ALL: &[Rule] = &[
 /// selecting them by code, name or code prefix. Listed with the reason in
 /// `docs/configuration.md#opt-in-rules`.
 const OPT_IN: &[&str] = &[
-    "MOD008", "MOD009", "MOD011", "MOD013", "ODOO012", "PO007", "U1923", "U2035", "XML002", "XML003", "XML009",
-    "XML024", "XML103",
+    "MOD008", "MOD009", "MOD011", "MOD013", "ODOO012", "PO007", "PO106", "U1923", "U2035", "XML002", "XML003",
+    "XML009", "XML024", "XML103",
 ];
 
 /// The checks across modules, which need the other modules of the addons
