@@ -81,7 +81,7 @@ staged `readme/*.md` fragments and manifests:
 
 ```yaml
 - repo: https://github.com/bosd/odoo-lint-pre-commit
-  rev: v0.1.0a18
+  rev: v0.1.0a19
   hooks:
     - id: odoo-lint-readme
 ```
