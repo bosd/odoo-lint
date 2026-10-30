@@ -19,7 +19,7 @@ use crate::po::{PoEntry, PoFile};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex};
 
 pub use code::{code_terms, javascript_terms, python_terms, qweb_terms, spreadsheet_terms};
 pub use merge::{merge, Obsolete};
@@ -336,6 +336,29 @@ pub struct Template {
 /// The template of the module in `dir`, installed as `installation` says.
 pub fn generate(dir: &Path, default_version: OdooVersion, installation: &Installation) -> Option<Template> {
     generate_with(dir, default_version, installation, &installation.auto_installs())
+}
+
+/// [`generate`] with the modules of the addons path and nothing else
+/// installed, as `odl check` builds templates: the automatic modules of an
+/// addons path are read once.
+pub fn generate_installed(dir: &Path, default_version: OdooVersion, addons_path: &[PathBuf]) -> Option<Template> {
+    type ByPath = BTreeMap<Vec<PathBuf>, Arc<Vec<AutoInstall>>>;
+    static AUTO_INSTALLS: LazyLock<Mutex<ByPath>> = LazyLock::new(Mutex::default);
+    let installation = Installation {
+        addons_path,
+        installed: &[],
+        skip_auto_install: false,
+        demo: None,
+    };
+    let auto_installs = {
+        let mut cache = AUTO_INSTALLS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        Arc::clone(
+            cache
+                .entry(addons_path.to_vec())
+                .or_insert_with(|| Arc::new(installation.auto_installs())),
+        )
+    };
+    generate_with(dir, default_version, &installation, &auto_installs)
 }
 
 fn generate_with(
