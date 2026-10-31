@@ -22,8 +22,10 @@ and comments. It is `odl pot --check` as a rule, for the editor and
 `odl check`.
 
 The labels a module's models inherit come from its dependencies: give
-`addons-path` with them, Odoo's included. Without it, the fix is unsafe, as
-the template may lack those labels.
+`addons-path` with them, Odoo's included. When a dependency is not found,
+only terms of the module's code and data files that the template lacks are
+reported (a new `_()` message or view label), since the labels of its models
+may be wrong, and there is no fix.
 
 A module without a `.pot` is left alone; `odl pot` creates one.
 
@@ -60,50 +62,88 @@ fn check_template(ctx: &ModuleContext, reporter: &mut ModuleReporter) {
     if current == template.content {
         return;
     }
-    let message = match (PoFile::parse(&current), PoFile::parse(&template.content)) {
-        (Ok(current), Ok(generated)) => {
-            let ids = |po: &PoFile| -> BTreeSet<String> {
-                po.entries
-                    .iter()
-                    .filter(|e| !e.obsolete && !e.msgid.is_empty())
-                    .map(|e| e.msgid.clone())
-                    .collect()
-            };
-            let (have, want) = (ids(&current), ids(&generated));
-            let missing = want.difference(&have).count();
-            let unused = have.difference(&want).count();
-            let terms = |n: usize| {
-                if n == 1 {
-                    "1 term".to_string()
-                } else {
-                    format!("{n} terms")
-                }
-            };
-            let mut parts = Vec::new();
-            if missing > 0 {
-                parts.push(format!("lacks {} of the source", terms(missing)));
-            }
-            if unused > 0 {
-                parts.push(format!("has {} the source no longer exports", terms(unused)));
-            }
-            if parts.is_empty() {
-                "The template's references, comments or layout differ from the source's".to_string()
-            } else {
-                format!("The template {}", parts.join(" and "))
-            }
+    let (Ok(current_po), Ok(generated)) = (PoFile::parse(&current), PoFile::parse(&template.content)) else {
+        if !template.incomplete {
+            let fix = fix(&current, template.content);
+            reporter
+                .report(
+                    &POT_OUTDATED,
+                    &path,
+                    1,
+                    "The template differs from the source's; run `odl pot`",
+                )
+                .fix = Some(fix);
         }
-        _ => "The template differs from the source's".to_string(),
+        return;
     };
-    let mut message = format!("{message}; run `odl pot`");
+    let have: BTreeSet<String> = current_po
+        .entries
+        .iter()
+        .filter(|e| !e.obsolete && !e.msgid.is_empty())
+        .map(|e| e.msgid.clone())
+        .collect();
     if template.incomplete {
-        message.push_str(" (dependencies not found on the addons path: labels may be missing)");
+        // Without the dependencies, the labels of the models may be wrong
+        // or missing: only the terms of code and data files count, and only
+        // those the template lacks.
+        let missing = msgids(&generated, |reference| !reference.starts_with("model:ir.model"))
+            .difference(&have)
+            .count();
+        if missing > 0 {
+            reporter.report(
+                &POT_OUTDATED,
+                &path,
+                1,
+                format!(
+                    "The template lacks {} of the source's code or data files; run `odl pot` \
+                     with the module's dependencies on the addons path",
+                    terms(missing)
+                ),
+            );
+        }
+        return;
     }
-    let edits = vec![Edit::replace(0, current.len(), template.content)];
-    let title = "Write the template from the source";
-    let fix = if template.incomplete {
-        Fix::unsafe_(title, edits)
+    let want = msgids(&generated, |_| true);
+    let missing = want.difference(&have).count();
+    let unused = have.difference(&want).count();
+    let mut parts = Vec::new();
+    if missing > 0 {
+        parts.push(format!("lacks {} of the source", terms(missing)));
+    }
+    if unused > 0 {
+        parts.push(format!("has {} the source no longer exports", terms(unused)));
+    }
+    let message = if parts.is_empty() {
+        "The template's references, comments or layout differ from the source's".to_string()
     } else {
-        Fix::safe(title, edits)
+        format!("The template {}", parts.join(" and "))
     };
-    reporter.report(&POT_OUTDATED, &path, 1, message).fix = Some(fix);
+    let fix = fix(&current, template.content);
+    reporter
+        .report(&POT_OUTDATED, &path, 1, format!("{message}; run `odl pot`"))
+        .fix = Some(fix);
+}
+
+fn fix(current: &str, content: String) -> Fix {
+    Fix::safe(
+        "Write the template from the source",
+        vec![Edit::replace(0, current.len(), content)],
+    )
+}
+
+fn terms(n: usize) -> String {
+    if n == 1 {
+        "1 term".to_string()
+    } else {
+        format!("{n} terms")
+    }
+}
+
+/// The msgids of `po` with a reference `keep` accepts.
+fn msgids(po: &PoFile, keep: impl Fn(&str) -> bool) -> BTreeSet<String> {
+    po.entries
+        .iter()
+        .filter(|e| !e.obsolete && !e.msgid.is_empty() && e.occurrences.iter().any(|(r, _)| keep(r)))
+        .map(|e| e.msgid.clone())
+        .collect()
 }

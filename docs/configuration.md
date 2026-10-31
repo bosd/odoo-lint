@@ -98,7 +98,7 @@ does not implement yet produce a warning, not an error.
 | [MOD013](rules/MOD013.md)   | Requires tests in every module with models, a repository convention                              |
 | [ODOO012](rules/ODOO012.md) | Suggests widgets, a style review rather than an error                                            |
 | [PO007](rules/PO007.md)     | Style; every OCA repository disables it                                                          |
-| [PO106](rules/PO106.md)     | Builds each module's template, which needs the addons path and takes time                        |
+| [PO106](rules/PO106.md)     | Builds each module's template; complete only with the dependencies on the addons path            |
 | [U1923](rules/U1923.md)     | Moves `SUPERUSER_ID` imports to `odoo.api`; `upgrade-check` runs it only when `select` names it  |
 | [U2035](rules/U2035.md)     | Turns `_rec_names_search` lists into tuples; `upgrade-check` runs it only when `select` names it |
 | [XML002](rules/XML002.md)   | Style; newer than the hooks OCA runs                                                             |
